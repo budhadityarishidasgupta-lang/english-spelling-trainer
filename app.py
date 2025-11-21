@@ -1,4 +1,5 @@
 import streamlit as st
+from shared.db import engine, fetch_all, execute
 from spelling_app.student_ui import render_spelling_student
 from spelling_app.admin_ui import render_spelling_admin
 

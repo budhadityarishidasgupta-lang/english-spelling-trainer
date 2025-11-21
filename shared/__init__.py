@@ -1,1 +1,1 @@
-# init file
+# shared package initializer
