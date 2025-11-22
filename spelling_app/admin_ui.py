@@ -133,54 +133,34 @@ def render_spelling_admin():
     with tab2:
         st.subheader("Create a New Lesson")
 
-        courses = load_course_data()
-        # Normalize course rows into dictionaries
-        normalized_courses = []
+        courses = load_course_data("spelling")
 
-        for c in courses:
-            if isinstance(c, dict):
-                normalized_courses.append(c)
+        if isinstance(courses, dict) and courses.get("error"):
+            st.error(f"Could not load spelling courses: {courses['error']}")
+            return
 
-            # SQLAlchemy object with id/title attributes
-            elif hasattr(c, "id") and hasattr(c, "title"):
-                normalized_courses.append({
-                    "id": c.id,
-                    "title": c.title
-                })
+        if not courses:
+            st.warning("No spelling courses found. Please create one first.")
+            return
 
-            # If course returned as a string (title only)
-            elif isinstance(c, str):
-                normalized_courses.append({
-                    "id": None,
-                    "title": c
-                })
+        course_map = {c["title"]: c["id"] for c in courses}
 
-            else:
-                # Fallback
-                normalized_courses.append({
-                    "id": None,
-                    "title": str(c)
-                })
-
-        # Build map title → id
-        course_map = {c["title"]: c["id"] for c in normalized_courses}
-
-        course_title = st.selectbox("Select Course", list(course_map.keys()))
+        course_options = [c["title"] for c in courses]
+        selected_course_title = st.selectbox("Select Course", course_options)
+        selected_course_id = next(c["id"] for c in courses if c["title"] == selected_course_title)
 
         lesson_title = st.text_input("Lesson Title")
         instructions = st.text_area("Instructions (optional)")
         sort_order = st.number_input("Sort Order", min_value=1, step=1)
 
         if st.button("Create Lesson"):
-            cid = course_map[course_title]
-            create_lesson(cid, lesson_title, instructions, sort_order)
-            st.success(f"Lesson '{lesson_title}' created in '{course_title}'")
+            create_lesson(selected_course_id, lesson_title, instructions, sort_order)
+            st.success(f"Lesson '{lesson_title}' created in '{selected_course_title}'")
 
         st.markdown("---")
         st.subheader("Lessons for Selected Course")
-        if course_title:
-            cid = course_map[course_title]
-            lesson_rows = load_lessons(cid)
+        if selected_course_title:
+            lesson_rows = load_lessons(selected_course_id)
             st.dataframe(lesson_rows)
 
     # -------------------------
