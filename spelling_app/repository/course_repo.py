@@ -4,10 +4,10 @@ from shared.db import fetch_all, execute
 def get_all_courses():
     return fetch_all(
         """
-        SELECT id, title, description 
+        SELECT course_id, title, description 
         FROM courses 
         WHERE course_type = 'spelling'
-        ORDER BY id ASC;
+        ORDER BY course_id ASC;
         """
     )
 
