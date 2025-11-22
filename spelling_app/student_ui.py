@@ -76,7 +76,8 @@ def _weak_words_for_user(user_id: int, lesson_id: int):
               AND lesson_id = :lid
               AND attempt_type IN ('spelling', 'spelling_missing')
             GROUP BY word_id
-            HAVING COUNT(*) >= 2 AND (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / COUNT(*)) < 0.8
+            HAVING COUNT(*) > 0
+               AND (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / COUNT(*)) < 0.8
         )
         SELECT w.id, w.word, w.difficulty, w.pattern_hint, w.definition, w.sample_sentence, w.missing_letter_mask
         FROM spelling_words w
@@ -88,7 +89,39 @@ def _weak_words_for_user(user_id: int, lesson_id: int):
     )
 
 
-def _reset_session(words, lesson_id: int, lesson_title: str, mode: str):
+def _lesson_accuracy(user_id: int, lesson_id: int):
+    stats = fetch_all(
+        """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS correct,
+            SUM(CASE WHEN NOT is_correct THEN 1 ELSE 0 END) AS wrong,
+            SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / NULLIF(COUNT(*), 0) AS accuracy
+        FROM attempts
+        WHERE user_id = :uid
+          AND lesson_id = :lid
+          AND attempt_type IN ('spelling', 'spelling_missing')
+        """,
+        {"uid": user_id, "lid": lesson_id},
+    )
+
+    if isinstance(stats, dict):
+        return {"total": 0, "correct": 0, "wrong": 0, "accuracy": None, "error": stats.get("error")}
+
+    if not stats:
+        return {"total": 0, "correct": 0, "wrong": 0, "accuracy": None}
+
+    return stats[0]
+
+
+def _reset_session(
+    words,
+    lesson_id: int,
+    lesson_title: str,
+    mode: str,
+    scope: str = "lesson",
+    mode_label: str | None = None,
+):
     st.session_state["spelling_words"] = words
     st.session_state["spelling_index"] = 0
     st.session_state["spelling_results"] = []
@@ -101,7 +134,13 @@ def _reset_session(words, lesson_id: int, lesson_title: str, mode: str):
     st.session_state["spelling_lesson_title"] = lesson_title
     st.session_state["spelling_correct"] = 0
     st.session_state["spelling_wrong"] = 0
-    st.session_state["spelling_scope"] = "weak" if mode == "weak" else "lesson"
+    st.session_state["spelling_scope"] = scope
+    st.session_state["practice_mode"] = mode_label or mode
+    # Mirrors for explicit progress keys requested by the spec
+    st.session_state["current_index"] = 0
+    st.session_state["current_streak"] = 0
+    st.session_state["correct_count"] = 0
+    st.session_state["wrong_count"] = 0
 
 
 def _current_word():
@@ -117,7 +156,8 @@ def _session_hud(total_words: int):
     correct = st.session_state.get("spelling_correct", 0)
     wrong = st.session_state.get("spelling_wrong", 0)
     lesson_title = st.session_state.get("spelling_lesson_title", "")
-    mode = st.session_state.get("practice_mode", "Normal")
+    raw_mode = st.session_state.get("practice_mode", "Normal Mode")
+    mode_label = "Missing-Letter" if raw_mode in ("missing", "Missing-Letter Mode") else "Normal"
     scope = st.session_state.get("spelling_scope", "lesson")
 
     st.markdown(
@@ -126,7 +166,7 @@ def _session_hud(total_words: int):
           <div class="quiz-heading">
             <div>
               <p class="quiz-instructions">{lesson_title} — {('Practising weak words only' if scope == 'weak' else 'Full lesson')}</p>
-              <h3 style="margin: 0;">Spell this word ({mode} mode)</h3>
+              <h3 style="margin: 0;">Spell this word ({mode_label} mode)</h3>
             </div>
             <div class="difficulty-badge">🔥 Current streak: {streak}</div>
           </div>
@@ -185,19 +225,31 @@ def render_spelling_student(user_id: int | None = None):
         selected_lesson = lesson_titles[selected_title]
 
         with col2:
-            practice_mode = st.radio("Practice mode", ["Normal", "Missing letters"], horizontal=False, key="practice_mode")
+            practice_mode = st.radio(
+                "Practice Mode",
+                ["Normal Mode", "Missing-Letter Mode"],
+                horizontal=False,
+                key="practice_mode",
+            )
 
         start_practice = st.button("Start Lesson", type="primary")
         weak_mode = st.button("Practice Weak Words", use_container_width=True)
 
         if start_practice:
+            st.session_state["practice_mode"] = practice_mode
             words = _fetch_spelling_words(int(selected_lesson["id"]))
             if isinstance(words, dict) and words.get("error"):
                 st.error(f"Could not load words: {words['error']}")
             elif not words:
                 st.warning("This lesson has no words yet.")
             else:
-                _reset_session(words, int(selected_lesson["id"]), selected_title, practice_mode.lower())
+                _reset_session(
+                    words,
+                    int(selected_lesson["id"]),
+                    selected_title,
+                    "missing" if practice_mode == "Missing-Letter Mode" else "normal",
+                    mode_label=practice_mode,
+                )
 
         if weak_mode:
             weak_words = _weak_words_for_user(int(user_id), int(selected_lesson["id"]))
@@ -206,13 +258,22 @@ def render_spelling_student(user_id: int | None = None):
             elif not weak_words:
                 st.info("Great! You have no weak words right now in this lesson.")
             else:
-                _reset_session(weak_words, int(selected_lesson["id"]), selected_title, "weak")
+                st.session_state["practice_mode"] = practice_mode
+                _reset_session(
+                    weak_words,
+                    int(selected_lesson["id"]),
+                    selected_title,
+                    "missing" if practice_mode == "Missing-Letter Mode" else "normal",
+                    scope="weak",
+                    mode_label=practice_mode,
+                )
 
         if st.session_state.get("spelling_words"):
+            active_lesson_id = int(st.session_state.get("spelling_lesson_id") or selected_lesson["id"])
             if st.session_state.get("spelling_done"):
-                _render_summary(int(user_id))
+                _render_summary(int(user_id), active_lesson_id)
             else:
-                _render_active_session(int(selected_lesson["id"]), int(user_id))
+                _render_active_session(active_lesson_id, int(user_id))
 
 
 def _render_active_session(lesson_id: int, user_id: int):
@@ -220,7 +281,7 @@ def _render_active_session(lesson_id: int, user_id: int):
     idx = st.session_state.get("spelling_index", 0)
     total = len(words)
     word = _current_word()
-    mode = st.session_state.get("practice_mode", "Normal").lower()
+    mode = st.session_state.get("spelling_mode", "normal")
 
     if not word:
         st.info("No words to practice right now.")
@@ -230,7 +291,7 @@ def _render_active_session(lesson_id: int, user_id: int):
 
     display_mask = word.get("missing_letter_mask") or _generate_mask(str(word.get("word", "")))
     if mode == "missing":
-        st.markdown(f"### {display_mask}")
+        st.markdown(f"<div class='masked-word' style='font-size:28px;font-weight:700;'>{display_mask}</div>", unsafe_allow_html=True)
         st.caption("Fill in the missing letters to spell the full word.")
     elif word.get("pattern_hint"):
         st.caption(f"Hint: {word.get('pattern_hint')}")
@@ -258,11 +319,15 @@ def _render_active_session(lesson_id: int, user_id: int):
 
         if is_correct:
             st.session_state["spelling_streak"] = st.session_state.get("spelling_streak", 0) + 1
+            st.session_state["current_streak"] = st.session_state.get("current_streak", 0) + 1
             st.session_state["spelling_correct"] = st.session_state.get("spelling_correct", 0) + 1
+            st.session_state["correct_count"] = st.session_state.get("correct_count", 0) + 1
             st.success("Correct! Keep the streak going.")
         else:
             st.session_state["spelling_streak"] = 0
+            st.session_state["current_streak"] = 0
             st.session_state["spelling_wrong"] = st.session_state.get("spelling_wrong", 0) + 1
+            st.session_state["wrong_count"] = st.session_state.get("wrong_count", 0) + 1
             st.error(f"Incorrect. The correct spelling is: **{word.get('word')}**")
 
         st.session_state["spelling_last_submitted"] = True
@@ -271,6 +336,7 @@ def _render_active_session(lesson_id: int, user_id: int):
         if idx + 1 < total:
             if st.button("Next word →"):
                 st.session_state["spelling_index"] += 1
+                st.session_state["current_index"] = st.session_state.get("current_index", 0) + 1
                 st.session_state["spelling_input"] = ""
                 st.session_state["spelling_last_submitted"] = False
                 st.rerun()
@@ -278,16 +344,24 @@ def _render_active_session(lesson_id: int, user_id: int):
             st.session_state["spelling_done"] = True
             st.session_state["spelling_last_submitted"] = False
             st.session_state["spelling_input"] = ""
-            _render_summary(user_id)
+            _render_summary(user_id, lesson_id)
 
 
-def _render_summary(user_id: int):
+def _render_summary(user_id: int, lesson_id: int):
     results = st.session_state.get("spelling_results", [])
     total = len(results)
     correct = st.session_state.get("spelling_correct", 0)
     wrong = st.session_state.get("spelling_wrong", 0)
     accuracy = round((correct / total) * 100, 1) if total else 0.0
     weak_again = [r.get("word") for r in results if not r.get("correct")]
+    lesson_stats = _lesson_accuracy(user_id, lesson_id)
+    weak_words = _weak_words_for_user(user_id, lesson_id)
+    weak_count = 0 if isinstance(weak_words, dict) else len(weak_words)
+
+    if isinstance(lesson_stats, dict) and lesson_stats.get("accuracy") is not None:
+        lesson_accuracy = round(float(lesson_stats.get("accuracy", 0) * 100), 1)
+    else:
+        lesson_accuracy = 0.0
 
     st.markdown(
         f"""
@@ -300,6 +374,8 @@ def _render_summary(user_id: int):
           <p><strong>Total wrong:</strong> {wrong}</p>
           <p><strong>Accuracy:</strong> {accuracy}%</p>
           <p><strong>Words to revise again:</strong> {', '.join(weak_again) if weak_again else 'None — excellent work!'}</p>
+          <p><strong>Lesson accuracy so far:</strong> {lesson_accuracy}%</p>
+          <p><strong>Weak words remaining:</strong> {weak_count}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -308,27 +384,35 @@ def _render_summary(user_id: int):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Practice Weak Words Now"):
-            lesson_id = st.session_state.get("spelling_lesson_id")
             weak_words = _weak_words_for_user(int(user_id), int(lesson_id)) if lesson_id else []
             if isinstance(weak_words, dict) and weak_words.get("error"):
                 st.error(f"Could not load weak words: {weak_words['error']}")
             elif weak_words:
-                _reset_session(weak_words, int(lesson_id), st.session_state.get("spelling_lesson_title", ""), "weak")
+                current_mode = st.session_state.get("practice_mode", "Normal Mode")
+                _reset_session(
+                    weak_words,
+                    int(lesson_id),
+                    st.session_state.get("spelling_lesson_title", ""),
+                    "missing" if current_mode in ("missing", "Missing-Letter Mode") else "normal",
+                    scope="weak",
+                    mode_label=current_mode,
+                )
                 st.rerun()
             else:
                 st.info("Great! You have no weak words right now in this lesson.")
 
     with col2:
         if st.button("Restart Lesson"):
-            lesson_id = st.session_state.get("spelling_lesson_id")
             lesson_title = st.session_state.get("spelling_lesson_title", "")
             if lesson_id:
                 words = _fetch_spelling_words(int(lesson_id))
                 if not isinstance(words, dict) and words:
+                    current_mode = st.session_state.get("practice_mode", "Normal Mode")
                     _reset_session(
                         words,
                         int(lesson_id),
                         lesson_title,
-                        st.session_state.get("practice_mode", "Normal").lower(),
+                        "missing" if current_mode in ("missing", "Missing-Letter Mode") else "normal",
+                        mode_label=current_mode,
                     )
                     st.rerun()
