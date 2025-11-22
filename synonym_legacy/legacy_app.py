@@ -3366,75 +3366,179 @@ if st.session_state["auth"]["role"] == "admin":
         with tab_students:
             st.subheader("👩‍🎓 Students Management")
 
-            search_q = st.text_input("Search student by name or email", key="adm_stu_search")
             df_students = all_students_df()
-            if search_q.strip():
-                m = df_students["name"].str.contains(search_q, case=False, na=False) | \
-                    df_students["email"].str.contains(search_q, case=False, na=False)
-                df_students = df_students[m]
-            st.dataframe(df_students, use_container_width=True)
+            filtered_students = df_students.copy()
 
-            pending_df = list_pending_registrations()
-            if not pending_df.empty:
-                st.markdown("### 📝 Pending student registrations")
-                pending_display = pending_df.copy()
-                pending_display["created_at"] = pending_display["created_at"].astype(str)
-                if "processed_at" in pending_display:
-                    pending_display["processed_at"] = pending_display["processed_at"].astype(str)
-                st.dataframe(
-                    pending_display[["name", "email", "status", "default_password", "created_at"]],
-                    use_container_width=True,
-                )
+            admin_overview = st.container()
+            with admin_overview:
+                st.markdown("### Admin Overview")
+                st.markdown("<div class='quiz-surface'>", unsafe_allow_html=True)
 
-                selection = st.radio(
-                    "Select a registration",
-                    pending_df["pending_id"].tolist(),
-                    format_func=lambda pid: f"{pending_df.loc[pending_df['pending_id']==pid, 'name'].values[0]} ({pending_df.loc[pending_df['pending_id']==pid, 'email'].values[0]})",
-                    key="pending_registration_select",
-                )
+                total_students = len(df_students)
+                active_students = int(df_students["is_active"].sum()) if not df_students.empty else 0
+                inactive_students = total_students - active_students
 
-                action_col_create, action_col_disregard = st.columns(2)
+                with st.expander("Students Summary & Search", expanded=True):
+                    metric_cols = st.columns(3)
+                    metric_cols[0].metric("Total Students", total_students)
+                    metric_cols[1].metric("Active Students", active_students)
+                    metric_cols[2].metric("Inactive Students", inactive_students)
 
-                with action_col_create:
-                    create_student_clicked = st.button(
-                        "Create Student", type="primary", key="pending_create_student"
-                    )
+                    search_q = st.text_input("Search students", key="adm_overview_search")
+                    if search_q.strip():
+                        m = df_students["name"].str.contains(search_q, case=False, na=False) | \
+                            df_students["email"].str.contains(search_q, case=False, na=False)
+                        filtered_students = df_students[m]
+                    st.dataframe(filtered_students, use_container_width=True)
 
-                with action_col_disregard:
-                    disregard_clicked = st.button(
-                        "Disregard", key="pending_disregard_student"
-                    )
+                with st.expander("Pending student registrations"):
+                    pending_df = list_pending_registrations()
+                    if not pending_df.empty:
+                        pending_display = pending_df.copy()
+                        pending_display["created_at"] = pending_display["created_at"].astype(str)
+                        if "processed_at" in pending_display:
+                            pending_display["processed_at"] = pending_display["processed_at"].astype(str)
+                        st.dataframe(
+                            pending_display[["name", "email", "status", "default_password", "created_at"]],
+                            use_container_width=True,
+                        )
 
-                if create_student_clicked:
-                    pending_row = pending_df[pending_df["pending_id"] == selection].iloc[0]
-                    email_lc = pending_row["email"].strip().lower()
-                    existing = user_by_email(email_lc)
-                    if existing and existing.get("role") == "student":
-                        mark_pending_registration_processed(int(pending_row["pending_id"]), existing.get("user_id"), status="already registered")
-                        set_user_active(existing.get("user_id"), True)
-                        st.info("This email is already registered. The student has been reactivated if necessary.")
-                        st.rerun()
-                    elif existing:
-                        st.warning("An account with this email already exists with a different role.")
+                        selection = st.radio(
+                            "Select a registration",
+                            pending_df["pending_id"].tolist(),
+                            format_func=lambda pid: f"{pending_df.loc[pending_df['pending_id']==pid, 'name'].values[0]} ({pending_df.loc[pending_df['pending_id']==pid, 'email'].values[0]})",
+                            key="pending_registration_select",
+                        )
+
+                        action_col_create, action_col_disregard = st.columns(2)
+
+                        with action_col_create:
+                            create_student_clicked = st.button(
+                                "Create Student", type="primary", key="pending_create_student"
+                            )
+
+                        with action_col_disregard:
+                            disregard_clicked = st.button(
+                                "Disregard", key="pending_disregard_student"
+                            )
+
+                        if create_student_clicked:
+                            pending_row = pending_df[pending_df["pending_id"] == selection].iloc[0]
+                            email_lc = pending_row["email"].strip().lower()
+                            existing = user_by_email(email_lc)
+                            if existing and existing.get("role") == "student":
+                                mark_pending_registration_processed(int(pending_row["pending_id"]), existing.get("user_id"), status="already registered")
+                                set_user_active(existing.get("user_id"), True)
+                                st.info("This email is already registered. The student has been reactivated if necessary.")
+                                st.rerun()
+                            elif existing:
+                                st.warning("An account with this email already exists with a different role.")
+                            else:
+                                try:
+                                    password = pending_row.get("default_password") or DEFAULT_STUDENT_PASSWORD
+                                    new_user_id = create_user(pending_row["name"], email_lc, password, "student")
+                                    if new_user_id:
+                                        set_user_active(new_user_id, True)
+                                    mark_pending_registration_processed(int(pending_row["pending_id"]), new_user_id, status="registered")
+                                    st.success("Student account created from registration.")
+                                    st.rerun()
+                                except Exception as ex:
+                                    st.error(f"Failed to create student: {ex}")
+
+                        if disregard_clicked:
+                            try:
+                                delete_pending_registration(int(selection))
+                                st.success("Pending registration removed.")
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Failed to remove registration: {ex}")
                     else:
-                        try:
-                            password = pending_row.get("default_password") or DEFAULT_STUDENT_PASSWORD
-                            new_user_id = create_user(pending_row["name"], email_lc, password, "student")
-                            if new_user_id:
-                                set_user_active(new_user_id, True)
-                            mark_pending_registration_processed(int(pending_row["pending_id"]), new_user_id, status="registered")
-                            st.success("Student account created from registration.")
-                            st.rerun()
-                        except Exception as ex:
-                            st.error(f"Failed to create student: {ex}")
+                        st.info("No pending registrations at the moment.")
 
-                if disregard_clicked:
-                    try:
-                        delete_pending_registration(int(selection))
-                        st.success("Pending registration removed.")
-                        st.rerun()
-                    except Exception as ex:
-                        st.error(f"Failed to remove registration: {ex}")
+                with st.expander("Classrooms & Rosters"):
+                    show_archived = st.checkbox("Show archived classes", value=False, key="adm_show_archived_classes")
+                    df_classes = get_classrooms(include_archived=show_archived)
+                    if df_classes.empty:
+                        st.info("No classrooms yet. Create one below.")
+                    else:
+                        df_display = df_classes.copy()
+                        for col in ["start_date", "created_at", "archived_at"]:
+                            if col in df_display:
+                                df_display[col] = df_display[col].astype(str)
+                        st.dataframe(df_display, use_container_width=True)
+
+                    with st.form("adm_create_classroom"):
+                        c1, c2 = st.columns([2, 1])
+                        with c1:
+                            class_name = st.text_input("Class name")
+                        with c2:
+                            default_date = date.today()
+                            class_start = st.date_input("Commencement date", value=default_date)
+                        if st.form_submit_button("Create Classroom", type="primary"):
+                            if class_name and class_name.strip():
+                                create_classroom(class_name.strip(), class_start)
+                                st.success("Classroom created.")
+                                st.rerun()
+                            else:
+                                st.warning("Please provide a class name.")
+
+                    if not df_classes.empty:
+                        st.markdown("#### Manage classroom roster")
+                        class_options = df_classes["class_id"].tolist()
+                        selected_class = st.selectbox(
+                            "Select classroom",
+                            class_options,
+                            format_func=lambda x: f"{df_classes.loc[df_classes['class_id']==x,'name'].values[0]}",
+                            key="adm_class_select",
+                        )
+
+                        class_row = df_classes[df_classes["class_id"] == selected_class].iloc[0]
+                        start_label = class_row.get("start_date")
+                        status_label = "Archived" if class_row.get("is_archived") else "Active"
+                        st.caption(
+                            f"Status: **{status_label}** • Commences: {start_label if start_label else 'TBD'}"
+                        )
+
+                        class_students_df = get_class_students(int(selected_class))
+                        if class_students_df.empty:
+                            st.info("No students assigned yet.")
+                        else:
+                            df_roster = class_students_df.copy()
+                            df_roster["assigned_at"] = df_roster["assigned_at"].astype(str)
+                            st.dataframe(df_roster[["name", "email", "is_active", "assigned_at"]], use_container_width=True)
+
+                        current_student_ids = (
+                            class_students_df["user_id"].tolist() if not class_students_df.empty else []
+                        )
+                        available_students = filtered_students[~filtered_students["user_id"].isin(current_student_ids)]
+                        with st.form("adm_update_class_roster"):
+                            add_choices = available_students["user_id"].tolist()
+                            add_selection = st.multiselect(
+                                "Add students",
+                                add_choices,
+                                format_func=lambda x: f"{available_students.loc[available_students['user_id']==x,'name'].values[0]}"
+                                if not available_students.empty else str(x),
+                            )
+                            remove_selection = st.multiselect(
+                                "Remove students",
+                                class_students_df["user_id"].tolist() if not class_students_df.empty else [],
+                                format_func=lambda x: f"{class_students_df.loc[class_students_df['user_id']==x,'name'].values[0]}"
+                                if not class_students_df.empty else str(x),
+                            )
+                            if st.form_submit_button("Update Classroom", type="primary"):
+                                assign_students_to_class(int(selected_class), add_selection)
+                                unassign_students_from_class(int(selected_class), remove_selection)
+                                st.success("Classroom roster updated.")
+                                st.rerun()
+
+                        archive_label = "Restore Classroom" if class_row.get("is_archived") else "Archive Classroom"
+                        if st.button(archive_label, key="adm_toggle_archive_class", type="secondary"):
+                            current_archived = bool(class_row.get("is_archived"))
+                            set_class_archived(int(selected_class), not current_archived)
+                            st.success("Classroom archived." if not current_archived else "Classroom restored.")
+                            st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown("### ➕ Add / Enroll Student")
             with st.form("adm_add_student"):
@@ -3454,11 +3558,11 @@ if st.session_state["auth"]["role"] == "admin":
                         st.warning("Please fill all fields.")
 
             st.markdown("### ⚙️ Manage Status")
-            if not df_students.empty:
+            if not filtered_students.empty:
                 selected_ids = st.multiselect(
                     "Select students",
-                    df_students["user_id"].tolist(),
-                    format_func=lambda x: f"{df_students.loc[df_students['user_id']==x,'name'].values[0]}"
+                    filtered_students["user_id"].tolist(),
+                    format_func=lambda x: f"{filtered_students.loc[filtered_students['user_id']==x,'name'].values[0]}"
                 )
                 action = st.selectbox("Action", ["Deactivate", "Reactivate", "Delete", "Reset Password"])
                 if st.button("Apply Action", type="primary"):
@@ -3480,89 +3584,6 @@ if st.session_state["auth"]["role"] == "admin":
                     st.rerun()
             else:
                 st.info("No students available yet.")
-
-            st.markdown("### 🏫 Classrooms")
-            show_archived = st.checkbox("Show archived classes", value=False, key="adm_show_archived_classes")
-            df_classes = get_classrooms(include_archived=show_archived)
-            if df_classes.empty:
-                st.info("No classrooms yet. Create one below.")
-            else:
-                df_display = df_classes.copy()
-                for col in ["start_date", "created_at", "archived_at"]:
-                    if col in df_display:
-                        df_display[col] = df_display[col].astype(str)
-                st.dataframe(df_display, use_container_width=True)
-
-            with st.form("adm_create_classroom"):
-                c1, c2 = st.columns([2, 1])
-                with c1:
-                    class_name = st.text_input("Class name")
-                with c2:
-                    default_date = date.today()
-                    class_start = st.date_input("Commencement date", value=default_date)
-                if st.form_submit_button("Create Classroom", type="primary"):
-                    if class_name and class_name.strip():
-                        create_classroom(class_name.strip(), class_start)
-                        st.success("Classroom created.")
-                        st.rerun()
-                    else:
-                        st.warning("Please provide a class name.")
-
-            if not df_classes.empty:
-                st.markdown("#### Manage classroom roster")
-                class_options = df_classes["class_id"].tolist()
-                selected_class = st.selectbox(
-                    "Select classroom",
-                    class_options,
-                    format_func=lambda x: f"{df_classes.loc[df_classes['class_id']==x,'name'].values[0]}",
-                    key="adm_class_select",
-                )
-
-                class_row = df_classes[df_classes["class_id"] == selected_class].iloc[0]
-                start_label = class_row.get("start_date")
-                status_label = "Archived" if class_row.get("is_archived") else "Active"
-                st.caption(
-                    f"Status: **{status_label}** • Commences: {start_label if start_label else 'TBD'}"
-                )
-
-                class_students_df = get_class_students(int(selected_class))
-                if class_students_df.empty:
-                    st.info("No students assigned yet.")
-                else:
-                    df_roster = class_students_df.copy()
-                    df_roster["assigned_at"] = df_roster["assigned_at"].astype(str)
-                    st.dataframe(df_roster[["name", "email", "is_active", "assigned_at"]], use_container_width=True)
-
-                current_student_ids = (
-                    class_students_df["user_id"].tolist() if not class_students_df.empty else []
-                )
-                available_students = df_students[~df_students["user_id"].isin(current_student_ids)]
-                with st.form("adm_update_class_roster"):
-                    add_choices = available_students["user_id"].tolist()
-                    add_selection = st.multiselect(
-                        "Add students",
-                        add_choices,
-                        format_func=lambda x: f"{available_students.loc[available_students['user_id']==x,'name'].values[0]}"
-                        if not available_students.empty else str(x),
-                    )
-                    remove_selection = st.multiselect(
-                        "Remove students",
-                        class_students_df["user_id"].tolist() if not class_students_df.empty else [],
-                        format_func=lambda x: f"{class_students_df.loc[class_students_df['user_id']==x,'name'].values[0]}"
-                        if not class_students_df.empty else str(x),
-                    )
-                    if st.form_submit_button("Update Classroom", type="primary"):
-                        assign_students_to_class(int(selected_class), add_selection)
-                        unassign_students_from_class(int(selected_class), remove_selection)
-                        st.success("Classroom roster updated.")
-                        st.rerun()
-
-                archive_label = "Restore Classroom" if class_row.get("is_archived") else "Archive Classroom"
-                if st.button(archive_label, key="adm_toggle_archive_class", type="secondary"):
-                    current_archived = bool(class_row.get("is_archived"))
-                    set_class_archived(int(selected_class), not current_archived)
-                    st.success("Classroom archived." if not current_archived else "Classroom restored.")
-                    st.rerun()
 
         # ───────────────────────────────────────────────
         # TAB 2 — TEACHERS MANAGEMENT
