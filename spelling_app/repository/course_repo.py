@@ -14,13 +14,14 @@ def get_all_courses():
     ORDER BY course_id ASC;
     """
 
-result = fetch_all(sql)
+    result = fetch_all(sql)
 
-for row in result:
-    print("DEBUG COURSE ROW:", row, type(row))
-    return []
+    # DEBUG: print the first row to inspect DB output
+    for row in result:
+        print("DEBUG COURSE ROW:", row, type(row))
+        return []  # stop here so logs show debug output
 
-
+    # Normal return if debug loop doesn't early return
     return [dict(row) for row in result]
 
 
