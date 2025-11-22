@@ -17,7 +17,6 @@ def _load_spelling_courses():
         """
         SELECT course_id, title
         FROM courses
-        WHERE course_type = 'spelling'
         ORDER BY title
         """,
     )
@@ -27,19 +26,18 @@ def _load_spelling_lessons(course_id: int | None = None):
     if course_id:
         return fetch_all(
             """
-            SELECT id, title, course_id
+            SELECT lesson_id, title, instructions, sort_order
             FROM lessons
-            WHERE lesson_type = 'spelling' AND course_id = :cid
-            ORDER BY sort_order NULLS LAST, id
+            WHERE course_id = :cid
+            ORDER BY sort_order ASC
             """,
             {"cid": course_id},
         )
     return fetch_all(
         """
-        SELECT id, title, course_id
+        SELECT lesson_id, title, instructions, sort_order
         FROM lessons
-        WHERE lesson_type = 'spelling'
-        ORDER BY sort_order NULLS LAST, id
+        ORDER BY sort_order ASC
         """,
     )
 
@@ -51,7 +49,6 @@ def _load_students():
         FROM users u
         JOIN enrollments e ON u.user_id = e.user_id
         JOIN courses c ON e.course_id = c.course_id
-        WHERE c.course_type = 'spelling'
         """,
     )
 
@@ -101,7 +98,7 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id
                COUNT(a.*) AS total_attempts,
                COALESCE(SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
         FROM spelling_words w
-        JOIN lessons l ON l.id = w.lesson_id
+        JOIN lessons l ON l.lesson_id = w.lesson_id
         LEFT JOIN attempts a ON a.word_id = w.id
                            AND a.attempt_type IN ('spelling','spelling_missing','spelling_daily')
                            {student_filter}
@@ -154,17 +151,15 @@ def render_spelling_admin():
     with tab2:
         st.subheader("Create a New Lesson")
 
-        courses = load_course_data("spelling")
+        courses = load_course_data()
 
         if isinstance(courses, dict) and courses.get("error"):
-            st.error(f"Could not load spelling courses: {courses['error']}")
+            st.error(f"Could not load courses: {courses['error']}")
             return
 
         if not courses:
-            st.warning("No spelling courses found. Please create one first.")
+            st.warning("No courses found. Please create one first.")
             return
-
-        course_map = {c["title"]: c["course_id"] for c in courses}
 
         course_options = [c["title"] for c in courses]
         selected_course_title = st.selectbox("Select Course", course_options)
@@ -241,7 +236,7 @@ def render_spelling_admin():
         return
 
     course_titles = {c["title"]: c["course_id"] for c in courses} if courses else {}
-    lesson_titles = {l["title"]: l["id"] for l in lessons} if lessons else {}
+    lesson_titles = {l["title"]: l["lesson_id"] for l in lessons} if lessons else {}
     student_labels = {s["label"]: s["user_id"] for s in students} if students else {}
 
     c1, c2, c3 = st.columns(3)
@@ -251,7 +246,7 @@ def render_spelling_admin():
 
     with c2:
         available_lessons = _load_spelling_lessons(selected_course_id) if selected_course_id else lessons
-        lesson_titles = {l["title"]: l["id"] for l in available_lessons} if available_lessons else {}
+        lesson_titles = {l["title"]: l["lesson_id"] for l in available_lessons} if available_lessons else {}
         lesson_options = ["All lessons" if not selected_course_id else "All lessons in this course"] + list(lesson_titles.keys())
         selected_lesson = st.selectbox("Filter by lesson", lesson_options)
         selected_lesson_id = lesson_titles.get(selected_lesson)
