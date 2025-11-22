@@ -134,8 +134,36 @@ def render_spelling_admin():
         st.subheader("Create a New Lesson")
 
         courses = load_course_data()
-        # Build a map of course title → course_id (correct field name)
-        course_map = {c["title"]: c["id"] for c in courses}
+        # Normalize course rows into dictionaries
+        normalized_courses = []
+
+        for c in courses:
+            if isinstance(c, dict):
+                normalized_courses.append(c)
+
+            # SQLAlchemy object with id/title attributes
+            elif hasattr(c, "id") and hasattr(c, "title"):
+                normalized_courses.append({
+                    "id": c.id,
+                    "title": c.title
+                })
+
+            # If course returned as a string (title only)
+            elif isinstance(c, str):
+                normalized_courses.append({
+                    "id": None,
+                    "title": c
+                })
+
+            else:
+                # Fallback
+                normalized_courses.append({
+                    "id": None,
+                    "title": str(c)
+                })
+
+        # Build map title → id
+        course_map = {c["title"]: c["id"] for c in normalized_courses}
 
         course_title = st.selectbox("Select Course", list(course_map.keys()))
 
