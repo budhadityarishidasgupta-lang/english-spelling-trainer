@@ -2,6 +2,7 @@ import os, time, random, sqlite3, html, base64, json, re
 from contextlib import closing
 from datetime import datetime, timedelta, date
 from pathlib import Path
+from functools import lru_cache
 
 from typing import Optional
 
@@ -15,6 +16,8 @@ from sqlalchemy import create_engine, text
 import streamlit as st
 import builtins
 import hashlib
+
+from shared.db import execute as sp_execute, fetch_all as sp_fetch_all, engine as sp_engine
 
 # Disable all help renderers (prevents the login_page methods panel)
 try:
@@ -2079,6 +2082,264 @@ def td2_import_course_csv(course_id: int, df_csv: pd.DataFrame,
 # ─────────────────────────────────────────────────────────────────────
 # Teacher UI V2 — Create / Manage
 # ─────────────────────────────────────────────────────────────────────
+@lru_cache(maxsize=1)
+def sp_course_columns() -> set[str]:
+    try:
+        df_cols = pd.read_sql(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'courses'
+                """
+            ),
+            con=sp_engine,
+        )
+        return set(df_cols["column_name"].tolist())
+    except Exception:
+        return set()
+
+
+@lru_cache(maxsize=1)
+def sp_lesson_columns() -> set[str]:
+    try:
+        df_cols = pd.read_sql(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'lessons'
+                """
+            ),
+            con=sp_engine,
+        )
+        return set(df_cols["column_name"].tolist())
+    except Exception:
+        return set()
+
+
+def sp_course_pk_column() -> str:
+    cols = sp_course_columns()
+    if "sp_course_id" in cols:
+        return "sp_course_id"
+    if "course_id" in cols:
+        return "course_id"
+    return "id"
+
+
+def sp_lesson_pk_column() -> str:
+    cols = sp_lesson_columns()
+    if "sp_lesson_id" in cols:
+        return "sp_lesson_id"
+    if "lesson_id" in cols:
+        return "lesson_id"
+    return "id"
+
+
+def sp_get_spelling_courses() -> pd.DataFrame:
+    cols = sp_course_columns()
+    where_clause = ""
+    if "course_type" in cols:
+        where_clause = " WHERE course_type = 'spelling'"
+    order_parts = []
+    if "sort_order" in cols:
+        order_parts.append("sort_order")
+    order_parts.append(sp_course_pk_column())
+    order_clause = f" ORDER BY {', '.join(order_parts)}"
+
+    try:
+        return pd.read_sql(
+            text(f"SELECT * FROM courses{where_clause}{order_clause}"),
+            con=sp_engine,
+        )
+    except Exception:
+        return pd.DataFrame()
+
+
+def sp_get_spelling_lessons(course_id: int) -> pd.DataFrame:
+    cols = sp_lesson_columns()
+    course_fk = "sp_course_id" if "sp_course_id" in cols else "course_id"
+    order_parts = []
+    if "sort_order" in cols:
+        order_parts.append("sort_order")
+    order_parts.append(sp_lesson_pk_column())
+    order_clause = f" ORDER BY {', '.join(order_parts)}"
+
+    try:
+        return pd.read_sql(
+            text(
+                f"SELECT * FROM lessons WHERE {course_fk} = :cid{order_clause}"
+            ),
+            con=sp_engine,
+            params={"cid": int(course_id)},
+        )
+    except Exception:
+        return pd.DataFrame()
+
+
+def sp_get_all_spelling_lessons() -> pd.DataFrame:
+    courses = sp_get_spelling_courses()
+    course_pk = sp_course_pk_column()
+    lesson_pk = sp_lesson_pk_column()
+    frames: list[pd.DataFrame] = []
+
+    for _, course in courses.iterrows():
+        lessons = sp_get_spelling_lessons(course[course_pk])
+        if lessons.empty:
+            continue
+        lessons = lessons.copy()
+        lessons["__label"] = lessons["title"].fillna("").astype(str)
+        lessons["__label"] = lessons["__label"].apply(
+            lambda t: f"{course.get('title', 'Course')} — {t}" if t else course.get("title", "Course")
+        )
+        lessons["__course_id"] = course[course_pk]
+        frames.append(lessons)
+
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+    return pd.DataFrame()
+
+
+def sp_create_spelling_course(title: str, description: str, sort_order: int | None):
+    cols = sp_course_columns()
+    insert_cols = ["title", "description"]
+    params = {"title": title.strip(), "description": description.strip()}
+
+    if "course_type" in cols:
+        insert_cols.append("course_type")
+        params["course_type"] = "spelling"
+
+    if "sort_order" in cols:
+        insert_cols.append("sort_order")
+        params["sort_order"] = int(sort_order) if sort_order is not None else None
+
+    if "level" in cols:
+        insert_cols.append("level")
+        params["level"] = None
+
+    columns_sql = ", ".join(insert_cols)
+    values_sql = ", ".join([f":{c}" for c in insert_cols])
+    query = f"INSERT INTO courses ({columns_sql}) VALUES ({values_sql})"
+    return sp_execute(query, params)
+
+
+def sp_create_spelling_lesson(course_id: int, title: str, instructions: str, sort_order: int | None):
+    cols = sp_lesson_columns()
+    course_fk = "sp_course_id" if "sp_course_id" in cols else "course_id"
+    insert_cols = [course_fk, "title"]
+    params = {course_fk: int(course_id), "title": title.strip()}
+
+    if "instructions" in cols:
+        insert_cols.append("instructions")
+        params["instructions"] = instructions.strip()
+
+    if "sort_order" in cols:
+        insert_cols.append("sort_order")
+        params["sort_order"] = int(sort_order) if sort_order is not None else None
+
+    columns_sql = ", ".join(insert_cols)
+    values_sql = ", ".join([f":{c}" for c in insert_cols])
+    query = f"INSERT INTO lessons ({columns_sql}) VALUES ({values_sql})"
+    return sp_execute(query, params)
+
+
+def sp_update_spelling_lesson(lesson_id: int, title: str, instructions: str, sort_order: int | None):
+    cols = sp_lesson_columns()
+    sets = []
+    params: dict[str, object] = {"lid": int(lesson_id)}
+
+    if "title" in cols:
+        sets.append("title = :title")
+        params["title"] = title.strip()
+
+    if "instructions" in cols:
+        sets.append("instructions = :instr")
+        params["instr"] = instructions.strip()
+
+    if "sort_order" in cols:
+        sets.append("sort_order = :sort")
+        params["sort"] = int(sort_order) if sort_order is not None else None
+
+    if not sets:
+        return {"error": "No editable columns found."}
+
+    pk = sp_lesson_pk_column()
+    query = f"UPDATE lessons SET {', '.join(sets)} WHERE {pk} = :lid"
+    return sp_execute(query, params)
+
+
+def sp_delete_spelling_lesson(lesson_id: int):
+    pk = sp_lesson_pk_column()
+    return sp_execute(
+        f"DELETE FROM lessons WHERE {pk} = :lid",
+        {"lid": int(lesson_id)},
+    )
+
+
+def sp_spelling_word_count(lesson_id: int) -> int:
+    try:
+        df_count = pd.read_sql(
+            text("SELECT COUNT(*) AS n FROM spelling_words WHERE lesson_id = :lid"),
+            con=sp_engine,
+            params={"lid": int(lesson_id)},
+        )
+        return int(df_count.iloc[0]["n"]) if not df_count.empty else 0
+    except Exception:
+        return 0
+
+
+def sp_import_spelling_csv(lesson_id: int, df: pd.DataFrame) -> int:
+    if df is None:
+        return 0
+
+    if df.empty:
+        return 0
+
+    df_norm = df.copy()
+    df_norm.columns = [c.strip().lower() for c in df_norm.columns]
+
+    if "word" not in df_norm.columns:
+        raise ValueError("CSV must have a 'word' column.")
+
+    records: list[dict[str, object]] = []
+    for _, row in df_norm.iterrows():
+        word = str(row.get("word") or "").strip()
+        if not word:
+            continue
+        records.append(
+            {
+                "word": word,
+                "lesson_id": int(lesson_id),
+                "difficulty": None if pd.isna(row.get("difficulty")) else int(row.get("difficulty")),
+                "pattern_hint": None if pd.isna(row.get("pattern_hint")) else str(row.get("pattern_hint")),
+                "missing_letter_mask": None
+                if pd.isna(row.get("missing_letter_mask"))
+                else str(row.get("missing_letter_mask")),
+                "definition": None if pd.isna(row.get("definition")) else str(row.get("definition")),
+                "sample_sentence": None
+                if pd.isna(row.get("sample_sentence"))
+                else str(row.get("sample_sentence")),
+            }
+        )
+
+    if not records:
+        return 0
+
+    placeholders = ":word, :lesson_id, :difficulty, :pattern_hint, :missing_letter_mask, :definition, :sample_sentence"
+    query = (
+        "INSERT INTO spelling_words (word, lesson_id, difficulty, pattern_hint, missing_letter_mask, definition, sample_sentence)"
+        f" VALUES ({placeholders})"
+    )
+
+    with sp_engine.begin() as conn:
+        for rec in records:
+            conn.execute(text(query), rec)
+
+    return len(records)
+
+
 def teacher_create_ui():
     st.subheader("Create")
     c1, c2 = st.columns(2)
@@ -2128,6 +2389,87 @@ def teacher_create_ui():
                     st.rerun()
                 else:
                     st.error("Lesson title is required.")
+
+    st.divider()
+    st.markdown("### ✏️ Spelling management")
+    st.caption("Create spelling courses, lessons, and upload word lists without touching synonym data.")
+
+    sp_col1, sp_col2, sp_col3 = st.columns(3)
+
+    with sp_col1, st.form("sp_create_course"):
+        st.markdown("**1️⃣ Create Spelling Course**")
+        sp_course_title = st.text_input("Title", key="sp_course_title")
+        sp_course_desc = st.text_area("Description", key="sp_course_desc")
+        sp_course_sort = st.number_input("Sort Order", min_value=0, step=1, key="sp_course_sort")
+
+        if st.form_submit_button("Create Spelling Course", type="primary"):
+            if sp_course_title.strip():
+                sp_create_spelling_course(sp_course_title, sp_course_desc, sp_course_sort)
+                st.success("Spelling course created.")
+                sp_course_columns.cache_clear()
+                st.rerun()
+            else:
+                st.error("Title is required.")
+
+    with sp_col2, st.form("sp_create_lesson"):
+        st.markdown("**2️⃣ Create Spelling Lesson**")
+        sp_courses_df = sp_get_spelling_courses()
+        sp_course_pk = sp_course_pk_column()
+        if sp_courses_df.empty:
+            st.info("Create a spelling course first.")
+            selected_sp_course = None
+        else:
+            selected_sp_course = st.selectbox(
+                "Select Course",
+                sp_courses_df[sp_course_pk].tolist(),
+                format_func=lambda x: sp_courses_df.loc[sp_courses_df[sp_course_pk] == x, "title"].values[0],
+                key="sp_course_select",
+            )
+
+        sp_lesson_title = st.text_input("Lesson Title", key="sp_lesson_title")
+        sp_lesson_instr = st.text_area("Practice Instructions", key="sp_lesson_instr")
+        sp_lesson_sort = st.number_input("Sort Order", min_value=0, step=1, key="sp_lesson_sort")
+
+        if st.form_submit_button("Create Spelling Lesson", type="primary"):
+            if selected_sp_course is None:
+                st.error("Choose a spelling course first.")
+            elif not sp_lesson_title.strip():
+                st.error("Lesson title is required.")
+            else:
+                sp_create_spelling_lesson(selected_sp_course, sp_lesson_title, sp_lesson_instr, sp_lesson_sort)
+                st.success("Spelling lesson created.")
+                sp_lesson_columns.cache_clear()
+                st.rerun()
+
+    with sp_col3:
+        st.markdown("**3️⃣ Upload Spelling CSV**")
+        st.caption("Upload spelling words directly into a lesson.")
+
+        sp_lessons_df = sp_get_all_spelling_lessons()
+        sp_lesson_pk = sp_lesson_pk_column()
+
+        if sp_lessons_df.empty:
+            st.info("Add a spelling lesson first.")
+        else:
+            lesson_choice = st.selectbox(
+                "Select Spelling Lesson",
+                sp_lessons_df[sp_lesson_pk].tolist(),
+                format_func=lambda x: sp_lessons_df.loc[sp_lessons_df[sp_lesson_pk] == x, "__label"].values[0],
+                key="sp_lesson_upload_select",
+            )
+
+            sp_file = st.file_uploader("Upload CSV", type=["csv"], key="sp_words_csv")
+
+            if st.button("Upload Spelling Words", key="sp_upload_btn"):
+                if sp_file is None or lesson_choice is None:
+                    st.error("Please choose both a lesson and a CSV file.")
+                else:
+                    try:
+                        df_csv = pd.read_csv(sp_file)
+                        imported = sp_import_spelling_csv(int(lesson_choice), df_csv)
+                        st.success(f"Uploaded {imported} spelling words.")
+                    except Exception as exc:
+                        st.error(f"Upload failed: {exc}")
 
 def teacher_manage_ui():
     st.subheader("Manage")
@@ -2418,9 +2760,88 @@ def teacher_manage_ui():
                             st.success(
                                 f"Assigned course to {assigned} student{'s' if assigned != 1 else ''}."
                             )
-                            st.rerun()
                         else:
                             st.info("All students in this class are already enrolled in the course.")
+
+    st.divider()
+    st.markdown("### ✏️ Manage Spelling Lessons")
+    st.caption("Review spelling courses, edit lessons, and upload more words. Synonym content stays untouched.")
+
+    sp_courses_df = sp_get_spelling_courses()
+    sp_course_pk = sp_course_pk_column()
+    sp_lesson_pk = sp_lesson_pk_column()
+
+    if sp_courses_df.empty:
+        st.info("No spelling courses yet. Create one in the Create tab.")
+    else:
+        for _, course in sp_courses_df.iterrows():
+            course_label = course.get("title", "Course")
+            with st.expander(course_label, expanded=False):
+                desc = str(course.get("description") or "").strip()
+                if desc:
+                    st.caption(desc)
+
+                lessons = sp_get_spelling_lessons(course[sp_course_pk])
+                if lessons.empty:
+                    st.info("No spelling lessons yet for this course.")
+                else:
+                    for _, lesson in lessons.iterrows():
+                        lesson_id = int(lesson[sp_lesson_pk])
+                        lesson_title = lesson.get("title", f"Lesson {lesson_id}")
+                        with st.expander(f"{lesson_title}", expanded=False):
+                            st.caption(f"Word count: {sp_spelling_word_count(lesson_id)}")
+
+                            with st.form(f"sp_edit_form_{lesson_id}"):
+                                new_title = st.text_input(
+                                    "Lesson Title",
+                                    value=str(lesson.get("title") or ""),
+                                    key=f"sp_edit_title_{lesson_id}",
+                                )
+                                new_instr = st.text_area(
+                                    "Practice Instructions",
+                                    value=str(lesson.get("instructions") or ""),
+                                    key=f"sp_edit_instr_{lesson_id}",
+                                )
+                                new_sort = st.number_input(
+                                    "Sort Order",
+                                    min_value=0,
+                                    step=1,
+                                    value=int(lesson.get("sort_order") or 0),
+                                    key=f"sp_edit_sort_{lesson_id}",
+                                )
+
+                                save_changes = st.form_submit_button("Save lesson", type="primary")
+
+                            if save_changes:
+                                sp_update_spelling_lesson(lesson_id, new_title, new_instr, new_sort)
+                                st.success("Lesson updated.")
+                                sp_lesson_columns.cache_clear()
+                                st.rerun()
+
+                            with st.form(f"sp_upload_form_{lesson_id}"):
+                                st.caption("Upload more spelling words")
+                                upload_file = st.file_uploader(
+                                    "Spelling CSV",
+                                    type=["csv"],
+                                    key=f"sp_upload_csv_{lesson_id}",
+                                )
+                                submit_upload = st.form_submit_button("Upload more words")
+
+                            if submit_upload:
+                                if upload_file is None:
+                                    st.error("Choose a CSV file to upload.")
+                                else:
+                                    try:
+                                        df_csv = pd.read_csv(upload_file)
+                                        count = sp_import_spelling_csv(lesson_id, df_csv)
+                                        st.success(f"Uploaded {count} words.")
+                                    except Exception as exc:
+                                        st.error(f"Upload failed: {exc}")
+
+                            if st.button("Delete lesson", key=f"sp_delete_{lesson_id}", type="secondary"):
+                                sp_delete_spelling_lesson(lesson_id)
+                                st.warning("Lesson deleted.")
+                                st.rerun()
 
 def render_teacher_dashboard_v2():
     """Render the teacher dashboard experience using the v2 helper routines."""
@@ -2515,6 +2936,26 @@ def render_teacher_dashboard_v2():
             set_portal_content("new_registration", new_registration_text)
             st.success("Saved portal messaging.")
             st.rerun()
+
+        st.divider()
+        st.markdown("### 📄 Spelling CSV help")
+        st.markdown(
+            """
+            **Supported columns** (upload targets the `spelling_words` table):
+            - `word`  
+            - `lesson_id` (optional; dropdown selection in the UI sets this automatically)  
+            - `difficulty` (optional)  
+            - `pattern_hint` (optional)  
+            - `missing_letter_mask` (optional)  
+            - `definition` (optional)  
+            - `sample_sentence` (optional)
+
+            **Upload steps**
+            1. Create a spelling course, then a spelling lesson.
+            2. Go to **Create → Upload Spelling CSV** or **Manage → Upload more spelling words**.
+            3. Select the target lesson and upload a `.csv` file with the columns above. Rows missing `word` are skipped.
+            """
+        )
 # ─────────────────────────────────────────────────────────────────────
 # AUTH INTEGRATION (optional / append-only)
 # ─────────────────────────────────────────────────────────────────────
