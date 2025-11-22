@@ -36,22 +36,37 @@ def _load_spelling_courses():
 
 
 def _load_spelling_lessons(course_id: int | None = None):
+    """
+    Load lessons for the spelling admin.
+    Lessons are linked to courses via course_id.
+    Primary key is lesson_id (not id).
+    We do NOT use lesson_type; teacher chooses the course.
+    """
     if course_id:
         return fetch_all(
             """
-            SELECT lesson_id, title, instructions, sort_order
+            SELECT lesson_id,
+                   title,
+                   instructions,
+                   course_id,
+                   sort_order
             FROM lessons
             WHERE course_id = :cid
-            ORDER BY sort_order ASC
+            ORDER BY sort_order NULLS LAST, lesson_id
             """,
             {"cid": course_id},
         )
+
     return fetch_all(
         """
-        SELECT lesson_id, title, instructions, sort_order
+        SELECT lesson_id,
+               title,
+               instructions,
+               course_id,
+               sort_order
         FROM lessons
-        ORDER BY sort_order ASC
-        """,
+        ORDER BY sort_order NULLS LAST, lesson_id
+        """
     )
 
 
