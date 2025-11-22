@@ -17,9 +17,8 @@ def get_all_courses():
     result = fetch_all(sql)
 
     for row in result:
-    print("DEBUG COURSE ROW:", row, type(row))
-    return []
-
+        print("DEBUG COURSE ROW:", row, type(row))
+        return []
 
     return [dict(row) for row in result]
 
