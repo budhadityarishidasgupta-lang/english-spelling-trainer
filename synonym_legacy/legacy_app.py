@@ -2161,6 +2161,9 @@ def sp_get_spelling_courses() -> pd.DataFrame:
 def sp_get_spelling_lessons(course_id: int) -> pd.DataFrame:
     cols = sp_lesson_columns()
     course_fk = "sp_course_id" if "sp_course_id" in cols else "course_id"
+    where_parts = [f"{course_fk} = :cid"]
+    if "lesson_type" in cols:
+        where_parts.append("lesson_type = 'spelling'")
     order_parts = []
     if "sort_order" in cols:
         order_parts.append("sort_order")
@@ -2170,7 +2173,7 @@ def sp_get_spelling_lessons(course_id: int) -> pd.DataFrame:
     try:
         return pd.read_sql(
             text(
-                f"SELECT * FROM lessons WHERE {course_fk} = :cid{order_clause}"
+                f"SELECT * FROM lessons WHERE {' AND '.join(where_parts)}{order_clause}"
             ),
             con=sp_engine,
             params={"cid": int(course_id)},
@@ -2230,6 +2233,10 @@ def sp_create_spelling_lesson(course_id: int, title: str, instructions: str, sor
     course_fk = "sp_course_id" if "sp_course_id" in cols else "course_id"
     insert_cols = [course_fk, "title"]
     params = {course_fk: int(course_id), "title": title.strip()}
+
+    if "lesson_type" in cols:
+        insert_cols.append("lesson_type")
+        params["lesson_type"] = "spelling"
 
     if "instructions" in cols:
         insert_cols.append("instructions")
@@ -2308,10 +2315,17 @@ def sp_import_spelling_csv(lesson_id: int, df: pd.DataFrame) -> int:
         word = str(row.get("word") or "").strip()
         if not word:
             continue
+        target_lesson_id = lesson_id
+        lesson_override = row.get("lesson_id") if "lesson_id" in df_norm.columns else None
+        if not pd.isna(lesson_override):
+            try:
+                target_lesson_id = int(lesson_override)
+            except Exception:
+                target_lesson_id = lesson_id
         records.append(
             {
                 "word": word,
-                "lesson_id": int(lesson_id),
+                "lesson_id": int(target_lesson_id),
                 "difficulty": None if pd.isna(row.get("difficulty")) else int(row.get("difficulty")),
                 "pattern_hint": None if pd.isna(row.get("pattern_hint")) else str(row.get("pattern_hint")),
                 "missing_letter_mask": None
@@ -2938,22 +2952,28 @@ def render_teacher_dashboard_v2():
             st.rerun()
 
         st.divider()
-        st.markdown("### 📄 Spelling CSV help")
+        st.markdown("### 🆘 Spelling Admin Help")
         st.markdown(
             """
-            **Supported columns** (upload targets the `spelling_words` table):
-            - `word`  
-            - `lesson_id` (optional; dropdown selection in the UI sets this automatically)  
-            - `difficulty` (optional)  
-            - `pattern_hint` (optional)  
-            - `missing_letter_mask` (optional)  
-            - `definition` (optional)  
-            - `sample_sentence` (optional)
+            **Purpose**
+            - Create spelling courses that stay isolated from synonym courses.
+            - Add spelling lessons linked to those courses (saved with `lesson_type='spelling'`).
+            - Upload `.csv` files straight into the `spelling_words` table.
 
-            **Upload steps**
-            1. Create a spelling course, then a spelling lesson.
-            2. Go to **Create → Upload Spelling CSV** or **Manage → Upload more spelling words**.
-            3. Select the target lesson and upload a `.csv` file with the columns above. Rows missing `word` are skipped.
+            **CSV format (spelling_words)**
+            - `word` (**required**) — the spelling target.
+            - `lesson_id` (optional) — overrides the selected lesson when present.
+            - `difficulty` (optional) — numeric difficulty flag.
+            - `pattern_hint` (optional) — hint text for patterns.
+            - `missing_letter_mask` (optional) — mask for missing letters.
+            - `definition` (optional) — meaning for the word.
+            - `sample_sentence` (optional) — example usage.
+
+            **Workflow**
+            1. In **Create → Create Spelling Course**, enter Title, Description, Sort Order to insert a course with `course_type='spelling'`.
+            2. In **Create → Create Spelling Lesson**, choose any spelling course and provide lesson details; each record is saved with `lesson_type='spelling'`.
+            3. In **Create → Upload Spelling CSV**, pick the target lesson and upload your CSV. `lesson_id` in the file is respected when provided; otherwise the selected lesson is used.
+            4. In **Manage → Manage Spelling Lessons**, you can edit lesson details, delete lessons, or upload more words to see updated word counts.
             """
         )
 # ─────────────────────────────────────────────────────────────────────
