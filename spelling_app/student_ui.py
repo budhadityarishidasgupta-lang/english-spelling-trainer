@@ -85,7 +85,7 @@ def _weak_words_for_user(user_id: int, lesson_id: int):
               AND lesson_id = :lid
               AND attempt_type IN ('spelling', 'spelling_missing', 'spelling_daily')
             GROUP BY word_id
-            HAVING COUNT(*) > 0
+            HAVING COUNT(*) >= 2
                AND (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / COUNT(*)) < 0.8
         )
         SELECT w.id, w.word, w.difficulty, w.pattern_hint, w.definition, w.sample_sentence, w.missing_letter_mask
@@ -200,6 +200,7 @@ def _compute_daily_words(user_id: int, lesson_id: int):
     st.session_state["daily_words"] = selected
     st.session_state["daily_date"] = today
     st.session_state["daily_lesson_id"] = lesson_id
+    st.session_state["daily_index"] = 0
     st.session_state["daily_results"] = []
     st.session_state["daily_correct"] = 0
     st.session_state["daily_wrong"] = 0
@@ -228,6 +229,7 @@ def _reset_session(
     st.session_state["spelling_correct"] = 0
     st.session_state["spelling_wrong"] = 0
     st.session_state["spelling_scope"] = scope
+    st.session_state["weak_mode"] = scope == "weak"
     st.session_state["practice_mode"] = mode_label or mode
     # Mirrors for explicit progress keys requested by the spec
     st.session_state["current_index"] = 0
@@ -330,10 +332,22 @@ def render_spelling_student(user_id: int | None = None):
 
         with col3:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            daily_button = st.button("Daily 5 Words", use_container_width=True)
+            weak_mode = st.button("Practice Weak Words", use_container_width=True)
 
         start_practice = st.button("Start Lesson", type="primary")
-        weak_mode = st.button("Practice Weak Words", use_container_width=True)
+
+        st.markdown(
+            """
+            <div class="quiz-surface" style="margin-top:12px;">
+              <div class="lesson-header">
+                <h3>Daily 5 Words Challenge</h3>
+                <p class="lesson-instruction">Blend weak words and new practice into a quick daily sprint.</p>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        daily_button = st.button("Start Today's 5 Words", use_container_width=True)
 
         if start_practice:
             st.session_state["practice_mode"] = practice_mode
@@ -356,7 +370,7 @@ def render_spelling_student(user_id: int | None = None):
             if isinstance(weak_words, dict) and weak_words.get("error"):
                 st.error(f"Could not load weak words: {weak_words['error']}")
             elif not weak_words:
-                st.info("Great! You have no weak words right now in this lesson.")
+                st.info("You currently have no weak words in this lesson.")
             else:
                 st.session_state["practice_mode"] = practice_mode
                 _reset_session(
@@ -476,9 +490,9 @@ def _render_summary(user_id: int, lesson_id: int):
     weak_words = _weak_words_for_user(user_id, lesson_id)
     weak_count = 0 if isinstance(weak_words, dict) else len(weak_words)
     scope = st.session_state.get("spelling_scope", "lesson")
-    daily_message = (
-        "Great job! You've completed today's 5 words." if scope == "daily" else "Here's how you did in this round."
-    )
+    is_weak_session = st.session_state.get("weak_mode", False) or scope == "weak"
+    daily_message = "Great job! You've completed today's 5 words." if scope == "daily" else "Here's how you did in this round."
+    heading = "Weak-Word Summary" if is_weak_session else "Session summary"
 
     if isinstance(lesson_stats, dict) and lesson_stats.get("accuracy") is not None:
         lesson_accuracy = round(float(lesson_stats.get("accuracy", 0) * 100), 1)
@@ -489,7 +503,7 @@ def _render_summary(user_id: int, lesson_id: int):
         f"""
         <div class="quiz-surface">
           <div class="lesson-header">
-            <h2>Session summary</h2>
+            <h2>{heading}</h2>
             <p class="lesson-instruction">{daily_message}</p>
           </div>
           <p><strong>Total correct:</strong> {correct}</p>
