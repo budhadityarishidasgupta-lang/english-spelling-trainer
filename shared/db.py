@@ -15,13 +15,15 @@ engine = create_engine(
 )
 
 # Helper: run SELECT and return rows
-def fetch_all(query, params=None):
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text(query), params or {})
-            return [dict(row) for row in result]
-    except SQLAlchemyError as e:
-        return {"error": str(e)}
+def fetch_all(sql, params=None):
+    with engine.connect() as connection:
+        try:
+            result = connection.execute(text(sql), params or {})
+            return result
+        except Exception as e:
+            print("SQL ERROR in fetch_all():", e)
+            print("Failed SQL:", sql)
+            return []
 
 # Helper: run INSERT/UPDATE/DELETE
 def execute(query, params=None):
