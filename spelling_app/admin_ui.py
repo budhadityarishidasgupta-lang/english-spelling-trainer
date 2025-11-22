@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 
+from shared.db import fetch_all
 from spelling_app.services.spelling_service import (
     create_course,
     create_lesson,
@@ -9,6 +10,87 @@ from spelling_app.services.spelling_service import (
     load_course_data,
     load_lessons,
 )
+
+
+def _load_spelling_courses():
+    return fetch_all(
+        """
+        SELECT id, title
+        FROM courses
+        WHERE course_type = 'spelling'
+        ORDER BY title
+        """,
+    )
+
+
+def _load_spelling_lessons(course_id: int | None = None):
+    if course_id:
+        return fetch_all(
+            """
+            SELECT id, title, course_id
+            FROM lessons
+            WHERE lesson_type = 'spelling' AND course_id = :cid
+            ORDER BY sort_order NULLS LAST, id
+            """,
+            {"cid": course_id},
+        )
+    return fetch_all(
+        """
+        SELECT id, title, course_id
+        FROM lessons
+        WHERE lesson_type = 'spelling'
+        ORDER BY sort_order NULLS LAST, id
+        """,
+    )
+
+
+def _load_students():
+    return fetch_all(
+        """
+        SELECT id AS user_id, COALESCE(name, email, CONCAT('User ', id::text)) AS label
+        FROM users
+        ORDER BY label
+        """,
+    )
+
+
+def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id: int | None):
+    params: dict[str, int] = {}
+    filters = []
+
+    if course_id:
+        filters.append("l.course_id = :course_id")
+        params["course_id"] = course_id
+    if lesson_id:
+        filters.append("w.lesson_id = :lesson_id")
+        params["lesson_id"] = lesson_id
+
+    student_filter = ""
+    if student_id:
+        student_filter = "AND a.user_id = :student_id"
+        params["student_id"] = student_id
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    return fetch_all(
+        f"""
+        SELECT w.id,
+               w.word,
+               l.title AS lesson_title,
+               COUNT(a.*) AS total_attempts,
+               COALESCE(SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
+        FROM spelling_words w
+        JOIN lessons l ON l.id = w.lesson_id
+        LEFT JOIN attempts a ON a.word_id = w.id
+                           AND a.attempt_type IN ('spelling','spelling_missing')
+                           {student_filter}
+        {where_clause}
+        GROUP BY w.id, w.word, l.title
+        ORDER BY w.id
+        """,
+        params,
+    )
+
 
 def render_spelling_admin():
     st.title("📘 Spelling App — Admin Console")
@@ -109,4 +191,77 @@ def render_spelling_admin():
                     )
 
                 st.success("All items inserted!")
+
+    st.markdown("---")
+    st.subheader("Spelling Weak Word Analytics")
+    st.caption("Monitor accuracy across spelling words without impacting synonym analytics.")
+
+    courses = _load_spelling_courses()
+    lessons = _load_spelling_lessons()
+    students = _load_students()
+
+    if isinstance(courses, dict) and courses.get("error"):
+        st.error(f"Could not load spelling courses: {courses['error']}")
+        return
+    if isinstance(lessons, dict) and lessons.get("error"):
+        st.error(f"Could not load spelling lessons: {lessons['error']}")
+        return
+    if isinstance(students, dict) and students.get("error"):
+        st.error(f"Could not load students: {students['error']}")
+        return
+
+    course_titles = {c["title"]: c["id"] for c in courses} if courses else {}
+    lesson_titles = {l["title"]: l["id"] for l in lessons} if lessons else {}
+    student_labels = {s["label"]: s["user_id"] for s in students} if students else {}
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        selected_course = st.selectbox("Filter by course", ["All courses"] + list(course_titles.keys()))
+        selected_course_id = course_titles.get(selected_course)
+
+    with c2:
+        available_lessons = _load_spelling_lessons(selected_course_id) if selected_course_id else lessons
+        lesson_titles = {l["title"]: l["id"] for l in available_lessons} if available_lessons else {}
+        selected_lesson = st.selectbox("Filter by lesson", ["All lessons"] + list(lesson_titles.keys()))
+        selected_lesson_id = lesson_titles.get(selected_lesson)
+
+    with c3:
+        selected_student = st.selectbox("Filter by student", ["All students"] + list(student_labels.keys()))
+        selected_student_id = student_labels.get(selected_student)
+
+    analytics = _load_word_accuracy(selected_course_id, selected_lesson_id, selected_student_id)
+
+    if isinstance(analytics, dict) and analytics.get("error"):
+        st.error(f"Could not load analytics: {analytics['error']}")
+        return
+
+    if not analytics:
+        st.info("No spelling attempts found for the selected filters yet.")
+        return
+
+    df = pd.DataFrame(analytics)
+    df["accuracy"] = df.apply(
+        lambda r: (r.get("correct_attempts", 0) / r.get("total_attempts", 1) * 100) if r.get("total_attempts", 0) else 0.0,
+        axis=1,
+    )
+    df["weak"] = df.apply(lambda r: r["total_attempts"] >= 1 and r["accuracy"] < 80, axis=1)
+    df = df.sort_values(by=["weak", "accuracy"], ascending=[False, True])
+
+    display_df = df[["word", "lesson_title", "total_attempts", "correct_attempts", "accuracy", "weak"]]
+    display_df = display_df.rename(
+        columns={
+            "word": "Word",
+            "lesson_title": "Lesson",
+            "total_attempts": "Total Attempts",
+            "correct_attempts": "Correct",
+            "accuracy": "Accuracy %",
+            "weak": "Weak?",
+        }
+    )
+
+    def _highlight_row(row):
+        color = "background-color: #3c1c20; color: #ffb3b3" if row["Weak?"] else ""
+        return [color] * len(row)
+
+    st.dataframe(display_df.style.apply(_highlight_row, axis=1), use_container_width=True)
 
