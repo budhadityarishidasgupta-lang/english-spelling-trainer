@@ -134,7 +134,8 @@ def render_spelling_admin():
         st.subheader("Create a New Lesson")
 
         courses = load_course_data()
-        course_map = {c["title"]: c["sp_course_id"] for c in courses}
+        # Build a map of course title → course_id (correct field name)
+        course_map = {c["title"]: c["id"] for c in courses}
 
         course_title = st.selectbox("Select Course", list(course_map.keys()))
 
