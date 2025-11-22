@@ -15,7 +15,7 @@ def load_course_data(course_type: str = "spelling"):
 
     return [
         {
-            "id": r["id"],
+            "course_id": r["course_id"],
             "title": r["title"],
             "description": r.get("description"),
         }

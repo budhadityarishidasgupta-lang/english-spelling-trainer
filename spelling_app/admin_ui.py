@@ -15,7 +15,7 @@ from spelling_app.services.spelling_service import (
 def _load_spelling_courses():
     return fetch_all(
         """
-        SELECT id, title
+        SELECT course_id, title
         FROM courses
         WHERE course_type = 'spelling'
         ORDER BY title
@@ -143,11 +143,11 @@ def render_spelling_admin():
             st.warning("No spelling courses found. Please create one first.")
             return
 
-        course_map = {c["title"]: c["id"] for c in courses}
+        course_map = {c["title"]: c["course_id"] for c in courses}
 
         course_options = [c["title"] for c in courses]
         selected_course_title = st.selectbox("Select Course", course_options)
-        selected_course_id = next(c["id"] for c in courses if c["title"] == selected_course_title)
+        selected_course_id = next(c["course_id"] for c in courses if c["title"] == selected_course_title)
 
         lesson_title = st.text_input("Lesson Title")
         instructions = st.text_area("Instructions (optional)")
@@ -219,7 +219,7 @@ def render_spelling_admin():
         st.error(f"Could not load students: {students['error']}")
         return
 
-    course_titles = {c["title"]: c["id"] for c in courses} if courses else {}
+    course_titles = {c["title"]: c["course_id"] for c in courses} if courses else {}
     lesson_titles = {l["title"]: l["id"] for l in lessons} if lessons else {}
     student_labels = {s["label"]: s["user_id"] for s in students} if students else {}
 
