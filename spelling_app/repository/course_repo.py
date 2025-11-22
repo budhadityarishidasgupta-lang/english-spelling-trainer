@@ -24,7 +24,6 @@ def get_all_courses():
     # Normal return if debug loop doesn't early return
     return [dict(row) for row in result]
 
-
 def get_course(course_id):
     sql = """
     SELECT course_id, title, description, level
