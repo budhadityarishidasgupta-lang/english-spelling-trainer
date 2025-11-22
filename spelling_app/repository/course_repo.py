@@ -3,12 +3,20 @@ from shared.db import fetch_all, execute
 
 def get_all_courses():
     sql = """
-    SELECT course_id, title, description
+    SELECT
+        course_id,
+        title,
+        description,
+        level,
+        is_active,
+        created_at
     FROM courses
     ORDER BY course_id ASC;
     """
 
-    return fetch_all(sql)
+    result = fetch_all(sql)
+
+    return [dict(row) for row in result]
 
 
 def get_course(course_id):
