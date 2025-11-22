@@ -253,23 +253,22 @@ def render_spelling_admin():
     total_attempts_sum = df["total_attempts"].sum()
     correct_attempts_sum = df["correct_attempts"].sum()
     average_accuracy = (correct_attempts_sum / total_attempts_sum * 100) if total_attempts_sum else 0.0
-
     st.markdown(
-        f"""
+        """
         <div class="quiz-surface">
           <div class="lesson-header">
             <h3>Selection Overview</h3>
             <p class="lesson-instruction">Tracks spelling practice only. Synonym data remains separate.</p>
           </div>
-          <div style="display:flex; gap:12px; flex-wrap:wrap;">
-            <div class="pill">📚 Words attempted: {total_words_attempted}</div>
-            <div class="pill">⚠️ Weak words: {weak_words_count}</div>
-            <div class="pill">🎯 Average accuracy: {average_accuracy:.1f}%</div>
-          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Words attempted", total_words_attempted)
+    m2.metric("Weak words", weak_words_count)
+    m3.metric("Average accuracy", f"{average_accuracy:.1f}%")
 
     display_df = df[["word", "lesson_title", "total_attempts", "correct_attempts", "accuracy", "weak"]]
     display_df = display_df.rename(
