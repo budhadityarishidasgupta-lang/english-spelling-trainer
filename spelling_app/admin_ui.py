@@ -1,47 +1,76 @@
 import streamlit as st
 import pandas as pd
 
-from shared.db import fetch_all
-from spelling_app.services.spelling_service import (
-    create_course,
-    create_lesson,
-    create_item,
-    map_item_to_lesson,
-    load_course_data,
-    load_lessons,
-)
+from shared.db import execute, fetch_all
+from spelling_app.services.spelling_service import create_course, create_lesson
 
 
 def _load_spelling_courses():
-    return fetch_all(
+    rows = fetch_all(
         """
-        SELECT course_id, title
+        SELECT course_id, title, description
         FROM courses
-        WHERE course_type = 'spelling'
-        ORDER BY title
+        ORDER BY course_id ASC;
         """,
     )
+
+    if isinstance(rows, dict):
+        return rows
+
+    courses = []
+    for r in rows:
+        course_id = r["course_id"] if isinstance(r, dict) else getattr(r, "course_id", None)
+        courses.append(
+            {
+                "course_id": course_id,
+                "title": r.get("title") if isinstance(r, dict) else getattr(r, "title", None),
+                "description": r.get("description")
+                if isinstance(r, dict)
+                else getattr(r, "description", None),
+            }
+        )
+
+    return courses
 
 
 def _load_spelling_lessons(course_id: int | None = None):
     if course_id:
-        return fetch_all(
+        rows = fetch_all(
             """
-            SELECT id, title, course_id
+            SELECT id AS lesson_id, title, instructions, sort_order, course_id
             FROM lessons
-            WHERE lesson_type = 'spelling' AND course_id = :cid
-            ORDER BY sort_order NULLS LAST, id
+            WHERE course_id = :cid
+            ORDER BY sort_order ASC;
             """,
             {"cid": course_id},
         )
-    return fetch_all(
-        """
-        SELECT id, title, course_id
-        FROM lessons
-        WHERE lesson_type = 'spelling'
-        ORDER BY sort_order NULLS LAST, id
-        """,
-    )
+    else:
+        rows = fetch_all(
+            """
+            SELECT id AS lesson_id, title, instructions, sort_order, course_id
+            FROM lessons
+            ORDER BY sort_order ASC;
+            """,
+        )
+
+    if isinstance(rows, dict):
+        return rows
+
+    lessons = []
+    for r in rows:
+        lessons.append(
+            {
+                "lesson_id": r.get("lesson_id") if isinstance(r, dict) else getattr(r, "lesson_id", None),
+                "title": r.get("title") if isinstance(r, dict) else getattr(r, "title", None),
+                "instructions": r.get("instructions")
+                if isinstance(r, dict)
+                else getattr(r, "instructions", None),
+                "sort_order": r.get("sort_order") if isinstance(r, dict) else getattr(r, "sort_order", None),
+                "course_id": r.get("course_id") if isinstance(r, dict) else getattr(r, "course_id", None),
+            }
+        )
+
+    return lessons
 
 
 def _load_students():
@@ -51,7 +80,6 @@ def _load_students():
         FROM users u
         JOIN enrollments e ON u.user_id = e.user_id
         JOIN courses c ON e.course_id = c.course_id
-        WHERE c.course_type = 'spelling'
         """,
     )
 
@@ -145,7 +173,7 @@ def render_spelling_admin():
 
         st.markdown("---")
         st.subheader("Existing Courses")
-        courses = load_course_data()
+        courses = _load_spelling_courses()
         st.dataframe(courses)
 
     # -------------------------
@@ -154,7 +182,7 @@ def render_spelling_admin():
     with tab2:
         st.subheader("Create a New Lesson")
 
-        courses = load_course_data("spelling")
+        courses = _load_spelling_courses()
 
         if isinstance(courses, dict) and courses.get("error"):
             st.error(f"Could not load spelling courses: {courses['error']}")
@@ -163,8 +191,6 @@ def render_spelling_admin():
         if not courses:
             st.warning("No spelling courses found. Please create one first.")
             return
-
-        course_map = {c["title"]: c["course_id"] for c in courses}
 
         course_options = [c["title"] for c in courses]
         selected_course_title = st.selectbox("Select Course", course_options)
@@ -181,7 +207,7 @@ def render_spelling_admin():
         st.markdown("---")
         st.subheader("Lessons for Selected Course")
         if selected_course_title:
-            lesson_rows = load_lessons(selected_course_id)
+            lesson_rows = _load_spelling_lessons(selected_course_id)
             st.dataframe(lesson_rows)
 
     # -------------------------
@@ -192,14 +218,39 @@ def render_spelling_admin():
 
         st.markdown("""
         **CSV Format must include:**
-        - base_word  \
-        - display_form  \
-        - pattern_type  \
-        - options  \
-        - difficulty  \
-        - hint  \
-        - lesson_id  \
+        - word  \
+        - difficulty (optional)  \
         """)
+
+        courses = _load_spelling_courses()
+
+        if isinstance(courses, dict) and courses.get("error"):
+            st.error(f"Could not load spelling courses: {courses['error']}")
+            return
+
+        if not courses:
+            st.warning("No spelling courses found. Please create one first.")
+            return
+
+        course_options = [c["title"] for c in courses]
+        selected_course_title = st.selectbox("Select Course", course_options, key="upload_course")
+        selected_course_id = next(c["course_id"] for c in courses if c["title"] == selected_course_title)
+
+        lessons = _load_spelling_lessons(selected_course_id)
+
+        if isinstance(lessons, dict) and lessons.get("error"):
+            st.error(f"Could not load lessons: {lessons['error']}")
+            return
+
+        if not lessons:
+            st.warning("No lessons found for this course. Please create a lesson first.")
+            return
+
+        lesson_options = [l["title"] for l in lessons]
+        selected_lesson_title = st.selectbox("Select Lesson", lesson_options, key="upload_lesson")
+        selected_lesson_id = next(
+            l["lesson_id"] for l in lessons if l["title"] == selected_lesson_title
+        )
 
         file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -210,14 +261,16 @@ def render_spelling_admin():
 
             if st.button("Insert Items Into Database"):
                 for _, row in df.iterrows():
-                    # Insert item into items table
-                    create_item(
-                        row["base_word"],
-                        row["display_form"],
-                        row.get("pattern_type"),
-                        row.get("options"),
-                        row.get("difficulty", 2),
-                        row.get("hint"),
+                    execute(
+                        """
+                        INSERT INTO spelling_words (lesson_id, word, difficulty)
+                        VALUES (:lesson_id, :word, :difficulty)
+                        """,
+                        {
+                            "lesson_id": selected_lesson_id,
+                            "word": row["word"],
+                            "difficulty": row.get("difficulty"),
+                        },
                     )
 
                 st.success("All items inserted!")
@@ -241,7 +294,7 @@ def render_spelling_admin():
         return
 
     course_titles = {c["title"]: c["course_id"] for c in courses} if courses else {}
-    lesson_titles = {l["title"]: l["id"] for l in lessons} if lessons else {}
+    lesson_titles = {l["title"]: l["lesson_id"] for l in lessons} if lessons else {}
     student_labels = {s["label"]: s["user_id"] for s in students} if students else {}
 
     c1, c2, c3 = st.columns(3)
@@ -251,7 +304,7 @@ def render_spelling_admin():
 
     with c2:
         available_lessons = _load_spelling_lessons(selected_course_id) if selected_course_id else lessons
-        lesson_titles = {l["title"]: l["id"] for l in available_lessons} if available_lessons else {}
+        lesson_titles = {l["title"]: l["lesson_id"] for l in available_lessons} if available_lessons else {}
         lesson_options = ["All lessons" if not selected_course_id else "All lessons in this course"] + list(lesson_titles.keys())
         selected_lesson = st.selectbox("Filter by lesson", lesson_options)
         selected_lesson_id = lesson_titles.get(selected_lesson)
