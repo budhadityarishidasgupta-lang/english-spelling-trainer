@@ -45,13 +45,34 @@ def _load_spelling_lessons(course_id: int | None = None):
 
 
 def _load_students():
-    return fetch_all(
+    rows = fetch_all(
         """
-        SELECT id AS user_id, COALESCE(name, email, CONCAT('User ', id::text)) AS label
-        FROM users
-        ORDER BY label
+        SELECT u.*
+        FROM users u
+        JOIN enrollments e ON u.user_id = e.user_id
+        JOIN courses c ON e.course_id = c.course_id
+        WHERE c.course_type = 'spelling'
         """,
     )
+
+    if isinstance(rows, dict):
+        return rows
+
+    students = []
+    for row in rows:
+        user_id = row.get("user_id") or row.get("id")
+        students.append(
+            {
+                "user_id": user_id,
+                "name": row.get("name"),
+                "email": row.get("email"),
+                "label": row.get("name")
+                or row.get("email")
+                or (f"User {user_id}" if user_id is not None else "User"),
+            }
+        )
+
+    return sorted(students, key=lambda s: s["label"])
 
 
 def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id: int | None):
