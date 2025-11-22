@@ -11,7 +11,6 @@ if not DATABASE_URL:
 # Create SQLAlchemy engine with correct schema search_path
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"options": "-c search_path=spelling,public"},
     pool_pre_ping=True,
 )
 
