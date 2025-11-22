@@ -82,7 +82,7 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id
         FROM spelling_words w
         JOIN lessons l ON l.id = w.lesson_id
         LEFT JOIN attempts a ON a.word_id = w.id
-                           AND a.attempt_type IN ('spelling','spelling_missing')
+                           AND a.attempt_type IN ('spelling','spelling_missing','spelling_daily')
                            {student_filter}
         {where_clause}
         GROUP BY w.id, w.word, l.title
@@ -193,7 +193,7 @@ def render_spelling_admin():
                 st.success("All items inserted!")
 
     st.markdown("---")
-    st.subheader("Spelling Weak Word Analytics")
+    st.subheader("Spelling Weak-Word Analytics")
     st.caption("Monitor accuracy across spelling words without impacting synonym analytics.")
 
     courses = _load_spelling_courses()
@@ -222,7 +222,8 @@ def render_spelling_admin():
     with c2:
         available_lessons = _load_spelling_lessons(selected_course_id) if selected_course_id else lessons
         lesson_titles = {l["title"]: l["id"] for l in available_lessons} if available_lessons else {}
-        selected_lesson = st.selectbox("Filter by lesson", ["All lessons"] + list(lesson_titles.keys()))
+        lesson_options = ["All lessons" if not selected_course_id else "All lessons in this course"] + list(lesson_titles.keys())
+        selected_lesson = st.selectbox("Filter by lesson", lesson_options)
         selected_lesson_id = lesson_titles.get(selected_lesson)
 
     with c3:
@@ -244,8 +245,31 @@ def render_spelling_admin():
         lambda r: (r.get("correct_attempts", 0) / r.get("total_attempts", 1) * 100) if r.get("total_attempts", 0) else 0.0,
         axis=1,
     )
-    df["weak"] = df.apply(lambda r: r["total_attempts"] >= 1 and r["accuracy"] < 80, axis=1)
-    df = df.sort_values(by=["weak", "accuracy"], ascending=[False, True])
+    df["weak"] = df.apply(lambda r: r["total_attempts"] >= 2 and r["accuracy"] < 80, axis=1)
+    df = df.sort_values(by=["accuracy"], ascending=[True])
+
+    total_words_attempted = len(df[df["total_attempts"] > 0])
+    weak_words_count = len(df[df["weak"]])
+    total_attempts_sum = df["total_attempts"].sum()
+    correct_attempts_sum = df["correct_attempts"].sum()
+    average_accuracy = (correct_attempts_sum / total_attempts_sum * 100) if total_attempts_sum else 0.0
+
+    st.markdown(
+        f"""
+        <div class="quiz-surface">
+          <div class="lesson-header">
+            <h3>Selection Overview</h3>
+            <p class="lesson-instruction">Tracks spelling practice only. Synonym data remains separate.</p>
+          </div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="pill">📚 Words attempted: {total_words_attempted}</div>
+            <div class="pill">⚠️ Weak words: {weak_words_count}</div>
+            <div class="pill">🎯 Average accuracy: {average_accuracy:.1f}%</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     display_df = df[["word", "lesson_title", "total_attempts", "correct_attempts", "accuracy", "weak"]]
     display_df = display_df.rename(

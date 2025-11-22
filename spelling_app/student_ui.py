@@ -1,4 +1,5 @@
 import random
+import datetime
 import streamlit as st
 
 from shared.db import execute, fetch_all
@@ -34,7 +35,15 @@ def _record_attempt(
     typed_answer: str,
     is_correct: bool,
     mode: str,
+    scope: str = "lesson",
 ):
+    if scope == "daily":
+        attempt_type = "spelling_daily"
+    elif mode == "missing":
+        attempt_type = "spelling_missing"
+    else:
+        attempt_type = "spelling"
+
     return execute(
         """
         INSERT INTO attempts (user_id, lesson_id, word_id, attempt_type, typed_answer, is_correct)
@@ -45,7 +54,7 @@ def _record_attempt(
             "lid": lesson_id,
             "wid": word_id,
             "ans": typed_answer,
-            "atype": "spelling_missing" if mode == "missing" else "spelling",
+            "atype": attempt_type,
             "correct": is_correct,
         },
     )
@@ -74,7 +83,7 @@ def _weak_words_for_user(user_id: int, lesson_id: int):
             FROM attempts
             WHERE user_id = :uid
               AND lesson_id = :lid
-              AND attempt_type IN ('spelling', 'spelling_missing')
+              AND attempt_type IN ('spelling', 'spelling_missing', 'spelling_daily')
             GROUP BY word_id
             HAVING COUNT(*) > 0
                AND (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / COUNT(*)) < 0.8
@@ -100,7 +109,7 @@ def _lesson_accuracy(user_id: int, lesson_id: int):
         FROM attempts
         WHERE user_id = :uid
           AND lesson_id = :lid
-          AND attempt_type IN ('spelling', 'spelling_missing')
+          AND attempt_type IN ('spelling', 'spelling_missing', 'spelling_daily')
         """,
         {"uid": user_id, "lid": lesson_id},
     )
@@ -112,6 +121,90 @@ def _lesson_accuracy(user_id: int, lesson_id: int):
         return {"total": 0, "correct": 0, "wrong": 0, "accuracy": None}
 
     return stats[0]
+
+
+def _load_word_stats(user_id: int, lesson_id: int):
+    rows = fetch_all(
+        """
+        SELECT w.id AS word_id,
+               COUNT(a.*) AS total_attempts,
+               COALESCE(SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
+        FROM spelling_words w
+        LEFT JOIN attempts a ON a.word_id = w.id
+                           AND a.user_id = :uid
+                           AND a.lesson_id = :lid
+                           AND a.attempt_type IN ('spelling', 'spelling_missing', 'spelling_daily')
+        WHERE w.lesson_id = :lid
+        GROUP BY w.id
+        """,
+        {"uid": user_id, "lid": lesson_id},
+    )
+
+    if isinstance(rows, dict):
+        return []
+
+    stats = {}
+    for r in rows:
+        total = r.get("total_attempts", 0)
+        correct = r.get("correct_attempts", 0)
+        accuracy = float(correct) / float(total) if total else 0.0
+        stats[int(r["word_id"])] = {"total": total, "correct": correct, "accuracy": accuracy}
+    return stats
+
+
+def _compute_daily_words(user_id: int, lesson_id: int):
+    today = datetime.date.today()
+    cached_date = st.session_state.get("daily_date")
+    cached_words = st.session_state.get("daily_words") or []
+    cached_lesson = st.session_state.get("daily_lesson_id")
+
+    if cached_date == today and cached_words and cached_lesson == lesson_id:
+        return cached_words
+
+    all_words = _fetch_spelling_words(int(lesson_id)) or []
+    stats = _load_word_stats(user_id, lesson_id)
+    if isinstance(all_words, dict) or isinstance(stats, dict):
+        return []
+
+    weak_candidates = []
+    other_candidates = []
+
+    for word in all_words:
+        word_id = int(word["id"])
+        info = stats.get(word_id, {"total": 0, "correct": 0, "accuracy": 0.0})
+        total = info.get("total", 0)
+        accuracy = info.get("accuracy", 0.0)
+        is_weak = total >= 2 and accuracy < 0.8
+
+        if is_weak:
+            weak_candidates.append((accuracy, word))
+        else:
+            other_candidates.append((total, accuracy, word))
+
+    weak_candidates = sorted(weak_candidates, key=lambda w: w[0])
+    selected = [w for _, w in weak_candidates[:3]]
+
+    other_candidates = sorted(other_candidates, key=lambda t: (t[0], t[1]))
+    for _, _, word in other_candidates:
+        if len(selected) >= 5:
+            break
+        selected.append(word)
+
+    if len(selected) < 5 and len(all_words) >= len(selected):
+        remaining = [w for w in all_words if w not in selected]
+        random.shuffle(remaining)
+        selected.extend(remaining[: 5 - len(selected)])
+
+    selected = selected[:5]
+
+    st.session_state["daily_words"] = selected
+    st.session_state["daily_date"] = today
+    st.session_state["daily_lesson_id"] = lesson_id
+    st.session_state["daily_results"] = []
+    st.session_state["daily_correct"] = 0
+    st.session_state["daily_wrong"] = 0
+
+    return selected
 
 
 def _reset_session(
@@ -159,13 +252,16 @@ def _session_hud(total_words: int):
     raw_mode = st.session_state.get("practice_mode", "Normal Mode")
     mode_label = "Missing-Letter" if raw_mode in ("missing", "Missing-Letter Mode") else "Normal"
     scope = st.session_state.get("spelling_scope", "lesson")
+    scope_text = "Daily 5 Words" if scope == "daily" else (
+        "Practising weak words only" if scope == "weak" else "Full lesson"
+    )
 
     st.markdown(
         f"""
         <div class="quiz-surface">
           <div class="quiz-heading">
-            <div>
-              <p class="quiz-instructions">{lesson_title} — {('Practising weak words only' if scope == 'weak' else 'Full lesson')}</p>
+              <div>
+              <p class="quiz-instructions">{lesson_title} — {scope_text}</p>
               <h3 style="margin: 0;">Spell this word ({mode_label} mode)</h3>
             </div>
             <div class="difficulty-badge">🔥 Current streak: {streak}</div>
@@ -213,7 +309,7 @@ def render_spelling_student(user_id: int | None = None):
         lesson_titles = {l["title"]: l for l in lessons}
         default_lesson = st.session_state.get("spelling_lesson") or list(lesson_titles.keys())[0]
 
-        col1, col2 = st.columns([3, 1], gap="small")
+        col1, col2, col3 = st.columns([3, 1, 1], gap="small")
         with col1:
             selected_title = st.selectbox(
                 "Select Spelling Lesson",
@@ -231,6 +327,10 @@ def render_spelling_student(user_id: int | None = None):
                 horizontal=False,
                 key="practice_mode",
             )
+
+        with col3:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            daily_button = st.button("Daily 5 Words", use_container_width=True)
 
         start_practice = st.button("Start Lesson", type="primary")
         weak_mode = st.button("Practice Weak Words", use_container_width=True)
@@ -268,6 +368,21 @@ def render_spelling_student(user_id: int | None = None):
                     mode_label=practice_mode,
                 )
 
+        if 'daily_button' in locals() and daily_button:
+            st.session_state["practice_mode"] = practice_mode
+            daily_words = _compute_daily_words(int(user_id), int(selected_lesson["id"]))
+            if not daily_words:
+                st.error("Could not load today's words right now. Please try again.")
+            else:
+                _reset_session(
+                    daily_words,
+                    int(selected_lesson["id"]),
+                    f"{selected_title} — Daily 5 Words",
+                    "missing" if practice_mode == "Missing-Letter Mode" else "normal",
+                    scope="daily",
+                    mode_label="Daily 5 Words",
+                )
+
         if st.session_state.get("spelling_words"):
             active_lesson_id = int(st.session_state.get("spelling_lesson_id") or selected_lesson["id"])
             if st.session_state.get("spelling_done"):
@@ -282,12 +397,15 @@ def _render_active_session(lesson_id: int, user_id: int):
     total = len(words)
     word = _current_word()
     mode = st.session_state.get("spelling_mode", "normal")
+    scope = st.session_state.get("spelling_scope", "lesson")
 
     if not word:
         st.info("No words to practice right now.")
         return
 
     _session_hud(total)
+
+    st.caption(f"Word {idx + 1} of {total}")
 
     display_mask = word.get("missing_letter_mask") or _generate_mask(str(word.get("word", "")))
     if mode == "missing":
@@ -307,7 +425,7 @@ def _render_active_session(lesson_id: int, user_id: int):
         typed = (st.session_state.get("spelling_input") or "").strip()
         is_correct = typed.lower() == str(word.get("word", "")).strip().lower()
 
-        _record_attempt(user_id, lesson_id, int(word["id"]), typed, is_correct, mode)
+        _record_attempt(user_id, lesson_id, int(word["id"]), typed, is_correct, mode, scope)
 
         st.session_state["spelling_results"].append(
             {
@@ -357,6 +475,10 @@ def _render_summary(user_id: int, lesson_id: int):
     lesson_stats = _lesson_accuracy(user_id, lesson_id)
     weak_words = _weak_words_for_user(user_id, lesson_id)
     weak_count = 0 if isinstance(weak_words, dict) else len(weak_words)
+    scope = st.session_state.get("spelling_scope", "lesson")
+    daily_message = (
+        "Great job! You've completed today's 5 words." if scope == "daily" else "Here's how you did in this round."
+    )
 
     if isinstance(lesson_stats, dict) and lesson_stats.get("accuracy") is not None:
         lesson_accuracy = round(float(lesson_stats.get("accuracy", 0) * 100), 1)
@@ -368,7 +490,7 @@ def _render_summary(user_id: int, lesson_id: int):
         <div class="quiz-surface">
           <div class="lesson-header">
             <h2>Session summary</h2>
-            <p class="lesson-instruction">Here's how you did in this round.</p>
+            <p class="lesson-instruction">{daily_message}</p>
           </div>
           <p><strong>Total correct:</strong> {correct}</p>
           <p><strong>Total wrong:</strong> {wrong}</p>
