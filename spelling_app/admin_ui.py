@@ -13,13 +13,26 @@ from spelling_app.services.spelling_service import (
 
 
 def _load_spelling_courses():
-    return fetch_all(
+    rows = fetch_all(
         """
-        SELECT course_id, title
+        SELECT 
+            course_id AS course_id,
+            title AS title
         FROM courses
-        ORDER BY title
-        """,
+        ORDER BY title;
+        """
     )
+
+    # Ensure each row is converted to a dict explicitly
+    cleaned = []
+    for r in rows:
+        # force SQLAlchemy row → dict safely
+        cleaned.append({
+            "course_id": r.get("course_id"),
+            "title": r.get("title")
+        })
+
+    return cleaned
 
 
 def _load_spelling_lessons(course_id: int | None = None):
