@@ -2,17 +2,16 @@ from shared.db import fetch_all, execute
 
 
 def get_all_courses():
-    sql = """
-    SELECT
-        course_id,
-        title,
-        description,
-        level,
-        is_active,
-        created_at
-    FROM courses
-    ORDER BY course_id ASC;
-    """
+sql = """
+SELECT
+    course_id,
+    title,
+    description,
+    is_active,
+    created_at
+FROM courses
+ORDER BY course_id ASC;
+"""
 
     result = fetch_all(sql)
 
