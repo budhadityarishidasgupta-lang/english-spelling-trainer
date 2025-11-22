@@ -129,7 +129,7 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id
                COUNT(a.*) AS total_attempts,
                COALESCE(SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
         FROM spelling_words w
-        JOIN lessons l ON l.id = w.lesson_id
+        JOIN lessons l ON l.lesson_id = w.lesson_id
         LEFT JOIN attempts a ON a.word_id = w.id
                            AND a.attempt_type IN ('spelling','spelling_missing','spelling_daily')
                            {student_filter}
@@ -185,11 +185,11 @@ def render_spelling_admin():
         courses = _load_spelling_courses()
 
         if isinstance(courses, dict) and courses.get("error"):
-            st.error(f"Could not load spelling courses: {courses['error']}")
+            st.error(f"Could not load courses: {courses['error']}")
             return
 
         if not courses:
-            st.warning("No spelling courses found. Please create one first.")
+            st.warning("No courses found. Please create one first.")
             return
 
         course_options = [c["title"] for c in courses]
