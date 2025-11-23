@@ -209,6 +209,7 @@ def render_spelling_admin():
                 df = pd.read_csv(uploaded_file)
                 st.subheader("CSV Preview")
                 st.dataframe(df.head(), use_container_width=True)
+                st.info("Validation and processing will occur after you click 'Process CSV Upload'.")
             except Exception as e:
                 st.error(f"Error reading CSV: {e}")
                 return
