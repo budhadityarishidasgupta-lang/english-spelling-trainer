@@ -6,12 +6,22 @@ from shared.db import execute, fetch_all
 
 
 def _fetch_spelling_lessons():
+    """
+    Fetch spelling lessons.
+
+    The underlying table uses lesson_id as the primary key,
+    but the rest of the code expects the key to be 'id',
+    so we alias lesson_id AS id.
+    """
     return fetch_all(
         """
-        SELECT id, title, instructions
+        SELECT
+            lesson_id AS id,
+            title,
+            instructions
         FROM lessons
         WHERE lesson_type = 'spelling'
-        ORDER BY sort_order NULLS LAST, id
+        ORDER BY sort_order NULLS LAST, lesson_id
         """,
     )
 
