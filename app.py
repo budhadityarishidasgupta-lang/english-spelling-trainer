@@ -187,12 +187,14 @@ def main():
     load_css()
     st.sidebar.title("Spelling Trainer")
 
-    mode = st.sidebar.radio("Select mode", ["Student", "Admin"])
+    menu = st.sidebar.radio("Select mode", ["Student", "Admin", "Spelling Admin"])
 
-    if mode == "Student":
+    if menu == "Student":
         render_spelling_student()
-    else:
+    elif menu == "Admin":
         render_admin_section()
+    elif menu == "Spelling Admin":
+        render_spelling_admin()
 
 
 def render_student_overview():
