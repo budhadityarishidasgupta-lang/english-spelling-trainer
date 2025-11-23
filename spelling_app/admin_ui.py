@@ -179,39 +179,55 @@ def render_spelling_admin():
     # TAB 3: UPLOAD CSV TO IMPORT ITEMS
     # -------------------------
     with tab3:
-        st.subheader("Upload Spelling Items")
+        st.header("Upload Spelling Items (CSV)")
 
         st.markdown("""
-        **CSV Format must include:**
-        - base_word  \
-        - display_form  \
-        - pattern_type  \
-        - options  \
-        - difficulty  \
-        - hint  \
-        - lesson_id  \
+        Upload a CSV file containing spelling words.
+        The CSV must have at least: **word, lesson_id**
         """)
 
-        file = st.file_uploader("Upload CSV", type=["csv"])
+        uploaded_file = st.file_uploader("Choose CSV file", type=["csv"])
 
-        if file:
-            df = pd.read_csv(file)
-            st.success("CSV Loaded Successfully")
-            st.dataframe(df)
+        # Add update mode selector
+        update_mode = st.selectbox(
+            "Choose update mode",
+            [
+                "Overwrite existing words",
+                "Update existing words",
+                "Add new words only"
+            ]
+        )
 
-            if st.button("Insert Items Into Database"):
-                for _, row in df.iterrows():
-                    # Insert item into items table
-                    create_item(
-                        row["base_word"],
-                        row["display_form"],
-                        row.get("pattern_type"),
-                        row.get("options"),
-                        row.get("difficulty", 2),
-                        row.get("hint"),
-                    )
+        # Add preview-only mode
+        preview_only = st.checkbox("Preview only (do not insert into database)")
 
-                st.success("All items inserted!")
+        # Show CSV preview
+        if uploaded_file is not None:
+            import pandas as pd
+
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.subheader("CSV Preview")
+                st.dataframe(df.head(), use_container_width=True)
+            except Exception as e:
+                st.error(f"Error reading CSV: {e}")
+                return
+
+            # Submit button
+            if st.button("Process CSV Upload"):
+                st.info(
+                    f"Uploaded with mode: {update_mode}, "
+                    f"Preview only: {preview_only}"
+                )
+
+                # Pass to backend service (Patch 2 will implement this)
+                from spelling_app.services.spelling_service import process_csv_upload
+                result = process_csv_upload(df, update_mode, preview_only)
+
+                if isinstance(result, dict) and "error" in result:
+                    st.error(result["error"])
+                else:
+                    st.success(result)
 
     st.markdown("---")
     st.subheader("Spelling Weak-Word Analytics")
