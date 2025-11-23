@@ -195,7 +195,8 @@ def main():
             "Spelling Admin",
             "Spelling Student Admin",
             "Weak Words",
-            "Daily-5 Mode"
+            "Daily-5 Mode",
+            "Missing-Letter Mode"
         ]
     )
 
@@ -223,6 +224,10 @@ def main():
     elif mode == "Daily-5 Mode":
         from spelling_app.daily5_ui import render_daily5
         render_daily5()
+
+    elif mode == "Missing-Letter Mode":
+        from spelling_app.missing_letters_ui import render_missing_letters
+        render_missing_letters()
 
 
 def render_student_overview():
