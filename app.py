@@ -189,7 +189,13 @@ def main():
 
     mode = st.sidebar.radio(
         "Navigation",
-        ["Student", "Student Admin", "Spelling Admin", "Spelling Student Admin"]
+        [
+            "Student",
+            "Student Admin",
+            "Spelling Admin",
+            "Spelling Student Admin",
+            "Weak Words",
+        ]
     )
 
     if mode == "Student":
@@ -208,6 +214,10 @@ def main():
     elif mode == "Spelling Student Admin":
         from spelling_app.spelling_student_admin import render_spelling_student_admin
         render_spelling_student_admin()
+
+    elif mode == "Weak Words":
+        from spelling_app.weak_words_admin import render_weak_words_admin
+        render_weak_words_admin()
 
 
 def render_student_overview():
