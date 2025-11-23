@@ -184,23 +184,28 @@ def render_spelling_admin():
     with tab2:
         st.subheader("Create a New Lesson")
 
-        courses = load_course_data()
+        # Load spelling courses
+        courses = _load_spelling_courses()
 
-        if isinstance(courses, dict) and courses.get("error"):
-            st.error(f"Could not load courses: {courses['error']}")
+        if isinstance(courses, dict):
+            st.error("Error loading courses: " + str(courses))
             return
 
         if not courses:
-            st.warning("No courses found. Please create one first.")
+            st.warning("No spelling courses found. Please create a course first.")
             return
 
-        selected_course = st.selectbox(
-            "Select Course",
-            courses,
-            format_func=lambda c: c.get("title", "Course"),
-        )
-        selected_course_id = selected_course.get("course_id") if selected_course else None
-        selected_course_title = selected_course.get("title") if selected_course else None
+        # Build dropdown labels like: "Spelling Basics (ID: 4)"
+        course_labels = [
+            f"{c['title']} (ID: {c['course_id']})"
+            for c in courses
+        ]
+
+        selected_label = st.selectbox("Select Course", course_labels)
+
+        # Extract the selected course_id
+        selected_course_id = courses[course_labels.index(selected_label)]["course_id"]
+        selected_course_title = courses[course_labels.index(selected_label)]["title"]
 
         lesson_title = st.text_input("Lesson Title")
         instructions = st.text_area("Instructions (optional)")
