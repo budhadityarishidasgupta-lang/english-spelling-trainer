@@ -39,40 +39,28 @@ def _load_spelling_courses():
     return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
-def _load_spelling_lessons(course_id=None):
+def _load_spelling_lessons():
     """
-    Load lessons for the spelling admin.
-
-    The real lessons table uses:
-    - lesson_id (NOT id)
-    - course_id (NOT lesson_type)
+    Load ONLY spelling lessons using lesson_type = 'spelling'.
     """
-    if course_id:
-        return fetch_all(
-            """
-            SELECT
-                lesson_id,
-                title,
-                instructions,
-                sort_order
-            FROM lessons
-            WHERE course_id = :cid
-            ORDER BY sort_order NULLS LAST, lesson_id
-            """,
-            {"cid": course_id},
-        )
-
-    return fetch_all(
-        """
+    sql = """
         SELECT
-            lesson_id,
+            lesson_id AS id,
             title,
             instructions,
-            sort_order
+            course_id,
+            created_at
         FROM lessons
-        ORDER BY sort_order NULLS LAST, lesson_id
-        """
-    )
+        WHERE lesson_type = 'spelling'
+        ORDER BY created_at DESC;
+    """
+
+    result = fetch_all(sql)
+
+    if isinstance(result, dict):
+        return result
+
+    return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
 def _load_students():
