@@ -15,7 +15,28 @@ from spelling_app.services.spelling_service import (
 
 
 def _load_spelling_courses():
-    return load_course_data()
+    """
+    Load ONLY spelling courses from the courses table.
+    """
+    from shared.db import fetch_all
+
+    sql = """
+        SELECT
+            course_id,
+            title,
+            description,
+            created_at
+        FROM courses
+        WHERE course_type = 'spelling'
+        ORDER BY created_at DESC;
+    """
+    result = fetch_all(sql)
+
+    # Bubble up error dicts
+    if isinstance(result, dict):
+        return result
+
+    return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
 def _load_spelling_lessons(course_id=None):
