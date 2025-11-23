@@ -4,6 +4,8 @@ import streamlit as st
 import pandas as pd
 
 from shared.db import fetch_all
+from spelling_app.repository.course_repo import *
+from spelling_app.repository.lesson_repo import *
 from spelling_app.services.spelling_service import (
     create_course,
     create_lesson,
@@ -63,37 +65,7 @@ def _load_spelling_lessons():
     return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
-def _load_students():
-    rows = fetch_all(
-        """
-        SELECT u.*
-        FROM users u
-        JOIN enrollments e ON u.user_id = e.user_id
-        JOIN courses c ON e.course_id = c.course_id
-        """,
-    )
-
-    if isinstance(rows, dict):
-        return rows
-
-    students = []
-    for row in rows:
-        user_id = row.get("user_id") or row.get("id")
-        students.append(
-            {
-                "user_id": user_id,
-                "name": row.get("name"),
-                "email": row.get("email"),
-                "label": row.get("name")
-                or row.get("email")
-                or (f"User {user_id}" if user_id is not None else "User"),
-            }
-        )
-
-    return sorted(students, key=lambda s: s["label"])
-
-
-def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id: int | None):
+def _load_word_accuracy(course_id: int | None, lesson_id: int | None):
     params: dict[str, int] = {}
     filters = []
 
@@ -103,11 +75,6 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id
     if lesson_id:
         filters.append("w.lesson_id = :lesson_id")
         params["lesson_id"] = lesson_id
-
-    student_filter = ""
-    if student_id:
-        student_filter = "AND a.user_id = :student_id"
-        params["student_id"] = student_id
 
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
@@ -122,7 +89,6 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None, student_id
         JOIN lessons l ON l.lesson_id = w.lesson_id
         LEFT JOIN attempts a ON a.word_id = w.id
                            AND a.attempt_type IN ('spelling','spelling_missing','spelling_daily')
-                           {student_filter}
         {where_clause}
         GROUP BY w.id, w.word, l.title
         ORDER BY w.id
@@ -253,7 +219,6 @@ def render_spelling_admin():
 
     courses = _load_spelling_courses()
     lessons = _load_spelling_lessons()
-    students = _load_students()
 
     if isinstance(courses, dict) and courses.get("error"):
         st.error(f"Could not load spelling courses: {courses['error']}")
@@ -261,15 +226,10 @@ def render_spelling_admin():
     if isinstance(lessons, dict) and lessons.get("error"):
         st.error(f"Could not load spelling lessons: {lessons['error']}")
         return
-    if isinstance(students, dict) and students.get("error"):
-        st.error(f"Could not load students: {students['error']}")
-        return
-
     course_titles = {c["title"]: c["course_id"] for c in courses} if courses else {}
     lesson_titles = {l["title"]: l["lesson_id"] for l in lessons} if lessons else {}
-    student_labels = {s["label"]: s["user_id"] for s in students} if students else {}
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
         selected_course = st.selectbox("Filter by course", ["All courses"] + list(course_titles.keys()))
         selected_course_id = course_titles.get(selected_course)
@@ -281,11 +241,7 @@ def render_spelling_admin():
         selected_lesson = st.selectbox("Filter by lesson", lesson_options)
         selected_lesson_id = lesson_titles.get(selected_lesson)
 
-    with c3:
-        selected_student = st.selectbox("Filter by student", ["All students"] + list(student_labels.keys()))
-        selected_student_id = student_labels.get(selected_student)
-
-    analytics = _load_word_accuracy(selected_course_id, selected_lesson_id, selected_student_id)
+    analytics = _load_word_accuracy(selected_course_id, selected_lesson_id)
 
     if isinstance(analytics, dict) and analytics.get("error"):
         st.error(f"Could not load analytics: {analytics['error']}")
