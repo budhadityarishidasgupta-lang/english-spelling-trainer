@@ -403,7 +403,6 @@ def render_admin_section():
     _, filtered_students = render_student_overview()
     render_pending_registrations()
     render_classroom_management(filtered_students)
-    render_spelling_admin()
 
 if __name__ == "__main__":
     main()
