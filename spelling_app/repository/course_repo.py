@@ -7,15 +7,18 @@ def get_all_courses():
         course_id,
         title,
         description,
-        is_active,
         created_at
     FROM courses
     ORDER BY course_id ASC;
     """
-
     result = fetch_all(sql)
 
-    return [dict(row) for row in result]
+    # If fetch_all returns an error dict, just bubble it up
+    if isinstance(result, dict):
+        return result
+
+    # Normal case: SQLAlchemy rows -> list[dict]
+    return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
 def get_course(course_id):
