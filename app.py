@@ -195,6 +195,7 @@ def main():
             "Spelling Admin",
             "Spelling Student Admin",
             "Weak Words",
+            "Daily-5 Mode"
         ]
     )
 
@@ -218,6 +219,10 @@ def main():
     elif mode == "Weak Words":
         from spelling_app.weak_words_admin import render_weak_words_admin
         render_weak_words_admin()
+
+    elif mode == "Daily-5 Mode":
+        from spelling_app.daily5_ui import render_daily5
+        render_daily5()
 
 
 def render_student_overview():
