@@ -189,7 +189,7 @@ def main():
 
     mode = st.sidebar.radio(
         "Navigation",
-        ["Student", "Student Admin", "Spelling Admin"]
+        ["Student", "Student Admin", "Spelling Admin", "Spelling Student Admin"]
     )
 
     if mode == "Student":
@@ -204,6 +204,10 @@ def main():
         # Spelling admin only
         from spelling_app.admin_ui import render_spelling_admin
         render_spelling_admin()
+
+    elif mode == "Spelling Student Admin":
+        from spelling_app.spelling_student_admin import render_spelling_student_admin
+        render_spelling_student_admin()
 
 
 def render_student_overview():
