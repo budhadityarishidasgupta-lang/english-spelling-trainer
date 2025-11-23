@@ -15,26 +15,7 @@ from spelling_app.services.spelling_service import (
 
 
 def _load_spelling_courses():
-    rows = fetch_all(
-        """
-        SELECT 
-            course_id AS course_id,
-            title AS title
-        FROM courses
-        ORDER BY title;
-        """
-    )
-
-    # Ensure each row is converted to a dict explicitly
-    cleaned = []
-    for r in rows:
-        # force SQLAlchemy row → dict safely
-        cleaned.append({
-            "course_id": r.get("course_id"),
-            "title": r.get("title")
-        })
-
-    return cleaned
+    return load_course_data()
 
 
 def _load_spelling_lessons(course_id=None):
@@ -192,9 +173,13 @@ def render_spelling_admin():
             st.warning("No courses found. Please create one first.")
             return
 
-        course_options = [c["title"] for c in courses]
-        selected_course_title = st.selectbox("Select Course", course_options)
-        selected_course_id = next(c["course_id"] for c in courses if c["title"] == selected_course_title)
+        selected_course = st.selectbox(
+            "Select Course",
+            courses,
+            format_func=lambda c: c.get("title", "Course"),
+        )
+        selected_course_id = selected_course.get("course_id") if selected_course else None
+        selected_course_title = selected_course.get("title") if selected_course else None
 
         lesson_title = st.text_input("Lesson Title")
         instructions = st.text_area("Instructions (optional)")

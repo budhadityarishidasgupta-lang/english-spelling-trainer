@@ -15,11 +15,6 @@ def get_all_courses():
 
     result = fetch_all(sql)
 
-    # DEBUG: print the first DB row
-    for row in result:
-        print("DEBUG COURSE ROW:", row, type(row))
-        return []  # stop here so we see debug output
-
     return [dict(row) for row in result]
 
 
@@ -30,7 +25,9 @@ def get_course(course_id):
     WHERE course_id = :id
     """
 
-    return fetch_all(sql, {"id": course_id})
+    result = fetch_all(sql, {"id": course_id})
+
+    return [dict(row) for row in result]
 
 
 def create_course(title, description=None, level=None):
