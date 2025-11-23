@@ -34,10 +34,21 @@ def get_course(course_id):
 
 
 def create_course(title, description=None, level=None):
-    return execute(
-        """
-        INSERT INTO courses (title, description)
-        VALUES (:title, :desc)
-        """,
-        {"title": title, "desc": description},
-    )
+    """
+    Insert a new spelling course into the courses table.
+    course_type is always set to 'spelling'.
+    """
+    sql = """
+        INSERT INTO courses (title, description, course_type)
+        VALUES (:title, :description, 'spelling')
+        RETURNING course_id;
+    """
+    result = fetch_all(sql, {"title": title, "description": description})
+
+    # Normal case: return the created ID
+    if isinstance(result, list) and len(result) > 0:
+        row = result[0]
+        return row._mapping["course_id"]
+
+    # Bubble up error dicts
+    return result
