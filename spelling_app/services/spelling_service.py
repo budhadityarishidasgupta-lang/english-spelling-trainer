@@ -23,6 +23,14 @@ def load_items(lesson_id):
 def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms=0):
     return log_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms)
 
+
+def update_course_details(course_id, title=None, description=None, difficulty=None, course_type=None):
+    return update_spelling_course(course_id, title, description, difficulty, course_type)
+
+
+def update_lesson_details(lesson_id, title=None, description=None, is_active=None):
+    return update_spelling_lesson(lesson_id, title, description, is_active)
+
 import pandas as pd
 import streamlit as st
 from spelling_app.repository.words_repo import ensure_lesson_exists
