@@ -52,3 +52,13 @@ def create_course(title, description=None, level=None):
 
     # Bubble up error dicts
     return result
+
+
+def get_all_spelling_courses():
+    query = """
+        SELECT course_id, title, description, created_at
+        FROM courses
+        WHERE course_type = 'spelling'
+        ORDER BY course_id ASC;
+    """
+    return fetch_all(query)
