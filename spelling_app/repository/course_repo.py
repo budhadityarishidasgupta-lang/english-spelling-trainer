@@ -61,7 +61,12 @@ def get_all_spelling_courses():
         WHERE course_type = 'spelling'
         ORDER BY course_id ASC;
     """
-    return fetch_all(query)
+    result = fetch_all(query)
+
+    if isinstance(result, dict):
+        return result
+
+    return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
 def update_spelling_course(course_id, title=None, description=None, difficulty=None, course_type=None):
