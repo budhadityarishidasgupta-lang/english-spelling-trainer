@@ -26,6 +26,8 @@ def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct
 import pandas as pd
 import streamlit as st
 from spelling_app.repository.words_repo import ensure_lesson_exists
+import math
+import random
 
 
 def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
@@ -58,6 +60,71 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
             f"Auto-removed {removed} duplicate entries inside identical lessons. "
             "Cross-lesson duplicates were kept."
         )
+
+    # -----------------------------
+    # A3: Balanced Lesson Distribution
+    # -----------------------------
+    MAX_ITEMS_PER_LESSON = 20
+    MIN_ITEMS_PER_LESSON = 10
+
+    # Group items by lesson
+    lesson_groups = (
+        df.groupby("lesson_id")["word"]
+          .apply(list)
+          .to_dict()
+    )
+
+    # Collect all words & lessons for redistribution
+    all_items = []
+    for lesson_id, words in lesson_groups.items():
+        for w in words:
+            all_items.append((w, lesson_id))
+
+    # Order lessons numerically
+    sorted_lessons = sorted(lesson_groups.keys())
+
+    # Pass 1: Rebalance overloaded lessons
+    for lesson_id in sorted_lessons:
+        words = lesson_groups[lesson_id]
+        if len(words) > MAX_ITEMS_PER_LESSON:
+            overflow = len(words) - MAX_ITEMS_PER_LESSON
+            extra_words = words[MAX_ITEMS_PER_LESSON:]
+            lesson_groups[lesson_id] = words[:MAX_ITEMS_PER_LESSON]
+
+            # Distribute overflow to NEIGHBORING lessons
+            for w in extra_words:
+                # Try next+1 lesson
+                for neighbor in [lesson_id + 1, lesson_id - 1]:
+                    if neighbor in lesson_groups and len(lesson_groups[neighbor]) < MAX_ITEMS_PER_LESSON:
+                        lesson_groups[neighbor].append(w)
+                        break
+
+    # Pass 2: Ensure each lesson has MIN_ITEMS, pull from neighbors
+    for lesson_id in sorted_lessons:
+        while len(lesson_groups[lesson_id]) < MIN_ITEMS_PER_LESSON:
+            # Try to borrow from a neighboring overloaded lesson
+            for neighbor in [lesson_id - 1, lesson_id + 1]:
+                if neighbor in lesson_groups and len(lesson_groups[neighbor]) > MIN_ITEMS_PER_LESSON:
+                    w = lesson_groups[neighbor].pop()
+                    lesson_groups[lesson_id].append(w)
+                    break
+            else:
+                break
+
+    # Final: flatten back to df
+    balanced_rows = []
+    for lesson_id, words in lesson_groups.items():
+        for w in words:
+            balanced_rows.append({"word": w, "lesson_id": lesson_id})
+
+    df = pd.DataFrame(balanced_rows)
+
+    # Shuffle final distribution for natural randomness
+    df = df.sample(frac=1).reset_index(drop=True)
+
+    # -----------------------------
+    # END of Patch A3
+    # -----------------------------
 
     # Validate lesson_id column
     invalid_lesson_rows = df[~df["lesson_id"].astype(str).str.isnumeric()]
