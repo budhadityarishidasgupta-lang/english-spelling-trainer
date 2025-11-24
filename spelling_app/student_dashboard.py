@@ -36,5 +36,8 @@ def render_spelling_dashboard():
                 st.markdown(f"{desc}")
             st.caption(lesson_info)
 
-            # Placeholder: Lesson list will be implemented in Patch B2
-            st.button(f"Open {title}", key=f"open_{c['course_id']}")
+            # When a course is clicked, store in session and redirect
+            if st.button(f"Open {title}", key=f"open_{c['course_id']}"):
+                st.session_state["selected_course_id"] = c["course_id"]
+                st.session_state["selected_course_title"] = title
+                st.session_state["page"] = "lesson_list"
