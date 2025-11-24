@@ -235,7 +235,7 @@ def render_spelling_admin():
 
         if not courses:
             st.warning("No spelling courses found. Please create a spelling course first.")
-            return
+            st.stop()  # stop this tab only, not whole function
 
         course_options = {
             f"{c['title']} (ID {c['course_id']})": c["course_id"]
