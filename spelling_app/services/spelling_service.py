@@ -2,6 +2,7 @@ from spelling_app.repository.course_repo import *
 from spelling_app.repository.lesson_repo import *
 from spelling_app.repository.item_repo import *
 from spelling_app.repository.attempt_repo import *
+from shared.db import fetch_all
 
 
 def load_course_data():
@@ -126,3 +127,29 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
         "preview_only": preview_only,
         "details": summary
     }
+
+
+def load_lessons_for_course(course_id: int):
+    """
+    Returns all lessons belonging to a given spelling course.
+    """
+    sql = """
+        SELECT lesson_id, title, instructions
+        FROM lessons
+        WHERE course_id = :course_id
+        ORDER BY lesson_id ASC;
+    """
+    result = fetch_all(sql, {"course_id": course_id})
+    if isinstance(result, dict):
+        return result
+    return [dict(r._mapping) for r in result]
+
+
+def get_lesson_progress(student_id: int, lesson_id: int):
+    """
+    Calculates percentage progress for a given student and lesson.
+    Future logic: count attempts vs total words.
+    Current logic: always return 0.
+    Patch B3 will populate.
+    """
+    return 0

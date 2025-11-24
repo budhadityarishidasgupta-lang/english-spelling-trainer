@@ -185,6 +185,16 @@ def load_css():
 
 def main():
     load_css()
+    # Handle student lesson list navigation
+    if "page" in st.session_state and st.session_state["page"] == "lesson_list":
+        from spelling_app.lesson_list import render_lesson_list
+
+        render_lesson_list(
+            st.session_state["selected_course_id"],
+            st.session_state["selected_course_title"]
+        )
+        st.stop()
+
     st.sidebar.title("Spelling Trainer")
 
     mode = st.sidebar.radio(
