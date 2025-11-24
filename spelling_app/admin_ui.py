@@ -2,6 +2,8 @@ print(">>> LOADED admin_ui FROM:", __file__)
 
 import streamlit as st
 import pandas as pd
+from typing import List, Dict
+
 
 from shared.db import fetch_all
 from spelling_app.repository.course_repo import *
