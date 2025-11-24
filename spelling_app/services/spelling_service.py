@@ -25,14 +25,7 @@ def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct
 
 import pandas as pd
 import streamlit as st
-from spelling_app.repository.words_repo import (
-    get_word_by_text,
-    insert_word,
-    update_word,
-    delete_word,
-    ensure_lesson_exists,
-    map_word_to_lesson,
-)
+from spelling_app.repository.words_repo import ensure_lesson_exists
 
 
 def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
@@ -91,44 +84,20 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
         word = row["word"]
         lesson_id = row["lesson_id"]
 
-        # Ensure lesson exists (only if not preview)
+        action = f"INSERT ITEM: {word} (lesson {lesson_id})"
+
         if not preview_only:
             ensure_lesson_exists(lesson_id)
 
-        # Check if word exists in DB
-        existing = get_word_by_text(word)
-        exists = isinstance(existing, list) and len(existing) > 0
+            item_id = create_item(word)
+            if isinstance(item_id, dict):
+                return item_id
+            if item_id is None:
+                return {"error": f"Failed to insert item for word '{word}'"}
 
-        action = None
-        word_id = None
-
-        if exists:
-            word_id = existing[0]["word_id"]
-
-            if update_mode == "Overwrite existing words":
-                action = f"OVERWRITE: {word}"
-                if not preview_only:
-                    delete_word(word_id)
-                    word_id = insert_word(word)
-
-            elif update_mode == "Update existing words":
-                action = f"UPDATE: {word}"
-                if not preview_only:
-                    update_word(word_id, word)
-
-            elif update_mode == "Add new words only":
-                action = f"SKIP (exists): {word}"
-
-        else:
-            # Word does not exist → always insert
-            action = f"INSERT: {word}"
-            if not preview_only:
-                word_id = insert_word(word)
-
-        # Map to lesson (if applicable)
-        if action.startswith("INSERT") or action.startswith("OVERWRITE") or action.startswith("UPDATE"):
-            if not preview_only:
-                map_word_to_lesson(word_id, lesson_id)
+            map_result = map_item_to_lesson(lesson_id, item_id)
+            if isinstance(map_result, dict):
+                return map_result
 
         summary.append(action)
 

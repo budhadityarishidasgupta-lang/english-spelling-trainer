@@ -4,38 +4,38 @@ from shared.db import fetch_all, execute
 def get_items_for_lesson(lesson_id):
     return fetch_all(
         """
-        SELECT i.*
-        FROM items i
-        JOIN lesson_items li ON i.sp_item_id = li.sp_item_id
-        WHERE li.sp_lesson_id = :lid
-        ORDER BY li.sort_order NULLS LAST, i.sp_item_id
+        SELECT si.item_id, si.word
+        FROM spelling_items si
+        JOIN spelling_lesson_items sli ON sli.item_id = si.item_id
+        WHERE sli.lesson_id = :lid
+        ORDER BY si.item_id
         """,
         {"lid": lesson_id}
     )
 
 
-def create_item(base_word, display_form, pattern_type, options, difficulty, hint):
-    return execute(
+def create_item(word: str):
+    result = fetch_all(
         """
-        INSERT INTO items (base_word, display_form, pattern_type, options, difficulty, hint)
-        VALUES (:bw, :df, :pt, :opt, :diff, :ht)
+        INSERT INTO spelling_items (word, created_at)
+        VALUES (:word, NOW())
+        RETURNING item_id;
         """,
-        {
-            "bw": base_word,
-            "df": display_form,
-            "pt": pattern_type,
-            "opt": options,
-            "diff": difficulty,
-            "ht": hint,
-        }
+        {"word": word},
     )
+
+    if isinstance(result, dict):
+        return result
+
+    return result[0]._mapping["item_id"] if result else None
 
 
 def map_item_to_lesson(lesson_id, item_id, sort_order=None):
-    return execute(
+    return fetch_all(
         """
-        INSERT INTO lesson_items (sp_lesson_id, sp_item_id, sort_order)
-        VALUES (:lid, :iid, :sort)
+        INSERT INTO spelling_lesson_items (lesson_id, item_id)
+        VALUES (:lesson_id, :item_id)
+        ON CONFLICT DO NOTHING;
         """,
-        {"lid": lesson_id, "iid": item_id, "sort": sort_order}
+        {"lesson_id": lesson_id, "item_id": item_id},
     )
