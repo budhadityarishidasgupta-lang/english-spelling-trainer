@@ -55,25 +55,25 @@ def _load_word_accuracy(course_id: int | None, lesson_id: int | None):
         filters.append("l.course_id = :course_id")
         params["course_id"] = course_id
     if lesson_id:
-        filters.append("w.lesson_id = :lesson_id")
+        filters.append("l.lesson_id = :lesson_id")
         params["lesson_id"] = lesson_id
 
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
     return fetch_all(
         f"""
-        SELECT w.id,
-               w.word,
+        SELECT si.item_id,
+               si.word,
                l.title AS lesson_title,
-               COUNT(a.*) AS total_attempts,
-               COALESCE(SUM(CASE WHEN a.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
-        FROM spelling_words w
-        JOIN lessons l ON l.lesson_id = w.lesson_id
-        LEFT JOIN attempts a ON a.word_id = w.id
-                           AND a.attempt_type IN ('spelling','spelling_missing','spelling_daily')
+               COUNT(sa.*) AS total_attempts,
+               COALESCE(SUM(CASE WHEN sa.is_correct THEN 1 ELSE 0 END), 0) AS correct_attempts
+        FROM spelling_items si
+        JOIN spelling_lesson_items sli ON sli.item_id = si.item_id
+        JOIN lessons l ON l.lesson_id = sli.lesson_id
+        LEFT JOIN spelling_attempts sa ON sa.item_id = si.item_id
         {where_clause}
-        GROUP BY w.id, w.word, l.title
-        ORDER BY w.id
+        GROUP BY si.item_id, si.word, l.title
+        ORDER BY si.item_id
         """,
         params,
     )

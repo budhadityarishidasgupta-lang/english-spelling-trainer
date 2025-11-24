@@ -156,7 +156,7 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
         response_ms = int((time.time() - state.get("start_ts", time.time())) * 1000)
 
         # Save attempt to DB
-        item_id = current.get("sp_item_id") or current.get("id")
+        item_id = current.get("sp_item_id") or current.get("item_id") or current.get("id")
         record_attempt(
             user_id=student_id,
             course_id=course_id,
