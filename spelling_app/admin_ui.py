@@ -136,17 +136,18 @@ def render_spelling_admin():
             st.warning("No spelling courses found. Please create a course first.")
             return
 
-        # Build dropdown labels like: "Spelling Basics (ID: 4)"
-        course_labels = [
-            f"{c['title']} (ID: {c['course_id']})"
+        course_options = {
+            f"{c['title']} (ID {c['course_id']})": c['course_id']
             for c in courses
-        ]
+        }
 
-        selected_label = st.selectbox("Select Course", course_labels)
+        selected_option = st.selectbox("Select Course", list(course_options.keys()))
 
-        # Extract the selected course_id
-        selected_course_id = courses[course_labels.index(selected_label)]["course_id"]
-        selected_course_title = courses[course_labels.index(selected_label)]["title"]
+        selected_course_id = course_options[selected_option]
+        selected_course_title = next(
+            (c["title"] for c in courses if c["course_id"] == selected_course_id),
+            "",
+        )
 
         lesson_title = st.text_input("Lesson Title")
         instructions = st.text_area("Instructions (optional)")
@@ -236,13 +237,16 @@ def render_spelling_admin():
     if isinstance(lessons, dict) and lessons.get("error"):
         st.error(f"Could not load spelling lessons: {lessons['error']}")
         return
-    course_titles = {c["title"]: c["course_id"] for c in courses} if courses else {}
+    course_options = {
+        f"{c['title']} (ID {c['course_id']})": c["course_id"]
+        for c in courses
+    } if courses else {}
     lesson_titles = {l["title"]: l["lesson_id"] for l in lessons} if lessons else {}
 
     c1, c2 = st.columns(2)
     with c1:
-        selected_course = st.selectbox("Filter by course", ["All courses"] + list(course_titles.keys()))
-        selected_course_id = course_titles.get(selected_course)
+        selected_course_option = st.selectbox("Filter by course", ["All courses"] + list(course_options.keys()))
+        selected_course_id = course_options.get(selected_course_option)
 
     with c2:
         available_lessons = _load_spelling_lessons(selected_course_id) if selected_course_id else lessons
@@ -317,7 +321,6 @@ def render_assign_courses_tab():
         enroll_student_in_course,
         get_all_spelling_enrollments,
     )
-    from spelling_app.services.spelling_service import load_course_data
 
     st.header("Assign Spelling Courses to Students")
 
@@ -333,9 +336,9 @@ def render_assign_courses_tab():
     }
 
     # Load spelling courses only
-    courses = load_course_data()
+    courses = _load_spelling_courses()
     course_options = {
-        c["title"]: c["course_id"]
+        f"{c['title']} (ID {c['course_id']})": c['course_id']
         for c in courses
     }
 
@@ -346,17 +349,17 @@ def render_assign_courses_tab():
     st.subheader("Assign a Course")
 
     selected_student = st.selectbox("Select Student", list(student_options.keys()))
-    selected_course = st.selectbox("Select Spelling Course", list(course_options.keys()))
+    selected_course_option = st.selectbox("Select Spelling Course", list(course_options.keys()))
 
     if st.button("Assign Course"):
         sid = student_options[selected_student]
-        cid = course_options[selected_course]
+        cid = course_options[selected_course_option]
         result = enroll_student_in_course(sid, cid)
 
         if isinstance(result, dict) and "error" in result:
             st.error(result["error"])
         else:
-            st.success(f"Assigned '{selected_course}' to {selected_student}")
+            st.success(f"Assigned '{selected_course_option}' to {selected_student}")
 
     st.subheader("Existing Enrollments")
 
