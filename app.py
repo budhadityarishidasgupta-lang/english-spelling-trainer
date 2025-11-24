@@ -191,6 +191,7 @@ def main():
         "Navigation",
         [
             "Student",
+            "My Spelling Courses",
             "Student Admin",
             "Spelling Admin",
             "Spelling Student Admin",
@@ -202,6 +203,11 @@ def main():
 
     if mode == "Student":
         render_spelling_student()
+
+    elif mode == "My Spelling Courses":
+        from spelling_app.student_dashboard import render_spelling_dashboard
+
+        render_spelling_dashboard()
 
     elif mode == "Student Admin":
         # Synonym admin only
