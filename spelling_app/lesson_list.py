@@ -46,9 +46,10 @@ def render_lesson_list(course_id: int, course_title: str):
             else:
                 st.info("Not Started")
 
-            st.button(
-                f"Start Lesson",
-                key=f"start_{lid}",
-                args=(lid, title),
-                on_click=st.session_state.update,
-            )
+            if st.button(f"Start Lesson", key=f"start_{lid}"):
+                st.session_state["page"] = "practice"
+                st.session_state["practice_lesson_id"] = lid
+                st.session_state["practice_lesson_title"] = title
+                st.session_state["selected_course_id"] = course_id
+                st.session_state["selected_course_title"] = course_title
+                st.rerun()

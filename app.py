@@ -195,6 +195,16 @@ def main():
         )
         st.stop()
 
+    if "page" in st.session_state and st.session_state["page"] == "practice":
+        from spelling_app.practice_ui import render_practice_screen
+
+        render_practice_screen(
+            st.session_state.get("practice_lesson_id"),
+            st.session_state.get("selected_course_id"),
+            st.session_state.get("practice_lesson_title"),
+        )
+        st.stop()
+
     st.sidebar.title("Spelling Trainer")
 
     mode = st.sidebar.radio(
