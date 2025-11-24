@@ -169,6 +169,26 @@ def render_spelling_admin():
     with tab3:
         st.header("Upload Spelling Items (CSV)")
 
+        # -------------------------------------------------------
+        # LOAD SPELLING COURSES FOR CSV UPLOAD
+        # -------------------------------------------------------
+        courses = _load_spelling_courses()
+
+        if not courses:
+            st.warning("No spelling courses found. Please create a spelling course first.")
+            return
+
+        course_options = {
+            f"{c['title']} (ID {c['course_id']})": c["course_id"]
+            for c in courses
+        }
+
+        selected_course_label = st.selectbox(
+            "Select Spelling Course",
+            list(course_options.keys())
+        )
+        selected_course_id = course_options[selected_course_label]
+
         st.markdown("""
         Upload a CSV file containing spelling words.
         The CSV must have at least: **word, lesson_id**
@@ -211,7 +231,7 @@ def render_spelling_admin():
 
                 # Pass to backend service (Patch 2 will implement this)
                 from spelling_app.services.spelling_service import process_csv_upload
-                result = process_csv_upload(df, update_mode, preview_only)
+                result = process_csv_upload(df, update_mode, preview_only, selected_course_id)
 
                 if isinstance(result, dict) and "error" in result:
                     st.error(result["error"])
