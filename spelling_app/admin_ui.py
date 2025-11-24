@@ -270,7 +270,7 @@ def render_spelling_admin():
 
         # Show CSV preview
         if uploaded_file is not None:
-            import pandas as pd
+            #import pandas as pd
 
             try:
                 df = pd.read_csv(uploaded_file)
