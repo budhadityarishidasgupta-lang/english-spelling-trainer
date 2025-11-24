@@ -24,6 +24,7 @@ def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct
     return log_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms)
 
 import pandas as pd
+import streamlit as st
 from spelling_app.repository.words_repo import (
     get_word_by_text,
     insert_word,
@@ -52,6 +53,19 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
     df = df[df["word"] != ""]
     df = df.dropna(subset=["word"])
 
+    # Remove duplicates inside the same lesson
+    before_dedup = len(df)
+    df = df.drop_duplicates(subset=["word", "lesson_id"], keep="first")
+    after_dedup = len(df)
+
+    # Count how many intra-lesson duplicates were removed
+    removed = before_dedup - after_dedup
+    if removed > 0:
+        st.info(
+            f"Auto-removed {removed} duplicate entries inside identical lessons. "
+            "Cross-lesson duplicates were kept."
+        )
+
     # Validate lesson_id column
     invalid_lesson_rows = df[~df["lesson_id"].astype(str).str.isnumeric()]
     if len(invalid_lesson_rows) > 0:
@@ -67,14 +81,7 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
             "rows": df[df["lesson_id"] <= 0].to_dict(orient="records")
         }
 
-    # Detect duplicates inside CSV
-    duplicate_words = df["word"].duplicated(keep=False)
-    if duplicate_words.any():
-        dups = df[duplicate_words]
-        return {
-            "error": "Duplicate words found inside CSV.",
-            "duplicates": dups.to_dict(orient="records")
-        }
+    # Skip duplicate checks across lessons; only intra-lesson duplicates are removed above.
 
     # Dry-run result list
     summary = []
