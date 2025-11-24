@@ -30,13 +30,14 @@ import math
 import random
 
 
-def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
+def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
     """
     Enhanced CSV processing with:
       - column validation
       - duplicate detection
       - invalid lesson_id reporting
       - dry-run change summary
+    course_id indicates which spelling course these lessons/items belong to.
     """
     required_cols = {"word", "lesson_id"}
     if not required_cols.issubset(df.columns):
@@ -154,7 +155,7 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
         action = f"INSERT ITEM: {word} (lesson {lesson_id})"
 
         if not preview_only:
-            ensure_lesson_exists(lesson_id)
+            ensure_lesson_exists(lesson_id, course_id)
 
             item_id = create_item(word)
             if isinstance(item_id, dict):
@@ -162,7 +163,7 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool):
             if item_id is None:
                 return {"error": f"Failed to insert item for word '{word}'"}
 
-            map_result = map_item_to_lesson(lesson_id, item_id)
+            map_result = map_item_to_lesson(lesson_id, item_id, course_id)
             if isinstance(map_result, dict):
                 return map_result
 
