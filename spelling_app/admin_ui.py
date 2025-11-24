@@ -17,28 +17,10 @@ from spelling_app.services.spelling_service import (
 
 
 def _load_spelling_courses():
-    """
-    Load ONLY spelling courses from the courses table.
-    """
-    from shared.db import fetch_all
-
-    sql = """
-        SELECT
-            course_id,
-            title,
-            description,
-            created_at
-        FROM courses
-        WHERE course_type = 'spelling'
-        ORDER BY created_at DESC;
-    """
-    result = fetch_all(sql)
-
-    # Bubble up error dicts
-    if isinstance(result, dict):
-        return result
-
-    return [dict(getattr(row, "_mapping", row)) for row in result]
+    from spelling_app.repository import course_repo
+    result = course_repo.get_all_spelling_courses()
+    # Convert SQLAlchemy rows to dicts
+    return [dict(r._mapping) for r in result] if result else []
 
 
 def _load_spelling_lessons():
