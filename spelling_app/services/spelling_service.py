@@ -43,6 +43,9 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
     if not required_cols.issubset(df.columns):
         return {"error": f"CSV must contain columns: {required_cols}"}
 
+    has_lesson_name = "lesson_name" in df.columns
+    has_lesson_desc = "lesson_description" in df.columns or "lesson_desc" in df.columns
+
     # Clean up dataframe
     df = df.copy()
     df["word"] = df["word"].astype(str).str.strip()
@@ -149,8 +152,30 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
 
     # Main loop
     for _, row in df.iterrows():
-        word = row["word"]
-        lesson_id = row["lesson_id"]
+        word = str(row["word"]).strip()
+        lesson_id = int(row["lesson_id"])
+
+        lesson_name = None
+        lesson_description = None
+
+        if has_lesson_name:
+            try:
+                lesson_name = str(row["lesson_name"]).strip()
+            except Exception:
+                lesson_name = None
+
+        if has_lesson_desc:
+            # support either 'lesson_description' or 'lesson_desc'
+            if "lesson_description" in df.columns:
+                try:
+                    lesson_description = str(row["lesson_description"]).strip()
+                except Exception:
+                    lesson_description = None
+            elif "lesson_desc" in df.columns:
+                try:
+                    lesson_description = str(row["lesson_desc"]).strip()
+                except Exception:
+                    lesson_description = None
 
         action = f"INSERT ITEM: {word} (lesson {lesson_id})"
 
@@ -167,7 +192,17 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
             if isinstance(map_result, dict):
                 return map_result
 
-        summary.append(action)
+        summary_row = {
+            "word": word,
+            "lesson_id": lesson_id,
+            "action": action,
+        }
+        if lesson_name is not None:
+            summary_row["lesson_name"] = lesson_name
+        if lesson_description is not None:
+            summary_row["lesson_description"] = lesson_description
+
+        summary.append(summary_row)
 
     return {
         "message": "CSV processed successfully (dry-run)" if preview_only else "CSV updated successfully",
