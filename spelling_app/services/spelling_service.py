@@ -6,7 +6,10 @@ from shared.db import fetch_all
 
 
 def load_course_data():
-    return get_all_courses()
+    result = get_all_spelling_courses()
+    if isinstance(result, dict):
+        return result
+    return [dict(r._mapping) for r in result] if result else []
 
 
 def load_lessons(course_id):
