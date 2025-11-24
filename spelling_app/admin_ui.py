@@ -13,6 +13,8 @@ from spelling_app.services.spelling_service import (
     map_item_to_lesson,
     load_course_data,
     load_lessons,
+    update_course_details,
+    update_lesson_details,
 )
 
 
@@ -23,23 +25,34 @@ def _load_spelling_courses():
     return [dict(r._mapping) for r in result] if result else []
 
 
-def _load_spelling_lessons():
+def _load_spelling_lessons(course_id: int | None = None):
     """
     Load ONLY spelling lessons using lesson_type = 'spelling'.
+    Optionally filter by course_id.
     """
-    sql = """
+    params: dict[str, int] = {}
+    where_clauses = ["lesson_type = 'spelling'"]
+
+    if course_id is not None:
+        where_clauses.append("course_id = :course_id")
+        params["course_id"] = course_id
+
+    where_sql = " AND ".join(where_clauses)
+
+    sql = f"""
         SELECT
-            lesson_id AS id,
+            lesson_id,
             title,
             instructions,
             course_id,
+            is_active,
             created_at
         FROM lessons
-        WHERE lesson_type = 'spelling'
+        WHERE {where_sql}
         ORDER BY created_at DESC;
     """
 
-    result = fetch_all(sql)
+    result = fetch_all(sql, params)
 
     if isinstance(result, dict):
         return result
@@ -116,8 +129,26 @@ def render_spelling_admin():
 
         st.markdown("---")
         st.subheader("Existing Courses")
+
+        # Load courses
         courses = load_course_data()
-        st.dataframe(courses)
+        df = pd.DataFrame(courses)
+        orig = df.copy()
+
+        editable = ["title", "description", "difficulty", "course_type"]
+        disabled = [c for c in df.columns if c not in editable]
+
+        edited = st.data_editor(df, disabled=disabled, num_rows="fixed", key="edit_courses")
+
+        for _, row in edited.iterrows():
+            old = orig.loc[orig["course_id"] == row["course_id"]].iloc[0]
+            changes = {}
+            for col in editable:
+                if col in df.columns and row[col] != old[col]:
+                    changes[col] = row[col]
+            if changes:
+                update_course_details(row["course_id"], **changes)
+                st.success("Course updated.")
 
     # -------------------------
     # TAB 2: CREATE LESSON
@@ -156,6 +187,32 @@ def render_spelling_admin():
         if st.button("Create Lesson"):
             create_lesson(selected_course_id, lesson_title, instructions, sort_order)
             st.success(f"Lesson '{lesson_title}' created in '{selected_course_title}'")
+
+        st.subheader("Manage Lessons for This Course")
+
+        all_lessons = _load_spelling_lessons()
+        filtered = [l for l in all_lessons if l.get("course_id") == selected_course_id]
+        df2 = pd.DataFrame(filtered)
+        orig2 = df2.copy()
+
+        editable2 = ["title", "instructions", "is_active"]
+        disabled2 = [c for c in df2.columns if c not in editable2]
+
+        edited2 = st.data_editor(df2, disabled=disabled2, num_rows="fixed", key="edit_lessons")
+
+        for _, row in edited2.iterrows():
+            old = orig2.loc[orig2["lesson_id"] == row["lesson_id"]].iloc[0]
+            changes = {}
+            if row["title"] != old["title"]:
+                changes["title"] = row["title"]
+            if row["instructions"] != old["instructions"]:
+                changes["description"] = row["instructions"]
+            if row["is_active"] != old["is_active"]:
+                changes["is_active"] = bool(row["is_active"])
+
+            if changes:
+                update_lesson_details(row["lesson_id"], **changes)
+                st.success("Lesson updated.")
 
         st.markdown("---")
         st.subheader("Lessons for Selected Course")

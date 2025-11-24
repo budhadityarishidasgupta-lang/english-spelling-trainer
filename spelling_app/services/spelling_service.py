@@ -200,3 +200,11 @@ def get_lesson_progress(student_id: int, lesson_id: int):
     Patch B3 will populate.
     """
     return 0
+
+
+def update_course_details(course_id, title=None, description=None, difficulty=None, course_type=None):
+    return update_spelling_course(course_id, title, description, difficulty, course_type)
+
+
+def update_lesson_details(lesson_id, title=None, description=None, is_active=None):
+    return update_spelling_lesson(lesson_id, title, description, is_active)

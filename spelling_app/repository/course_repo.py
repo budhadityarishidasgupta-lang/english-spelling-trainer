@@ -56,9 +56,40 @@ def create_course(title, description=None, level=None):
 
 def get_all_spelling_courses():
     query = """
-        SELECT course_id, title, description, created_at
+        SELECT course_id, title, description, difficulty, course_type, created_at
         FROM courses
         WHERE course_type = 'spelling'
         ORDER BY course_id ASC;
     """
     return fetch_all(query)
+
+
+def update_spelling_course(course_id, title=None, description=None, difficulty=None, course_type=None):
+    set_clauses = []
+    params = {"course_id": course_id}
+
+    if title is not None:
+        set_clauses.append("title = :title")
+        params["title"] = title
+
+    if description is not None:
+        set_clauses.append("description = :description")
+        params["description"] = description
+
+    if difficulty is not None:
+        set_clauses.append("difficulty = :difficulty")
+        params["difficulty"] = difficulty
+
+    if course_type is not None:
+        set_clauses.append("course_type = :course_type")
+        params["course_type"] = course_type
+
+    if not set_clauses:
+        return {"error": "No updatable fields provided"}
+
+    sql = f"""
+        UPDATE courses
+        SET {", ".join(set_clauses)}
+        WHERE course_id = :course_id
+    """
+    return execute(sql, params)
