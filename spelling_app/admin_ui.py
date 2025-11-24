@@ -108,7 +108,12 @@ def render_spelling_admin():
     - Map items to lessons  \
     """)
 
-    tab1, tab2, tab3 = st.tabs(["Create Course", "Create Lesson", "Upload Items (CSV)"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Create Course",
+        "Create Lesson",
+        "Upload Items (CSV)",
+        "Assign Courses",
+    ])
 
     # -------------------------
     # TAB 1: CREATE COURSE
@@ -230,6 +235,12 @@ def render_spelling_admin():
                 else:
                     st.success(result)
 
+    # -------------------------
+    # TAB 4: ASSIGN COURSES
+    # -------------------------
+    with tab4:
+        render_assign_courses_tab()
+
     st.markdown("---")
     st.subheader("Spelling Weak-Word Analytics")
     st.caption("Monitor accuracy across spelling words without impacting synonym analytics.")
@@ -315,4 +326,66 @@ def render_spelling_admin():
         return [color] * len(row)
 
     st.dataframe(display_df.style.apply(_highlight_row, axis=1), use_container_width=True)
+
+
+def render_assign_courses_tab():
+    import streamlit as st
+    from shared.db import fetch_all
+    from spelling_app.services.enrollment_service import (
+        enroll_student_in_course,
+        get_all_spelling_enrollments,
+    )
+    from spelling_app.services.spelling_service import load_course_data
+
+    st.header("Assign Spelling Courses to Students")
+
+    # Load all students (users table)
+    students = fetch_all("SELECT id, name, email FROM users ORDER BY name ASC;")
+    if isinstance(students, dict):
+        st.error("Error loading students: " + str(students))
+        return
+
+    student_options = {
+        f"{s._mapping['name']} ({s._mapping['email']})": s._mapping['id']
+        for s in students
+    }
+
+    # Load spelling courses only
+    courses = load_course_data()
+    course_options = {
+        c["title"]: c["course_id"]
+        for c in courses
+    }
+
+    if not students or not courses:
+        st.warning("Need at least one student and one spelling course.")
+        return
+
+    st.subheader("Assign a Course")
+
+    selected_student = st.selectbox("Select Student", list(student_options.keys()))
+    selected_course = st.selectbox("Select Spelling Course", list(course_options.keys()))
+
+    if st.button("Assign Course"):
+        sid = student_options[selected_student]
+        cid = course_options[selected_course]
+        result = enroll_student_in_course(sid, cid)
+
+        if isinstance(result, dict) and "error" in result:
+            st.error(result["error"])
+        else:
+            st.success(f"Assigned '{selected_course}' to {selected_student}")
+
+    st.subheader("Existing Enrollments")
+
+    enrollments = get_all_spelling_enrollments()
+    if isinstance(enrollments, dict):
+        st.error("Error loading enrollments: " + str(enrollments))
+        return
+
+    if not enrollments:
+        st.info("No enrollments yet.")
+        return
+
+    st.dataframe(enrollments, use_container_width=True)
 
