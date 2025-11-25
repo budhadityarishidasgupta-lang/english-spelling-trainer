@@ -56,7 +56,7 @@ def create_course(title, description=None, level=None):
 
 def get_all_spelling_courses():
     query = """
-        SELECT course_id, title, description, difficulty, course_type, created_at
+        SELECT course_id, title, description, course_type, created_at
         FROM courses
         WHERE course_type = 'spelling'
         ORDER BY course_id ASC;
