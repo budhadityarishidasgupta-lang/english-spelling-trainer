@@ -39,3 +39,26 @@ def map_item_to_lesson(lesson_id, item_id, sort_order=None):
         """,
         {"lesson_id": lesson_id, "item_id": item_id},
     )
+
+
+def get_item_by_word(word: str):
+    """
+    Returns an item dict if a word already exists in the items table.
+    Otherwise returns None.
+    """
+    sql = """
+        SELECT item_id, word
+        FROM items
+        WHERE word = :word
+        LIMIT 1;
+    """
+    result = fetch_all(sql, {"word": word})
+
+    if isinstance(result, dict):
+        return None
+
+    if result and len(result) > 0:
+        row = result[0]
+        return dict(getattr(row, "_mapping", row))
+
+    return None
