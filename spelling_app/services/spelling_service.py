@@ -1,6 +1,11 @@
 from spelling_app.repository.course_repo import *
 from spelling_app.repository.lesson_repo import *
-from spelling_app.repository.item_repo import *
+from spelling_app.repository.item_repo import (
+    create_item,
+    get_items_for_lesson,
+    map_item_to_lesson,
+    get_item_by_word,
+)
 from spelling_app.repository.attempt_repo import *
 from shared.db import fetch_all
 
@@ -156,6 +161,27 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
     for _, row in df.iterrows():
         word = str(row["word"]).strip()
         lesson_id = int(row["lesson_id"])
+
+        # ---------------------------
+        # B4: Word Validation Patch
+        # ---------------------------
+        # 1. Check empty or whitespace
+        if not word or word.strip() == "":
+            return {"error": f"Invalid word '{word}' — word cannot be empty."}
+
+        # 2. Length sanity check
+        if len(word) < 2 or len(word) > 40:
+            return {"error": f"Invalid word '{word}' — must be 2 to 40 characters long."}
+
+        # 3. Allowed characters: letters + hyphen
+        import re
+        if not re.match(r"^[A-Za-z-]+$", word):
+            return {"error": f"Invalid word '{word}' — contains disallowed characters."}
+
+        # 4. Blacklist common OCR or junk tokens
+        blacklist = {"na", "n/a", "---", "???", "###"}
+        if word.lower() in blacklist:
+            return {"error": f"Invalid word '{word}' — blacklisted token."}
 
         lesson_name = None
         lesson_description = None
