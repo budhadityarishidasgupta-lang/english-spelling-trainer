@@ -184,15 +184,28 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
         if not preview_only:
             ensure_lesson_exists(lesson_id, course_id)
 
+            # Try to create the item first
             item_id = create_item(word)
+
+# Case 1: Repo returned an error dict
             if isinstance(item_id, dict):
                 return item_id
-            if item_id is None:
-                return {"error": f"Failed to insert item for word '{word}'"}
 
-            map_result = map_item_to_lesson(lesson_id, item_id, course_id)
-            if isinstance(map_result, dict):
-                return map_result
+# Case 2: Item already exists (create_item returned None)
+            if item_id is None:
+    # Try to find the existing item instead of failing
+                existing = get_item_by_word(word)
+                if existing:
+                   item_id = existing["item_id"]
+                else:
+                    return {"error": f"Failed to insert or find item for word '{word}'"}
+
+# Now map the item to the lesson
+        map_result = map_item_to_lesson(lesson_id, item_id, course_id)
+
+        if isinstance(map_result, dict):
+            return map_result
+
 
         summary_row = {
             "word": word,
