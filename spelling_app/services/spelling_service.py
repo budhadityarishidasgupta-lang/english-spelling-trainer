@@ -9,7 +9,9 @@ def load_course_data():
     result = get_all_spelling_courses()
     if isinstance(result, dict):
         return result
-    return [dict(r._mapping) for r in result] if result else []
+
+    # result is already a list of dicts from course_repo, so return directly
+    return result or []
 
 
 def load_lessons(course_id):
