@@ -43,12 +43,12 @@ def map_item_to_lesson(lesson_id, item_id, sort_order=None):
 
 def get_item_by_word(word: str):
     """
-    Returns an item dict if a word already exists in the items table.
+    Returns an item dict if a word already exists in spelling_items.
     Otherwise returns None.
     """
     sql = """
         SELECT item_id, word
-        FROM items
+        FROM spelling_items
         WHERE word = :word
         LIMIT 1;
     """
