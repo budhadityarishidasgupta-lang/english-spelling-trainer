@@ -42,6 +42,9 @@ def create_spelling_lesson(course_id: int, lesson_name: str, sort_order: int):
     if isinstance(rows, dict):
         return rows  # DB error
 
+    if not rows:
+        return {"error": "Database error: Atomic lesson creation failed to return a row."}
+
     return dict(rows[0]._mapping)
 
 
