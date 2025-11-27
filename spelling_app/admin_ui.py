@@ -11,124 +11,55 @@ def _load_spelling_courses():
 
 
 def render_spelling_admin():
-    st.title("📘 Spelling App — Admin Console")
-
-    st.markdown(
-        """
-    This console allows you to:
-    - Create courses  \
-    - Upload spelling questions using CSV  \
-    - Assign courses to students  \
     """
+    Main entrypoint for the Spelling Admin console.
+    Streamlit calls this from app.py.
+    """
+    import streamlit as st
+    import pandas as pd
+    from spelling_app.services.spelling_service import (
+        load_course_data,
+        process_csv_upload,
     )
 
-    tab1, tab2, tab3 = st.tabs([
-        "Create Course",
-        "Upload Items (CSV)",
-        "Assign Courses",
-    ])
+    st.header("Spelling Trainer – Admin Console")
 
-    # -------------------------
-    # TAB 1: CREATE COURSE
-    # -------------------------
-    with tab1:
-        st.subheader("Create a New Course")
+    # 1. Load courses
+    courses = load_course_data()
+    if isinstance(courses, dict) and "error" in courses:
+        st.error(courses["error"])
+        return
 
-        title = st.text_input("Course Title")
-        desc = st.text_area("Description (optional)")
-        level = st.selectbox("Difficulty Level", ["Beginner", "Intermediate", "Advanced"])
+    # 2. Course selector
+    course_map = {c["title"]: c["course_id"] for c in courses}
+    selected_course = st.selectbox("Choose Spelling Course", list(course_map.keys()))
+    course_id = course_map[selected_course]
 
-        if st.button("Create Course"):
-            if not title:
-                st.error("Course title is required.")
-            else:
-                spelling_service.create_course(title, desc, level)
-                st.success(f"Course '{title}' created successfully!")
+    st.subheader("Upload CSV file containing spelling lessons")
+    uploaded = st.file_uploader("Choose CSV", type=["csv"])
 
-        st.markdown("---")
-        st.subheader("Existing Courses")
+    update_mode = st.radio(
+        "Choose update mode",
+        ["overwrite", "append"],
+        horizontal=True
+    )
 
-        courses = spelling_service.load_course_data()
-        if isinstance(courses, dict) and courses.get("error"):
-            st.error(courses["error"])
-        elif courses:
-            st.table(courses)
+    preview_only = st.checkbox("Preview only (do not insert into DB)")
+
+    if st.button("Process CSV Upload"):
+        if uploaded is None:
+            st.error("Please upload a CSV first.")
+            return
+
+        import pandas as pd
+        df = pd.read_csv(uploaded)
+        result = process_csv_upload(df, update_mode, preview_only, course_id)
+
+        if "error" in result:
+            st.error(result["error"])
         else:
-            st.info("No courses found yet.")
-
-    # -------------------------
-    # TAB 2: UPLOAD CSV TO IMPORT ITEMS
-    # -------------------------
-    with tab2:
-        st.header("Upload Spelling Items (CSV)")
-
-        courses = _load_spelling_courses()
-
-        if not courses:
-            st.warning("No spelling courses found. Please create a spelling course first.")
-            st.stop()
-
-        course_options = {
-            f"{c['title']} (ID {c['course_id']})": c["course_id"]
-            for c in courses
-        }
-
-        selected_course_label = st.selectbox(
-            "Select Spelling Course",
-            list(course_options.keys())
-        )
-        selected_course_id = course_options[selected_course_label]
-
-        st.markdown(
-            """
-        Upload a CSV file containing spelling words.
-        The CSV must have at least: **word, lesson_id**
-        """
-        )
-
-        uploaded_file = st.file_uploader("Choose CSV file", type=["csv"])
-
-        update_mode = st.radio(
-            "Choose update mode",
-            [
-                "Overwrite existing words",
-                "Update existing words",
-                "Add new words only"
-            ]
-        )
-
-        preview_only = st.checkbox("Preview only (do not insert into database)")
-
-        csv_df = None
-        if uploaded_file is not None:
-            try:
-                import pandas
-
-                csv_df = pandas.read_csv(uploaded_file)
-                if preview_only:
-                    st.subheader("CSV Preview")
-                    st.dataframe(csv_df.head(), use_container_width=True)
-                    st.info("Validation and processing will occur after you click 'Process CSV Upload'.")
-            except Exception as e:
-                st.error(f"Error reading CSV: {e}")
-                csv_df = None
-
-        if st.button("Process CSV Upload"):
-            if csv_df is None:
-                st.error("Please upload a valid CSV file first.")
-            else:
-                result = spelling_service.process_csv_upload(csv_df, update_mode, preview_only, selected_course_id)
-
-                if isinstance(result, dict) and "error" in result:
-                    st.error(result["error"])
-                else:
-                    st.success(result)
-
-    # -------------------------
-    # TAB 3: ASSIGN COURSES
-    # -------------------------
-    with tab3:
-        render_assign_courses_tab()
+            st.success("CSV processed successfully.")
+            st.dataframe(pd.DataFrame(result["details"]))
 
 
 def render_assign_courses_tab():
