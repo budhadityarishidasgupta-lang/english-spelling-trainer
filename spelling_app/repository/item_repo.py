@@ -19,15 +19,27 @@ def create_item(word: str):
         """
         INSERT INTO spelling_items (word, created_at)
         VALUES (:word, NOW())
+        ON CONFLICT (word) DO NOTHING
         RETURNING item_id;
         """,
         {"word": word},
     )
 
+    # Case 1: DB error on INSERT
     if isinstance(result, dict):
         return result
 
-    return result[0]._mapping["item_id"] if result else None
+    # Case 2: Conflict occurred → no row returned → look up existing item
+    if not result:
+        existing = get_item_by_word(word)
+        if isinstance(existing, dict):
+            return existing
+        if existing:
+            return existing["item_id"]
+        return None  # unexpected DB inconsistency
+
+    # Case 3: Newly inserted
+    return result[0]._mapping["item_id"]
 
 
 def map_item_to_lesson(lesson_id, item_id, sort_order=None):
@@ -43,22 +55,26 @@ def map_item_to_lesson(lesson_id, item_id, sort_order=None):
 
 def get_item_by_word(word: str):
     """
-    Returns an item dict if a word already exists in spelling_items.
-    Otherwise returns None.
+    Fetch a single spelling item row by its word.
+    Returns:
+      - dict-like row mapping containing 'item_id' and 'word'
+      - None if no row exists
+      - dict error object if the DB returned an error
     """
-    sql = """
+    rows = fetch_all(
+        """
         SELECT item_id, word
         FROM spelling_items
         WHERE word = :word
         LIMIT 1;
-    """
-    result = fetch_all(sql, {"word": word})
+        """,
+        {"word": word},
+    )
 
-    if isinstance(result, dict):
-        return None
+    if isinstance(rows, dict):
+        return rows  # DB error
 
-    if result and len(result) > 0:
-        row = result[0]
-        return dict(getattr(row, "_mapping", row))
+    if not rows:
+        return None  # word not found
 
-    return None
+    return rows[0]._mapping
