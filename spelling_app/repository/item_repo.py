@@ -2,6 +2,7 @@ from shared.db import fetch_all, execute
 
 
 def get_items_for_lesson(lesson_id):
+
     return fetch_all(
         """
         SELECT si.item_id, si.word
@@ -19,6 +20,7 @@ def create_item(word: str):
         """
         INSERT INTO spelling_items (word, created_at)
         VALUES (:word, NOW())
+        ON CONFLICT (word) DO NOTHING
         RETURNING item_id;
         """,
         {"word": word},
@@ -26,6 +28,16 @@ def create_item(word: str):
 
     if isinstance(result, dict):
         return result
+
+    # If the word already exists, ON CONFLICT DO NOTHING prevents insertion,
+    # and RETURNING item_id returns an empty list. We must manually look up the ID.
+    if not result:
+        existing = get_item_by_word(word)
+        if existing:
+            return existing["item_id"]
+        else:
+            # Should only happen on a true DB error
+            return None
 
     return result[0]._mapping["item_id"] if result else None
 

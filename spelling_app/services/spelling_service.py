@@ -218,16 +218,15 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
             if isinstance(item_id, dict):
                 return item_id
 
-            # Case 2: Item already exists (create_item returned None)
+            # Case 2: Item already exists or failed to insert.
+            # create_item now handles the ON CONFLICT logic and should return an ID
+            # or None only on a true database error.
             if item_id is None:
-                existing = get_item_by_word(word)
-                if existing:
-                    item_id = existing["item_id"]
-                else:
-                    return {"error": f"Failed to insert or find item for word '{word}'"}
+                return {"error": f"Database error inserting word '{word}'"}
 
             # Now map the item to the lesson
-            map_result = map_item_to_lesson(lesson_id, item_id, course_id)
+            # CRITICAL FIX: Removed incorrect course_id argument
+            map_result = map_item_to_lesson(lesson_id, item_id)
             if isinstance(map_result, dict):
                 return map_result
 
