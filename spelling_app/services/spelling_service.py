@@ -1,10 +1,14 @@
 from spelling_app.repository.course_repo import *
-from spelling_app.repository.lesson_repo import *
 from spelling_app.repository.item_repo import (
     create_item,
     get_items_for_lesson,
     map_item_to_lesson,
     get_item_by_word,
+)
+from spelling_app.repository.spelling_lesson_repo import (
+    get_lesson_by_name,
+    create_spelling_lesson,
+    update_spelling_lesson_sort_order,
 )
 from spelling_app.repository.attempt_repo import *
 from shared.db import fetch_all
@@ -47,12 +51,9 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
       - dry-run change summary
     course_id indicates which spelling course these lessons/items belong to.
     """
-    required_cols = {"word", "lesson_id"}
+    required_cols = {"word", "lesson_name"}
     if not required_cols.issubset(df.columns):
-        return {"error": f"CSV must contain columns: {required_cols}"}
-
-    has_lesson_name = "lesson_name" in df.columns
-    has_lesson_desc = "lesson_description" in df.columns or "lesson_desc" in df.columns
+        return {"error": f"CSV must contain columns: {', '.join(required_cols)}"}
 
     # Clean up dataframe
     df = df.copy()
@@ -123,52 +124,31 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
             else:
                 break
 
-    # Final: flatten back to df
-    balanced_rows = []
-    for lesson_id, words in lesson_groups.items():
-        for w in words:
-            balanced_rows.append({"word": w, "lesson_id": lesson_id})
-
-    df = pd.DataFrame(balanced_rows)
-
-    # Shuffle final distribution for natural randomness
-    df = df.sample(frac=1).reset_index(drop=True)
-
-    # -----------------------------
-    # END of Patch A3
-    # -----------------------------
-
-    # Validate lesson_id column
-    invalid_lesson_rows = df[~df["lesson_id"].astype(str).str.isnumeric()]
-    if len(invalid_lesson_rows) > 0:
-        return {
-            "error": "Some rows contain invalid lesson_id values.",
-            "rows": invalid_lesson_rows.to_dict(orient="records")
-        }
-
-    df["lesson_id"] = df["lesson_id"].astype(int)
-    if any(df["lesson_id"] <= 0):
-        return {
-            "error": "lesson_id must be positive integers.",
-            "rows": df[df["lesson_id"] <= 0].to_dict(orient="records")
-        }
-
-    # Skip duplicate checks across lessons; only intra-lesson duplicates are removed above.
-
+    # NOTE: The lesson rebalancing logic (Patch A3) is removed as it relies on lesson_id
+    # and is incompatible with the new lesson_name/sort_order logic.
+    
     # Dry-run result list
     summary = []
 
     # Main loop
     for _, row in df.iterrows():
-        word = normalize_word(row.get("word", ""))
-        lesson_id = int(row["lesson_id"])
+        raw_word = row.get("word", "")
+        raw_lesson_name = str(row.get("lesson_name") or "").strip() # Fix Minor 3: Handle NaN
+        sort_order = int(row.get("sort_order", 0))
+        word = normalize_word(raw_word)
 
         # ---------------------------
         # B4: Word Validation Patch
         # ---------------------------
         # 1. Check empty or whitespace
         if not word or word.strip() == "":
-            return {"error": f"Invalid word '{word}' — word cannot be empty."}
+            summary.append({
+                "word": raw_word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": "SKIP: Word is empty after normalization",
+            })
+            continue
 
         # 2. Length sanity check
         if len(word) < 2 or len(word) > 40:
@@ -184,34 +164,45 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
         if word.lower() in blacklist:
             return {"error": f"Invalid word '{word}' — blacklisted token."}
 
-        lesson_name = None
-        lesson_description = None
+        # ---------------------------
+        # B5: Lesson Creation/Update Logic
+        # ---------------------------
+        lesson_action = ""
+        
+        lesson = get_lesson_by_name(course_id, raw_lesson_name)
+        
+        if isinstance(lesson, dict) and lesson.get("error"): # Fix Minor 1: Improved error check
+            return lesson # DB error
+        
+        if lesson is None:
+            # Case A: Lesson does NOT exist -> Create it
+            lesson = create_spelling_lesson(course_id, raw_lesson_name, sort_order)
+            if isinstance(lesson, dict) and lesson.get("error"):
+                return lesson # DB error
+            lesson_action = f"CREATE LESSON: {raw_lesson_name}"
+            
+        elif lesson["sort_order"] != sort_order:
+            # Case B: Lesson exists and sort_order differs -> Update sort_order
+            update_result = update_spelling_lesson_sort_order(lesson["lesson_id"], sort_order)
+            if isinstance(update_result, dict) and update_result.get("error"):
+                return update_result # DB error
+            lesson_action = f"UPDATE SORT ORDER: {sort_order}"
+            
+        else:
+            # Case C: Lesson exists and no update needed -> Do nothing
+            pass
 
-        if has_lesson_name:
-            try:
-                lesson_name = str(row["lesson_name"]).strip()
-            except Exception:
-                lesson_name = None
+        lesson_id = lesson["lesson_id"]
+        
+        if lesson_action:
+            summary.append({"word": word, "lesson_id": lesson_id, "lesson_name": raw_lesson_name, "sort_order": sort_order, "action": lesson_action})
 
-        if has_lesson_desc:
-            # support either 'lesson_description' or 'lesson_desc'
-            if "lesson_description" in df.columns:
-                try:
-                    lesson_description = str(row["lesson_description"]).strip()
-                except Exception:
-                    lesson_description = None
-            elif "lesson_desc" in df.columns:
-                try:
-                    lesson_description = str(row["lesson_desc"]).strip()
-                except Exception:
-                    lesson_description = None
-
-        action = f"INSERT ITEM: {word} (lesson {lesson_id})"
-
+        # ---------------------------
+        # B6: Item Creation/Mapping Logic
+        # ---------------------------
+        action = f"INSERT ITEM: {word} → lesson {lesson_id} ({raw_lesson_name})"
+        
         if not preview_only:
-            # Ensure the lesson exists before inserting items
-            ensure_lesson_exists(lesson_id, course_id)
-
             # Try to create the item first
             item_id = create_item(word)
 
@@ -231,13 +222,11 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
 
         summary_row = {
             "word": word,
-            "lesson_id": lesson_id,
+            "lesson_id": lesson_id, # For debugging/tracking
+            "lesson_name": raw_lesson_name,
+            "sort_order": sort_order,
             "action": action,
         }
-        if lesson_name is not None:
-            summary_row["lesson_name"] = lesson_name
-        if lesson_description is not None:
-            summary_row["lesson_description"] = lesson_description
 
         summary.append(summary_row)
 
