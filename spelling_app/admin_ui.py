@@ -1,8 +1,16 @@
-print(">>> LOADED admin_ui FROM:", __file__)
+import streamlit as st
+import pandas as pd
+
+from shared.db import fetch_all
+
+# Import only service functions, not the module
+from spelling_app.services.spelling_service import (
+    load_course_data,
+    process_csv_upload,
+)
 
 import streamlit as st
-from shared.db import fetch_all
-from spelling_app.services import spelling_service
+
 
 
 def _load_spelling_courses():
@@ -15,12 +23,7 @@ def render_spelling_admin():
     Main entrypoint for the Spelling Admin console.
     Streamlit calls this from app.py.
     """
-    import streamlit as st
-    import pandas as pd
-    from spelling_app.services.spelling_service import (
-        load_course_data,
-        process_csv_upload,
-    )
+    
 
     st.header("Spelling Trainer – Admin Console")
 
