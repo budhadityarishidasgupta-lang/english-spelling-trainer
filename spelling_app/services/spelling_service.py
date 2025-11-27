@@ -8,6 +8,7 @@ from spelling_app.repository.item_repo import (
 )
 from spelling_app.repository.attempt_repo import *
 from shared.db import fetch_all
+from spelling_app.utils.text_normalization import normalize_word
 
 
 def load_course_data():
@@ -159,7 +160,7 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
 
     # Main loop
     for _, row in df.iterrows():
-        word = str(row["word"]).strip()
+        word = normalize_word(row.get("word", ""))
         lesson_id = int(row["lesson_id"])
 
         # ---------------------------

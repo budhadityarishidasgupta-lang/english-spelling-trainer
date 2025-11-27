@@ -1,4 +1,5 @@
 from shared.db import fetch_all, execute
+from spelling_app.utils.text_normalization import normalize_word
 
 
 def get_items_for_lesson(lesson_id):
@@ -15,6 +16,8 @@ def get_items_for_lesson(lesson_id):
 
 
 def create_item(word: str):
+    norm_word = normalize_word(word)
+
     result = fetch_all(
         """
         INSERT INTO spelling_items (word, created_at)
@@ -22,7 +25,7 @@ def create_item(word: str):
         ON CONFLICT (word) DO NOTHING
         RETURNING item_id;
         """,
-        {"word": word},
+        {"word": norm_word},
     )
 
     # Case 1: DB error on INSERT
@@ -31,7 +34,7 @@ def create_item(word: str):
 
     # Case 2: Conflict occurred → no row returned → look up existing item
     if not result:
-        existing = get_item_by_word(word)
+        existing = get_item_by_word(norm_word)
         if isinstance(existing, dict):
             return existing
         if existing:
@@ -61,14 +64,16 @@ def get_item_by_word(word: str):
       - None if no row exists
       - dict error object if the DB returned an error
     """
+    norm_word = normalize_word(word)
+
     rows = fetch_all(
         """
         SELECT item_id, word
         FROM spelling_items
-        WHERE LOWER(word) = LOWER(:word)
+        WHERE word = :word
         LIMIT 1;
         """,
-        {"word": word},
+        {"word": norm_word},
     )
 
     if isinstance(rows, dict):
