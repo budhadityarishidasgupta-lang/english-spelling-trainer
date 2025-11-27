@@ -33,6 +33,7 @@ def create_spelling_lesson(course_id: int, lesson_name: str, sort_order: int):
         """
         INSERT INTO spelling_lessons (course_id, lesson_name, sort_order)
         VALUES (:course_id, :lesson_name, :sort_order)
+        ON CONFLICT (course_id, lesson_name) DO NOTHING
         RETURNING lesson_id, course_id, lesson_name, sort_order;
         """,
         {"course_id": course_id, "lesson_name": lesson_name, "sort_order": sort_order},
@@ -42,7 +43,8 @@ def create_spelling_lesson(course_id: int, lesson_name: str, sort_order: int):
         return rows  # DB error
 
     if not rows:
-        return None # Should not happen on successful insert
+        # Conflict occurred (lesson already exists) or silent failure. Look up existing lesson.
+        return get_lesson_by_name(course_id, lesson_name)
 
     return dict(rows[0]._mapping)
 
