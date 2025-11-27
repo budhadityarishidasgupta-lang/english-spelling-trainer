@@ -177,6 +177,8 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
         if lesson is None:
             # Case A: Lesson does NOT exist -> Create it
             lesson = create_spelling_lesson(course_id, raw_lesson_name, sort_order)
+            if lesson is None:
+                return {"error": f"Database error: Failed to create or retrieve lesson '{raw_lesson_name}'."}
             if isinstance(lesson, dict) and lesson.get("error"):
                 return lesson # DB error
             lesson_action = f"CREATE LESSON: {raw_lesson_name}"
