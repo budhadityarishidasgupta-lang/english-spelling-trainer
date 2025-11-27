@@ -1,18 +1,47 @@
-from spelling_app.repository.course_repo import *
+"""
+CLEAN & NORMALIZE IMPORT SECTION
+- Remove unused imports
+- Ensure deterministic import order
+- Ensure no broken partially removed imports remain
+- Prepare file for stable CI/CD and LLM patching
+"""
+
+import pandas as pd
+import streamlit as st
+import random
+import math
+
+from shared.db import fetch_all
+from spelling_app.utils.text_normalization import normalize_word
+
+# Course repository
+from spelling_app.repository.course_repo import (
+    get_all_spelling_courses,
+    get_spelling_course_by_id,
+)
+
+# Item repository
 from spelling_app.repository.item_repo import (
     create_item,
     get_items_for_lesson,
     map_item_to_lesson,
     get_item_by_word,
 )
+
+# Spelling lesson repository
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name,
     create_spelling_lesson,
     update_spelling_lesson_sort_order,
 )
+
+# Attempts repository
 from spelling_app.repository.attempt_repo import *
-from shared.db import fetch_all
-from spelling_app.utils.text_normalization import normalize_word
+
+
+def get_course_by_id(course_id: int):
+    """Return a course by ID or None."""
+    return get_spelling_course_by_id(course_id)
 
 
 def load_course_data():
@@ -22,13 +51,6 @@ def load_course_data():
 
     # result is already a list of dicts from course_repo, so return directly
     return result or []
-
-
-def get_course_by_id(course_id: int):
-    """
-    Retrieves a single course by ID. Used for validation.
-    """
-    return get_spelling_course_by_id(course_id)
 
 
 def load_lessons(course_id):
@@ -42,11 +64,6 @@ def load_items(lesson_id):
 def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms=0):
     return log_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms)
 
-import pandas as pd
-import streamlit as st
-from spelling_app.repository.words_repo import ensure_lesson_exists
-import math
-import random
 
 def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
     """
@@ -54,13 +71,9 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
     """
     # Validate course_id before starting the expensive loop
     course = get_course_by_id(course_id)
-    if course is None or isinstance(course, dict) and "error" in course:
-        return {"error": f"Course ID {course_id} is invalid or does not exist."}  - column validation
-      - duplicate detection
-      - invalid lesson_id reporting
-      - dry-run change summary
-    course_id indicates which spelling course these lessons/items belong to.
-    """
+    if course is None or (isinstance(course, dict) and "error" in course):
+        return {"error": f"Course ID {course_id} is invalid or does not exist."}
+    
     required_cols = {"word", "lesson_name"}
     if not required_cols.issubset(df.columns):
         return {"error": f"CSV must contain columns: {', '.join(required_cols)}"}
