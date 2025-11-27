@@ -65,7 +65,7 @@ def get_item_by_word(word: str):
         """
         SELECT item_id, word
         FROM spelling_items
-        WHERE word = :word
+        WHERE LOWER(word) = LOWER(:word)
         LIMIT 1;
         """,
         {"word": word},
