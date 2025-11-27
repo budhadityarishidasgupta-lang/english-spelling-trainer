@@ -46,7 +46,9 @@ import pandas as pd
 import streamlit as st
 from spelling_app.repository.words_repo import ensure_lesson_exists
 import math
-import randomdef process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
+import random
+
+def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
     """
     Enhanced CSV processing with:
     """
