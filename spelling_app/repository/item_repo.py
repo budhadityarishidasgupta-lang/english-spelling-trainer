@@ -32,8 +32,11 @@ def create_item(word: str):
     if isinstance(result, dict):
         return result
 
+    # NEW: Convert CursorResult to list of rows
+    rows = list(result)
+
     # Case 2: Conflict occurred → no row returned → look up existing item
-    if not result:
+    if not rows:
         existing = get_item_by_word(norm_word)
         if isinstance(existing, dict):
             return existing
@@ -42,7 +45,7 @@ def create_item(word: str):
         return None  # unexpected DB inconsistency
 
     # Case 3: Newly inserted
-    return result[0]._mapping["item_id"]
+    return rows[0]._mapping["item_id"]
 
 
 def map_item_to_lesson(lesson_id, item_id, sort_order=None):
