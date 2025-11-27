@@ -24,6 +24,13 @@ def load_course_data():
     return result or []
 
 
+def get_course_by_id(course_id: int):
+    """
+    Retrieves a single course by ID. Used for validation.
+    """
+    return get_spelling_course_by_id(course_id)
+
+
 def load_lessons(course_id):
     return get_lessons(course_id)
 
@@ -39,13 +46,14 @@ import pandas as pd
 import streamlit as st
 from spelling_app.repository.words_repo import ensure_lesson_exists
 import math
-import random
-
-
-def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
+import randomdef process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
     """
     Enhanced CSV processing with:
-      - column validation
+    """
+    # Validate course_id before starting the expensive loop
+    course = get_course_by_id(course_id)
+    if course is None or isinstance(course, dict) and "error" in course:
+        return {"error": f"Course ID {course_id} is invalid or does not exist."}  - column validation
       - duplicate detection
       - invalid lesson_id reporting
       - dry-run change summary
