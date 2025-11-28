@@ -14,34 +14,27 @@ import math
 from shared.db import fetch_all
 from spelling_app.utils.text_normalization import normalize_word
 
-# Course repository
-from spelling_app.repository.course_repo import (
-    get_all_spelling_courses,
-    get_spelling_course_by_id,
-)
-
-# Item repository
+# Course repositorfrom spelling_app.repository.course_repo import *
 from spelling_app.repository.item_repo import (
     create_item,
     get_items_for_lesson,
     map_item_to_lesson,
     get_item_by_word,
 )
-
-# Spelling lesson repository
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name,
     create_spelling_lesson,
     update_spelling_lesson_sort_order,
 )
-
-# Attempts repository
 from spelling_app.repository.attempt_repo import *
+from shared.db import fetch_all
+from spelling_app.utils.text_normalization import normalize_word
 
-
-def get_course_by_id(course_id: int):
-    """Return a course by ID or None."""
-    return get_spelling_course_by_id(course_id)
+import pandas as pd
+import streamlit as st
+import random
+import math
+import re
 
 
 def load_course_data():
@@ -65,22 +58,226 @@ def record_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct
     return log_attempt(user_id, course_id, lesson_id, item_id, typed_answer, correct, response_ms)
 
 
-def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
+def process_csv_upload(
+    df: pd.DataFrame,
+    update_mode: str,
+    preview_only: bool,
+    course_id: int,
+):
     """
-    Enhanced CSV processing with:
+    Process a CSV of spelling words and lesson names for a given spelling course.
+
+    Expected CSV columns:
+      - word          (required)
+      - lesson_name   (required)
+      - sort_order    (optional, integer; default 0)
+
+    Behaviour:
+      - For each (course_id, lesson_name), ensures a spelling lesson exists
+        in spelling_lessons (create if missing, update sort_order if changed).
+      - Ensures each word exists in spelling_items (create if missing).
+      - Maps (lesson_id, item_id) into spelling_lesson_items (ON CONFLICT DO NOTHING).
+      - If preview_only is True, does NOT write to DB, only returns a summary.
     """
-    # Validate course_id before starting the expensive loop
-    course = get_course_by_id(course_id)
-    if course is None or (isinstance(course, dict) and "error" in course):
-        return {"error": f"Course ID {course_id} is invalid or does not exist."}
-    
+    if df is None:
+        return {"error": "No CSV file uploaded."}
+
+    # Ensure required columns
     required_cols = {"word", "lesson_name"}
     if not required_cols.issubset(df.columns):
-        return {"error": f"CSV must contain columns: {', '.join(required_cols)}"}
+        return {
+            "error": f"CSV must contain columns: {', '.join(sorted(required_cols))}"
+        }
 
-    # Clean up dataframe
+    # Work on a copy
     df = df.copy()
-    df["word"] = df["word"].astype(str).str.strip()
+
+    # Normalise sort_order column
+    if "sort_order" not in df.columns:
+        df["sort_order"] = 0
+
+    # Clean obvious junk in sort_order
+    def _safe_int(x):
+        try:
+            return int(x)
+        except Exception:
+            return 0
+
+    df["sort_order"] = df["sort_order"].apply(_safe_int)
+
+    # Drop rows with completely empty word
+    df["word"] = df["word"].astype(str)
+    df = df[df["word"].str.strip() != ""]
+    if df.empty:
+        return {"error": "CSV has no valid non-empty words."}
+
+    # Remove exact duplicate rows (same word + lesson_name + sort_order)
+    before = len(df)
+    df = df.drop_duplicates(subset=["word", "lesson_name", "sort_order"])
+    removed = before - len(df)
+
+    summary = []
+    if removed > 0:
+        summary.append({
+            "word": "",
+            "lesson_name": "",
+            "sort_order": "",
+            "action": f"Removed {removed} duplicate row(s) inside the CSV."
+        })
+
+    # Main loop
+    for _, row in df.iterrows():
+        raw_word = row.get("word", "")
+        raw_lesson_name = str(row.get("lesson_name") or "").strip()
+        sort_order = _safe_int(row.get("sort_order", 0))
+
+        # Normalise the word consistently (quotes, spaces, unicode)
+        word = normalize_word(raw_word)
+
+        # --- Word-level validation (NON-FATAL) ---
+        if not word:
+            summary.append({
+                "word": raw_word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": "SKIP: Word empty after normalization",
+            })
+            continue
+
+        if len(word) < 2 or len(word) > 40:
+            summary.append({
+                "word": raw_word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": f"SKIP: Invalid length ({len(word)} chars)",
+            })
+            continue
+
+        # Only letters and hyphen are allowed
+        if not re.match(r"^[A-Za-z-]+$", word):
+            summary.append({
+                "word": raw_word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": "SKIP: Contains disallowed characters",
+            })
+            continue
+
+        blacklist = {"na", "n/a", "---", "???", "###"}
+        if word.lower() in blacklist:
+            summary.append({
+                "word": raw_word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": "SKIP: Blacklisted token",
+            })
+            continue
+
+        # --- Lesson handling (Option A: spelling_lessons) ---
+        if not raw_lesson_name:
+            raw_lesson_name = "Lesson 1"
+
+        lesson_action = ""
+
+        # Find by (course_id, lesson_name)
+        lesson = get_lesson_by_name(course_id, raw_lesson_name)
+
+        if isinstance(lesson, dict) and lesson.get("error"):
+            # DB error from repo
+            return lesson
+
+        if lesson is None:
+            # Create spelling lesson
+            lesson = create_spelling_lesson(course_id, raw_lesson_name, sort_order)
+            if lesson is None:
+                return {
+                    "error": f"Database error: Failed to create or retrieve lesson '{raw_lesson_name}'."
+                }
+            if isinstance(lesson, dict) and lesson.get("error"):
+                return lesson
+            lesson_action = f"CREATE LESSON: {raw_lesson_name}"
+        else:
+            # Existing lesson: update sort_order if changed
+            if "sort_order" in lesson and lesson["sort_order"] != sort_order:
+                update_result = update_spelling_lesson_sort_order(
+                    lesson["lesson_id"], sort_order
+                )
+                if isinstance(update_result, dict) and update_result.get("error"):
+                    return update_result
+                lesson_action = f"UPDATE SORT ORDER: {sort_order}"
+
+        lesson_id = lesson["lesson_id"]
+
+        if lesson_action:
+            summary.append({
+                "word": word,
+                "lesson_name": raw_lesson_name,
+                "sort_order": sort_order,
+                "action": lesson_action,
+            })
+
+        # --- Item creation / mapping ---
+        if not preview_only:
+            item_id = create_item(word)
+
+            if isinstance(item_id, dict):
+                # Repo-level DB error
+                return item_id
+
+            if item_id is None:
+                return {
+                    "error": f"Database error inserting word '{word}'"
+                }
+
+            map_result = map_item_to_lesson(lesson_id, item_id)
+            if isinstance(map_result, dict):
+                return map_result
+
+        summary.append({
+            "word": word,
+            "lesson_name": raw_lesson_name,
+            "sort_order": sort_order,
+            "action": f"INSERT ITEM: {word} → {raw_lesson_name}",
+        })
+
+    return {
+        "message": "CSV preview generated" if preview_only else "CSV updated successfully",
+        "preview_only": preview_only,
+        "details": summary,
+    }
+
+def load_lessons_for_course(course_id: int):
+    """
+    Returns all lessons belonging to a given spelling course.
+    """
+    sql = """
+        SELECT lesson_id, title, instructions
+        FROM lessons
+        WHERE course_id = :course_id
+        ORDER BY lesson_id ASC;
+    """
+    result = fetch_all(sql, {"course_id": course_id})
+    if isinstance(result, dict):
+        return result
+    return [dict(r._mapping) for r in result]
+
+
+def get_lesson_progress(student_id: int, lesson_id: int):
+    """
+    Calculates percentage progress for a given student and lesson.
+    Future logic: count attempts vs total words.
+    Current logic: always return 0.
+    Patch B3 will populate.
+    """
+    return 0
+
+
+def update_course_details(course_id, title=None, description=None, difficulty=None, course_type=None):
+    return update_spelling_course(course_id, title, description, difficulty, course_type)
+
+
+def update_lesson_details(lesson_id, title=None, description=None, is_active=None):
+    return update_spelling_lesson(lesson_id, title, description, is_active).astype(str).str.strip()
     df = df[df["word"] != ""]
     df = df.dropna(subset=["word"])
 
