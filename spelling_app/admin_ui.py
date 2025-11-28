@@ -62,7 +62,18 @@ def render_spelling_admin():
             st.error(result["error"])
         else:
             st.success("CSV processed successfully.")
-            st.dataframe(pd.DataFrame(result["details"]))
+            st.dataframe(
+    pd.DataFrame(result["details"]),
+    column_order=("word", "lesson_name", "sort_order", "action"),
+    column_config={
+        "word": "Word",
+        "lesson_name": "Lesson Name",
+        "sort_order": "Sort Order",
+        "action": "Action",
+    },
+    hide_index=True,
+    use_container_width=True,
+)
 
 
 def render_assign_courses_tab():
