@@ -34,9 +34,37 @@ from spelling_app.utils.text_normalization import normalize_word
 
 def load_course_data():
     result = get_all_spelling_courses()
+
+    # If DB returned an error dict, bubble it up
     if isinstance(result, dict):
         return result
-    return result or []
+
+    # If empty, return empty list
+    if not result:
+        return []
+
+    processed = []
+    for row in result:
+
+        # SQLAlchemy Row → dict
+        if hasattr(row, "_mapping"):
+            processed.append(dict(row._mapping))
+            continue
+
+        # If already dict
+        if isinstance(row, dict):
+            processed.append(row)
+            continue
+
+        # If tuple-like, convert using keys from cursor
+        try:
+            processed.append(dict(row))
+            continue
+        except Exception:
+            # Final fallback: convert everything to string dict
+            processed.append({"value": str(row)})
+
+    return processed
 
 
 def get_course_by_id(course_id: int):
