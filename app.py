@@ -214,7 +214,6 @@ def main():
             "My Spelling Courses",
             "Student Admin",
             "Spelling Admin",
-            "Spelling Student Admin",
             "Weak Words",
             "Daily-5 Mode",
             "Missing-Letter Mode"
@@ -230,18 +229,12 @@ def main():
         render_spelling_dashboard()
 
     elif mode == "Student Admin":
-        # Synonym admin only
-        from admin_ui import render_admin_section
-        render_admin_section()
+        from spelling_app.admin_ui import render_student_admin
+        render_student_admin()
 
     elif mode == "Spelling Admin":
-        # Spelling admin only
         from spelling_app.admin_ui import render_spelling_admin
         render_spelling_admin()
-
-    elif mode == "Spelling Student Admin":
-        from spelling_app.spelling_student_admin import render_spelling_student_admin
-        render_spelling_student_admin()
 
     elif mode == "Weak Words":
         from spelling_app.weak_words_admin import render_weak_words_admin
