@@ -74,13 +74,34 @@ def get_spelling_course_by_id(course_id: int):
         {"course_id": course_id},
     )
 
+    # Normalize SQLAlchemy CursorResult → list of dicts
     if isinstance(rows, dict):
         return rows
 
     if not rows:
         return None
 
-    return dict(rows[0]._mapping)
+    first = None
+
+    for row in rows:
+        # Case 1: dict already
+        if isinstance(row, dict):
+            first = row
+            break
+
+        # Case 2: SQLAlchemy Row / RowMapping
+        if hasattr(row, "_mapping"):
+            first = dict(row._mapping)
+            break
+
+        # Case 3: fallback
+        try:
+            first = dict(row)
+            break
+        except Exception:
+            continue
+
+    return first
 
 
 def create_course(title, description=None, level=None):
