@@ -33,6 +33,58 @@ def get_course(course_id):
     return [dict(row) for row in result]
 
 
+def get_all_spelling_courses():
+    """
+    Return all courses that are of type 'spelling'.
+    This is used only by the Spelling Admin UI.
+    """
+    sql = """
+    SELECT
+        course_id,
+        title,
+        description,
+        course_type,
+        created_at
+    FROM courses
+    WHERE course_type = 'spelling'
+    ORDER BY course_id ASC;
+    """
+    result = fetch_all(sql)
+
+    # Bubble up DB errors as-is
+    return result
+
+
+def get_spelling_course_by_id(course_id: int):
+    """
+    Return a single spelling course by ID, or None if not found.
+    This is used for validation before CSV upload.
+    """
+    sql = """
+    SELECT
+        course_id,
+        title,
+        description,
+        course_type,
+        created_at
+    FROM courses
+    WHERE course_id = :course_id
+      AND course_type = 'spelling'
+    LIMIT 1;
+    """
+    rows = fetch_all(sql, {"course_id": course_id})
+
+    # If DB layer returns an error dict, bubble it up
+    if isinstance(rows, dict):
+        return rows
+
+    if not rows:
+        return None
+
+    # SQLAlchemy row → dict
+    return dict(rows[0]._mapping)
+
+
 def create_course(title, description=None, level=None):
     """
     Insert a new spelling course into the courses table.
@@ -54,19 +106,7 @@ def create_course(title, description=None, level=None):
     return result
 
 
-def get_all_spelling_courses():
-    query = """
-        SELECT course_id, title, description, course_type, created_at
-        FROM courses
-        WHERE course_type = 'spelling'
-        ORDER BY course_id ASC;
-    """
-    result = fetch_all(query)
 
-    if isinstance(result, dict):
-        return result
-
-    return [dict(getattr(row, "_mapping", row)) for row in result]
 
 
 def update_spelling_course(course_id, title=None, description=None, difficulty=None, course_type=None):
