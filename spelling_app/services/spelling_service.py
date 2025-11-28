@@ -1,34 +1,6 @@
-"""
-CLEAN & NORMALIZE IMPORT SECTION
-- Remove unused imports
-- Ensure deterministic import order
-- Ensure no broken partially removed imports remain
-- Prepare file for stable CI/CD and LLM patching
-"""
-
-import pandas as pd
-import streamlit as st
-import random
-import math
-
-from shared.db import fetch_all
-from spelling_app.utils.text_normalization import normalize_word
-
-# Course repositorfrom spelling_app.repository.course_repo import *
-from spelling_app.repository.item_repo import (
-    create_item,
-    get_items_for_lesson,
-    map_item_to_lesson,
-    get_item_by_word,
-)
-from spelling_app.repository.spelling_lesson_repo import (
-    get_lesson_by_name,
-    create_spelling_lesson,
-    update_spelling_lesson_sort_order,
-)
-from spelling_app.repository.attempt_repo import *
-from shared.db import fetch_all
-from spelling_app.utils.text_normalization import normalize_word
+# -----------------------------
+# CLEAN, WORKING IMPORT BLOCK
+# -----------------------------
 
 import pandas as pd
 import streamlit as st
@@ -36,14 +8,39 @@ import random
 import math
 import re
 
+from shared.db import fetch_all
+
+# Spelling-specific repos
+from spelling_app.repository.course_repo import (
+    get_all_spelling_courses,
+    get_spelling_course_by_id,
+)
+
+from spelling_app.repository.item_repo import (
+    create_item,
+    get_item_by_word,
+    map_item_to_lesson,
+)
+
+from spelling_app.repository.spelling_lesson_repo import (
+    get_lesson_by_name,
+    create_spelling_lesson,
+    update_spelling_lesson_sort_order,
+)
+
+from spelling_app.repository.attempt_repo import *
+from spelling_app.utils.text_normalization import normalize_word
+
 
 def load_course_data():
     result = get_all_spelling_courses()
     if isinstance(result, dict):
         return result
-
-    # result is already a list of dicts from course_repo, so return directly
     return result or []
+
+
+def get_course_by_id(course_id: int):
+    return get_spelling_course_by_id(course_id)
 
 
 def load_lessons(course_id):
