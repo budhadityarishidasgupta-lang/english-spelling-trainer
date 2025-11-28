@@ -1,6 +1,10 @@
 from shared.db import fetch_all, execute
 
 
+# ------------------------------------------------------------
+# GENERAL COURSE FUNCTIONS (Legacy/Synonym)
+# ------------------------------------------------------------
+
 def get_all_courses():
     sql = """
     SELECT
@@ -18,7 +22,7 @@ def get_all_courses():
         return result
 
     # Normal case: SQLAlchemy rows -> list[dict]
-    return [dict(getattr(row, "_mapping", row)) for row in result]
+    return [dict(getattr(row, "_mapping", row)) for row in result] if result else []
 
 
 def get_course(course_id):
@@ -30,58 +34,52 @@ def get_course(course_id):
 
     result = fetch_all(sql, {"id": course_id})
 
-    return [dict(row) for row in result]
+    return [dict(row) for row in result] if result else []
 
+
+# ------------------------------------------------------------
+# SPELLING COURSES (Option 1: stored in global "courses" table)
+# ------------------------------------------------------------
 
 def get_all_spelling_courses():
     """
-    Return all courses that are of type 'spelling'.
-    This is used only by the Spelling Admin UI.
+    Returns all courses where course_type='spelling'.
+    Always returns a list of dicts.
     """
-    sql = """
-    SELECT
-        course_id,
-        title,
-        description,
-        course_type,
-        created_at
-    FROM courses
-    WHERE course_type = 'spelling'
-    ORDER BY course_id ASC;
-    """
-    result = fetch_all(sql)
+    rows = fetch_all(
+        """
+        SELECT course_id, title, description, course_type, created_at
+        FROM courses
+        WHERE course_type = 'spelling'
+        ORDER BY course_id ASC;
+        """
+    )
 
-    # Bubble up DB errors as-is
-    return result
+    # DB error?
+    if isinstance(rows, dict):
+        return rows
+
+    # Normalize
+    return [dict(r._mapping) for r in rows] if rows else []
 
 
 def get_spelling_course_by_id(course_id: int):
-    """
-    Return a single spelling course by ID, or None if not found.
-    This is used for validation before CSV upload.
-    """
-    sql = """
-    SELECT
-        course_id,
-        title,
-        description,
-        course_type,
-        created_at
-    FROM courses
-    WHERE course_id = :course_id
-      AND course_type = 'spelling'
-    LIMIT 1;
-    """
-    rows = fetch_all(sql, {"course_id": course_id})
+    rows = fetch_all(
+        """
+        SELECT course_id, title, description, course_type, created_at
+        FROM courses
+        WHERE course_id=:course_id AND course_type='spelling'
+        LIMIT 1;
+        """,
+        {"course_id": course_id},
+    )
 
-    # If DB layer returns an error dict, bubble it up
     if isinstance(rows, dict):
         return rows
 
     if not rows:
         return None
 
-    # SQLAlchemy row → dict
     return dict(rows[0]._mapping)
 
 
@@ -104,9 +102,6 @@ def create_course(title, description=None, level=None):
 
     # Bubble up error dicts
     return result
-
-
-
 
 
 def update_spelling_course(course_id, title=None, description=None, difficulty=None, course_type=None):
