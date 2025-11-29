@@ -1,12 +1,14 @@
 from shared.db import fetch_all, execute
 from datetime import date
-import hashlib
+from passlib.hash import bcrypt   # <-- correct hashing
 
-# --- Hashing Utility (for temporary password) ---
+# ---------------------------------------
+# Utility: Password hashing
+# ---------------------------------------
 
 def _hash_password(password: str) -> str:
-    """Hashes a password using SHA-256 for temporary storage."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Use bcrypt (compatible with login system)."""
+    return bcrypt.hash(password)
 
 # --- User Management ---
 
@@ -20,7 +22,7 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     # 1. Insert into users table
     result = execute(
         """
-        INSERT INTO users (name, email, password, role)
+        INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, 'student')
         RETURNING id
         """,
@@ -59,12 +61,28 @@ def get_spelling_students():
     """
     rows = fetch_all(
         """
-        SELECT u.id, u.name, u.email, u.is_active,
-               (SELECT name FROM classes cl 
-                JOIN class_students cs ON cs.class_id = u.id
-                WHERE cs.student_id = u.id LIMIT 1) AS class_name
+        SELECT 
+            u.id, u.name, u.email, u.is_active,
+            
+            -- correct classroom lookup
+            (
+                SELECT cl.name 
+                FROM class_students cs
+                JOIN classes cl ON cl.class_id = cs.class_id
+                WHERE cs.student_id = u.id
+                LIMIT 1
+            ) AS class_name,
+
+            -- real last active from spelling attempts
+            (
+                SELECT MAX(a.created_at)
+                FROM attempts a
+                WHERE a.user_id = u.id
+            ) AS last_active
+
         FROM users u
         JOIN user_categories c ON c.user_id = u.id
+
         WHERE c.category = 'spelling'
         ORDER BY u.name;
         """
