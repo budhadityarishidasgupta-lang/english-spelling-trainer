@@ -46,7 +46,7 @@ def render_student_admin():
     #############################################
     # TAB 1 — CREATE STUDENT
     #############################################
-    with tab1:
+    with tab_courses:
         st.subheader("Create New Student")
 
         name = st.text_input("Student Name")
@@ -70,7 +70,7 @@ def render_student_admin():
     #############################################
     # TAB 2 — ASSIGN STUDENT → COURSE
     #############################################
-    with tab2:
+    with tab_upload:
         st.subheader("Assign Student to Course")
 
         from spelling_app.services.enrollment_service import (
@@ -109,7 +109,7 @@ def render_student_admin():
     #############################################
     # TAB 3 — CREATE CLASS
     #############################################
-    with tab3:
+    with tab_help:
         st.subheader("Create a Class")
         class_name = st.text_input("Class Name")
 
@@ -124,7 +124,7 @@ def render_student_admin():
     #############################################
     # TAB 4 — ASSIGN STUDENTS TO CLASS
     #############################################
-    with tab4:
+    with tab_students:
         st.subheader("Assign Students to Class")
 
         classes = fetch_all("SELECT id, class_name FROM classes ORDER BY class_name;")
@@ -148,7 +148,7 @@ def render_student_admin():
     #############################################
     # TAB 5 — PERFORMANCE DASHBOARD
     #############################################
-    with tab5:
+    with tab_assign:
         st.subheader("Student Performance")
 
         results = fetch_all("""
@@ -175,18 +175,19 @@ def render_student_admin():
 def render_spelling_admin():
     st.header("📘 Spelling Administration")
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab_courses, tab_upload, tab_help, tab_students, tab_assign = st.tabs([
         "Manage Courses & Lessons",
         "Upload Words",
         "Help Text Editor",
         "Student Management",
+        "Assign Courses & Lessons",
     ])
 
 
     #############################
     # TAB 1 — MANAGE COURSES & LESSONS
     #############################
-    with tab1:
+    with tab_courses:
         st.header("📘 Manage Courses & Lessons")
 
         # ================================================
@@ -301,7 +302,7 @@ def render_spelling_admin():
     #############################
     # TAB 4 — UPLOAD WORDS
     #############################
-    with tab4:
+    with tab_students:
         st.subheader("Upload Spelling CSV")
 
         courses = load_course_data()
@@ -334,7 +335,7 @@ def render_spelling_admin():
     #############################
     # TAB 5 — HELP TEXT EDITOR
     #############################
-    with tab5:
+    with tab_assign:
         st.subheader("Edit Spelling Student Page Content")
 
         sections = {
