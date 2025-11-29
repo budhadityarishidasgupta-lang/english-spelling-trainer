@@ -17,6 +17,17 @@ from spelling_app.repository.registration_repo import (
     delete_pending_registration,
 )
 
+from spelling_app.repository.student_admin_repo import (
+    create_student_user,
+    get_spelling_students,
+    get_all_classes,
+    create_classroom,
+    archive_classroom,
+    get_class_roster,
+    assign_student_to_class,
+    unassign_student_from_class,
+)
+
 ###########################################
 # STUDENT ADMIN PANEL (TABBED INTERFACE)
 ###########################################
@@ -170,7 +181,7 @@ def render_spelling_admin():
         "Edit Courses/Lessons",
         "Upload Words",
         "Help Text Editor",
-        "Registration Requests",
+        "Student Management",
     ])
 
 
@@ -334,46 +345,259 @@ def render_spelling_admin():
 
 
     #############################
-    # TAB 6 — REGISTRATION REQUESTS
+    # TAB 6 — STUDENT MANAGEMENT
     #############################
     with tab6:
-        st.subheader("Pending Student Registrations")
+        st.subheader("Student Management")
 
-        pending = get_pending_registrations()
+        tab_reg, tab_class, tab_overview = st.tabs([
+            "Manage Registrations (Pending)",
+            "Classrooms",
+            "Student Overview",
+        ])
 
-        if not pending:
-            st.info("No pending registrations.")
-        else:
-            for row in pending:
-                rid = row._mapping["id"]
-                name = row._mapping["student_name"]
-                email = row._mapping["parent_email"]
-                created = row._mapping["created_at"]
+        # -------------------------------------------
+        # SECTION A — Manage Registrations (Pending)
+        # -------------------------------------------
+        with tab_reg:
+            st.markdown("### Pending Spelling Registrations")
+            pending = get_pending_registrations()
 
-                with st.container(border=True):
-                    st.markdown(f"### {name}")
-                    st.write(f"Email: {email}")
-                    st.write(f"Submitted: {created}")
+            if not pending:
+                st.info("No pending registrations.")
+            else:
+                # Convert to DataFrame for easier display and radio button selection
+                pending_data = []
+                for row in pending:
+                    # Use a unique key for the radio button value
+                    rid = row._mapping["id"]
+                    pending_data.append({
+                        "id": rid,
+                        "radio": f"Select {rid}",
+                        "name": row._mapping["student_name"],
+                        "email": row._mapping["parent_email"],
+                        "created_at": row._mapping["created_at"],
+                    })
+                
+                df_pending = pd.DataFrame(pending_data)
+                
+                # Display table with radio buttons
+                st.markdown("Select a registration to approve or discard:")
+                selected_radio = st.radio(
+                    "Select Registration",
+                    options=df_pending["radio"].tolist(),
+                    key="reg_radio_select",
+                    label_visibility="collapsed"
+                )
+
+                # Find the selected row
+                selected_row = df_pending[df_pending["radio"] == selected_radio].iloc[0] if not df_pending.empty else None
+                
+                st.dataframe(
+                    df_pending.drop(columns=["radio"]),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_order=["id", "name", "email", "created_at"]
+                )
+
+                if selected_row is not None:
+                    rid = int(selected_row["id"])
+                    name = selected_row["name"]
+                    email = selected_row["email"]
+
+                    st.markdown("---")
+                    st.markdown(f"**Selected:** {name} ({email})")
 
                     colA, colB = st.columns(2)
 
                     with colA:
-                        if st.button(f"Approve {rid}", key=f"approve_{rid}"):
-                            execute(
-                                """
-                                INSERT INTO users (name, email, password, role)
-                                VALUES (:n, :e, :p, 'student')
-                                """,
-                                {
-                                    "n": name,
-                                    "e": email,
-                                    "p": "changeme123",  # temp password
-                                },
-                            )
-                            delete_pending_registration(rid)
-                            st.success(f"Approved: {name}")
+                        if st.button(f"✅ Approve & Create Student", key="approve_student_btn"):
+                            new_user_id = create_student_user(name, email)
+                            if isinstance(new_user_id, dict) and "error" in new_user_id:
+                                st.error(f"Error creating user: {new_user_id['error']}")
+                            else:
+                                delete_pending_registration(rid)
+                                st.success(f"Student **{name}** created successfully! (User ID: {new_user_id})")
+                                st.experimental_rerun()
 
                     with colB:
-                        if st.button(f"Reject {rid}", key=f"reject_{rid}"):
+                        if st.button(f"❌ Discard Request", key="reject_student_btn"):
                             delete_pending_registration(rid)
-                            st.warning(f"Rejected {name}")
+                            st.warning(f"Request for {name} discarded.")
+                            st.experimental_rerun()
+
+        # -------------------------------------------
+        # SECTION B — Classrooms
+        # -------------------------------------------
+        with tab_class:
+            st.markdown("### Classroom Management")
+            
+            # --- Create Classroom ---
+            st.markdown("#### Create New Classroom")
+            with st.form("create_class_form"):
+                class_name = st.text_input("Class Name", key="new_class_name")
+                start_date = st.date_input("Start Date", value=None, key="new_class_start_date")
+                submitted = st.form_submit_button("Create Classroom")
+
+                if submitted and class_name and start_date:
+                    result = create_classroom(class_name, start_date)
+                    if isinstance(result, dict) and "error" in result:
+                        st.error(f"Error creating class: {result['error']}")
+                    else:
+                        st.success(f"Class '{class_name}' created successfully!")
+                        st.experimental_rerun()
+                elif submitted:
+                    st.error("Please enter a class name and start date.")
+
+            st.markdown("---")
+            
+            # --- View and Archive Classrooms ---
+            st.markdown("#### Existing Classrooms")
+            classes = get_all_classes()
+            
+            if not classes:
+                st.info("No classrooms found.")
+            else:
+                df_classes = pd.DataFrame([dict(r._mapping) for r in classes])
+                df_classes["start_date"] = pd.to_datetime(df_classes["start_date"]).dt.date
+                df_classes["archived_at"] = df_classes["archived_at"].apply(lambda x: x.strftime("%Y-%m-%d") if x else "")
+                
+                st.dataframe(df_classes, use_container_width=True, hide_index=True)
+
+                # --- Archive Classroom ---
+                st.markdown("#### Archive Classroom")
+                active_classes = df_classes[df_classes["is_archived"] == False]
+                if not active_classes.empty:
+                    class_map = {f"{r['name']} (ID: {r['class_id']})": r['class_id'] for _, r in active_classes.iterrows()}
+                    selected_class_label = st.selectbox(
+                        "Select Class to Archive",
+                        list(class_map.keys()),
+                        key="archive_class_select"
+                    )
+                    selected_class_id = class_map.get(selected_class_label)
+
+                    if st.button("Archive Selected Classroom", key="archive_class_btn"):
+                        result = archive_classroom(selected_class_id)
+                        if isinstance(result, dict) and "error" in result:
+                            st.error(f"Error archiving class: {result['error']}")
+                        else:
+                            st.success(f"Class '{selected_class_label}' archived successfully.")
+                            st.experimental_rerun()
+                else:
+                    st.info("No active classes to archive.")
+
+                st.markdown("---")
+
+                # --- Assign/Unassign Students ---
+                st.markdown("#### Assign/Unassign Students")
+                
+                all_students = get_spelling_students()
+                if not all_students:
+                    st.warning("No spelling students found to assign.")
+                else:
+                    df_students = pd.DataFrame([dict(r._mapping) for r in all_students])
+                    student_map = {f"{r['name']} ({r['email']})": r['id'] for _, r in df_students.iterrows()}
+                    
+                    class_map_all = {f"{r['name']} (ID: {r['class_id']})": r['class_id'] for _, r in df_classes.iterrows()}
+                    selected_class_assign_label = st.selectbox(
+                        "Select Class for Roster Management",
+                        list(class_map_all.keys()),
+                        key="roster_class_select"
+                    )
+                    selected_class_assign_id = class_map_all.get(selected_class_assign_label)
+
+                    if selected_class_assign_id:
+                        roster = get_class_roster(selected_class_assign_id)
+                        roster_ids = {r._mapping["id"] for r in roster}
+                        
+                        st.markdown(f"##### Current Roster for {selected_class_assign_label}")
+                        if roster:
+                            st.dataframe(pd.DataFrame([dict(r._mapping) for r in roster]), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("This class has no students.")
+
+                        st.markdown("##### Add/Remove Students")
+                        
+                        col_add, col_remove = st.columns(2)
+
+                        with col_add:
+                            st.markdown("###### Add Student")
+                            students_to_add = df_students[~df_students["id"].isin(roster_ids)]
+                            if not students_to_add.empty:
+                                student_add_map = {f"{r['name']} ({r['email']})": r['id'] for _, r in students_to_add.iterrows()}
+                                student_add_label = st.selectbox(
+                                    "Select Student to Add",
+                                    list(student_add_map.keys()),
+                                    key="student_add_select"
+                                )
+                                student_add_id = student_add_map.get(student_add_label)
+                                
+                                if st.button(f"Add {student_add_label.split('(')[0].strip()}", key="add_student_btn"):
+                                    assign_student_to_class(selected_class_assign_id, student_add_id)
+                                    st.success(f"Student added to {selected_class_assign_label}.")
+                                    st.experimental_rerun()
+                            else:
+                                st.info("All available students are already in this class.")
+
+                        with col_remove:
+                            st.markdown("###### Remove Student")
+                            students_in_class = df_students[df_students["id"].isin(roster_ids)]
+                            if not students_in_class.empty:
+                                student_remove_map = {f"{r['name']} ({r['email']})": r['id'] for _, r in students_in_class.iterrows()}
+                                student_remove_label = st.selectbox(
+                                    "Select Student to Remove",
+                                    list(student_remove_map.keys()),
+                                    key="student_remove_select"
+                                )
+                                student_remove_id = student_remove_map.get(student_remove_label)
+
+                                if st.button(f"Remove {student_remove_label.split('(')[0].strip()}", key="remove_student_btn"):
+                                    unassign_student_from_class(selected_class_assign_id, student_remove_id)
+                                    st.warning(f"Student removed from {selected_class_assign_label}.")
+                                    st.experimental_rerun()
+                            else:
+                                st.info("No students in this class to remove.")
+
+
+        # -------------------------------------------
+        # SECTION C — Student Overview
+        # -------------------------------------------
+        with tab_overview:
+            st.markdown("### Spelling Student Overview")
+            
+            students = get_spelling_students()
+            
+            if not students:
+                st.info("No spelling students found.")
+            else:
+                df_students = pd.DataFrame([dict(r._mapping) for r in students])
+                
+                # Clean up class_name column (it's a string from the subquery)
+                df_students["class_name"] = df_students["class_name"].apply(lambda x: x if x else "Unassigned")
+                
+                # Add a placeholder for Last Active (since we can't query attempts here)
+                df_students["last_active"] = "N/A (Requires attempts query)"
+                
+                # Search bar
+                search_term = st.text_input("Search by Name or Email", key="student_search_input")
+                
+                if search_term:
+                    df_students = df_students[
+                        df_students["name"].str.contains(search_term, case=False) |
+                        df_students["email"].str.contains(search_term, case=False)
+                    ]
+
+                st.dataframe(
+                    df_students,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_order=["id", "name", "email", "is_active", "class_name", "last_active"],
+                    column_config={
+                        "id": st.column_config.NumberColumn("ID"),
+                        "name": st.column_config.TextColumn("Name"),
+                        "email": st.column_config.TextColumn("Email"),
+                        "is_active": st.column_config.CheckboxColumn("Active"),
+                        "class_name": st.column_config.TextColumn("Class"),
+                        "last_active": st.column_config.TextColumn("Last Active"),
+                    }
+                )
