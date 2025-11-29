@@ -1,0 +1,127 @@
+/*
+ * CSS for the Spelling Student UI
+ */
+
+/* --- General Layout and Streamlit Overrides --- */
+
+/* Hide the Streamlit sidebar by default for full-screen experience */
+.css-1lcbmhc, .css-1d3fclg {
+    display: none !important;
+}
+
+/* Show the sidebar when the toggle is active (handled by Streamlit's internal state) */
+/* We will use a custom button to toggle the state */
+
+/* Main content area padding */
+.main .block-container {
+    padding-top: 1rem;
+    padding-right: 2rem;
+    padding-left: 2rem;
+    padding-bottom: 1rem;
+}
+
+/* --- Card Styling --- */
+div.stCard {
+    border-radius: 10px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.1);
+    transition: 0.3s;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+/* --- Progress Bar Styling (Custom look) --- */
+.stProgress > div > div > div > div {
+    background-color: #4CAF50; /* Green */
+    border-radius: 5px;
+    transition: width 0.5s ease-in-out;
+}
+
+.stProgress > div > div > div {
+    background-color: #f3f3f3;
+    border-radius: 5px;
+    height: 10px;
+}
+
+/* --- Badge Styling --- */
+.badge {
+    display: inline-block;
+    padding: 0.3em 0.6em;
+    margin: 0 5px 5px 0;
+    font-size: 75%;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+    color: #fff;
+    background-color: #007bff; /* Blue default */
+}
+
+.badge-gold {
+    background-color: #FFD700;
+    color: #333;
+}
+
+.badge-silver {
+    background-color: #C0C0C0;
+    color: #333;
+}
+
+.badge-bronze {
+    background-color: #CD7F32;
+    color: #fff;
+}
+
+/* --- Streak Bar Styling --- */
+.streak-bar {
+    background-color: #f8d7da; /* Light red background */
+    border: 1px solid #f5c6cb;
+    color: #721c24; /* Dark red text */
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+.streak-bar .flame {
+    font-size: 1.5em;
+    margin-right: 5px;
+}
+
+/* --- Login/Registration Card Styling --- */
+.login-card {
+    padding: 20px;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    margin-top: 20px;
+}
+
+/* --- Practice Engine Styling --- */
+.word-prompt {
+    font-size: 3em;
+    font-weight: bold;
+    text-align: center;
+    margin: 40px 0;
+    padding: 20px;
+    border: 2px solid #eee;
+    border-radius: 10px;
+    background-color: #f9f9f9;
+}
+
+.feedback-correct {
+    color: #4CAF50;
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+}
+
+.feedback-incorrect {
+    color: #f44336;
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+}
