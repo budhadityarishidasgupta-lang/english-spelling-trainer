@@ -1,63 +1,76 @@
 """
-Helper service for Spelling front page help / marketing copy.
-
-For now this returns static defaults.
-In a later patch, this will be wired to a DB-backed table
-so admins can edit the content from the console.
+DB-backed help content for Spelling UI.
+Falls back to DEFAULT_SECTIONS when DB has no entry for a key.
 """
 
+from shared.db import fetch_all, execute
 from textwrap import dedent
 
 
 DEFAULT_SECTIONS = {
-    "spelling_intro": dedent(
-        """
-        Turn 11+ preparation into an engaging learning journey!  
-        Our Spelling Trainer helps learners practise tricky words, build confidence,
-        and track progress over time – in short, focused sessions.
-        """
-    ).strip(),
-    "spelling_instructions": dedent(
-        """
-        **Sign in or Register to get started:**
+    "spelling_intro": dedent("""
+        Turn 11+ preparation into an engaging learning journey!
+        Our Spelling Trainer helps learners practise tricky words,
+        build confidence, and track progress over time.
+    """).strip(),
 
-        1. Sign in with your registered email and password on the left.
-        2. After login, you’ll see your available spelling courses and lessons.
-        3. Practise the spelling lists, review mistakes, and repeat hard words.
-        4. Aim to complete at least one spelling lesson a day for best results.
-        """
-    ).strip(),
-    "spelling_registration": dedent(
-        """
-        To register as a new student:
+    "spelling_instructions": dedent("""
+        **How to start:**
+        1. Sign in using your registered email/password.
+        2. Access your assigned spelling courses.
+        3. Practise daily for 10 minutes.
+        4. Review mistakes and try again.
+    """).strip(),
 
-        - Complete the PayPal payment as instructed below.
-        - Enter your **Name** and **Email address** in the form.
-        - Your account will be created and activated by the teacher.
-        - You’ll receive an email once your login is ready.
-        """
-    ).strip(),
-    "spelling_paypal": dedent(
-        """
-        **Payment instructions (example – to be edited later):**
+    "spelling_registration": dedent("""
+        **New students:**
+        - Complete the PayPal payment.
+        - Submit the registration form.
+        - You will receive your login credentials via email.
+    """).strip(),
 
-        - Registration fee: **£14.99** (one-time access).
-        - Send the payment via PayPal to **barktuitions@gmail.com**.
-        - Use your child's name in the payment reference.
-        - After payment, submit the registration form on this page.
-
-        These details will be fully editable later from the Admin Console.
-        """
-    ).strip(),
+    "spelling_paypal": dedent("""
+        **Payment:**
+        - Fee: £14.99 (one-time access)
+        - PayPal: barktuitions@gmail.com
+        - Add your child's name in the payment note.
+    """).strip(),
 }
 
 
 def get_help_text(section_key: str) -> str:
     """
-    Return the help / marketing copy for a given section.
-
-    For now this is static content, backed by DEFAULT_SECTIONS.
-    In a later patch we will override this to pull from a DB table
-    (e.g. portal_content or help_content) that admins can edit.
+    Fetch help text from DB; fallback to defaults.
     """
+    result = fetch_all(
+        """
+        SELECT content FROM spelling_help_content
+        WHERE section_key = :k
+        """,
+        {"k": section_key},
+    )
+
+    if isinstance(result, dict):
+        # DB error, return static default
+        return DEFAULT_SECTIONS.get(section_key, "")
+
+    if result and hasattr(result[0], "_mapping"):
+        return result[0]._mapping["content"]
+
+    # No result found, return static default
     return DEFAULT_SECTIONS.get(section_key, "")
+
+
+def save_help_text(section_key: str, content: str):
+    """
+    Upsert help text into DB.
+    """
+    return execute(
+        """
+        INSERT INTO spelling_help_content (section_key, content)
+        VALUES (:k, :c)
+        ON CONFLICT (section_key)
+        DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
+        """,
+        {"k": section_key, "c": content},
+    )
