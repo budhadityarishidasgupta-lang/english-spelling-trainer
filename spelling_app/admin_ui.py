@@ -380,10 +380,6 @@ def render_spelling_admin():
             "Classrooms",
             "Assign Courses & Lessons",
             "Student Overview",
-        ])Lessons",
-            "Student Overview",
-        ])Lessons",
-            "Student Overview",
         ])
 
         # -------------------------------------------
