@@ -1,6 +1,7 @@
 import streamlit as st
 
 from spelling_app.services.help_service import get_help_text
+from spelling_app.repository.registration_repo import create_pending_registration
 
 
 def render_spelling_student_page():
@@ -81,10 +82,8 @@ def render_spelling_student_page():
             if not reg_name or not reg_email:
                 st.error("Please enter both name and email.")
             else:
-                # NOTE: We only show a confirmation message here.
-                # In a later patch we will hook this into the existing
-                # pending_registrations / teacher-application flow.
+                create_pending_registration(reg_name, reg_email)
                 st.success(
-                    "Thank you! Your registration details have been recorded. "
-                    "The teacher will contact you after verifying the payment."
+                    "Thank you! Your registration has been received. "
+                    "The teacher will contact you after verifying payment."
                 )

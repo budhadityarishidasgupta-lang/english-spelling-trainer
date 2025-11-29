@@ -12,6 +12,11 @@ from spelling_app.services.help_service import (
     save_help_text,
 )
 
+from spelling_app.repository.registration_repo import (
+    get_pending_registrations,
+    delete_pending_registration,
+)
+
 ###########################################
 # STUDENT ADMIN PANEL (TABBED INTERFACE)
 ###########################################
@@ -159,12 +164,13 @@ def render_student_admin():
 def render_spelling_admin():
     st.header("📘 Spelling Administration")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Create Course",
         "Create Lesson",
         "Edit Courses/Lessons",
         "Upload Words",
         "Help Text Editor",
+        "Registration Requests",
     ])
 
 
@@ -325,3 +331,49 @@ def render_spelling_admin():
         if st.button("Save Changes", key="help_editor_save"):
             save_help_text(section_key, new_text)
             st.success("Content updated successfully!")
+
+
+    #############################
+    # TAB 6 — REGISTRATION REQUESTS
+    #############################
+    with tab6:
+        st.subheader("Pending Student Registrations")
+
+        pending = get_pending_registrations()
+
+        if not pending:
+            st.info("No pending registrations.")
+        else:
+            for row in pending:
+                rid = row._mapping["id"]
+                name = row._mapping["student_name"]
+                email = row._mapping["parent_email"]
+                created = row._mapping["created_at"]
+
+                with st.container(border=True):
+                    st.markdown(f"### {name}")
+                    st.write(f"Email: {email}")
+                    st.write(f"Submitted: {created}")
+
+                    colA, colB = st.columns(2)
+
+                    with colA:
+                        if st.button(f"Approve {rid}", key=f"approve_{rid}"):
+                            execute(
+                                """
+                                INSERT INTO users (name, email, password, role)
+                                VALUES (:n, :e, :p, 'student')
+                                """,
+                                {
+                                    "n": name,
+                                    "e": email,
+                                    "p": "changeme123",  # temp password
+                                },
+                            )
+                            delete_pending_registration(rid)
+                            st.success(f"Approved: {name}")
+
+                    with colB:
+                        if st.button(f"Reject {rid}", key=f"reject_{rid}"):
+                            delete_pending_registration(rid)
+                            st.warning(f"Rejected {name}")
