@@ -7,6 +7,11 @@ from spelling_app.services.spelling_service import (
     process_csv_upload,
 )
 
+from spelling_app.services.help_service import (
+    get_help_text,
+    save_help_text,
+)
+
 ###########################################
 # STUDENT ADMIN PANEL (TABBED INTERFACE)
 ###########################################
@@ -154,11 +159,12 @@ def render_student_admin():
 def render_spelling_admin():
     st.header("📘 Spelling Administration")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Create Course",
         "Create Lesson",
         "Edit Courses/Lessons",
         "Upload Words",
+        "Help Text Editor",
     ])
 
 
@@ -281,3 +287,41 @@ def render_spelling_admin():
                     else:
                         st.success(result["message"])
                         st.dataframe(pd.DataFrame(result["details"]), use_container_width=True)
+
+
+    #############################
+    # TAB 5 — HELP TEXT EDITOR
+    #############################
+    with tab5:
+        st.subheader("Edit Spelling Student Page Content")
+
+        sections = {
+            "Intro Section": "spelling_intro",
+            "Instructions": "spelling_instructions",
+            "Registration Info": "spelling_registration",
+            "PayPal / Payment Info": "spelling_paypal",
+        }
+
+        selected_label = st.selectbox(
+            "Select Section to Edit",
+            list(sections.keys()),
+            key="help_editor_select",
+        )
+
+        section_key = sections[selected_label]
+        current_text = get_help_text(section_key)
+
+        st.markdown("### Current Content")
+        st.info(current_text)
+
+        st.markdown("### New Content")
+        new_text = st.text_area(
+            "Edit text",
+            value=current_text,
+            height=300,
+            key="help_editor_textarea",
+        )
+
+        if st.button("Save Changes", key="help_editor_save"):
+            save_help_text(section_key, new_text)
+            st.success("Content updated successfully!")
