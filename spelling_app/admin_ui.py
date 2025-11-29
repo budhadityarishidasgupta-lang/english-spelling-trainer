@@ -201,11 +201,13 @@ def render_spelling_admin():
 
             if not pending:
                 st.info("No pending registrations.")
-            else:
-                # Convert to DataFrame for easier display and radio button selection
-                pending_data = []
-                for row in pending:
-                    # Use a unique key for the radio button value
+                return
+
+            # Build pending_data safely
+            pending_data = []
+            for row in pending:
+                # Check if row is a SQLAlchemy RowMapping (common return type)
+                if hasattr(row, "_mapping"):
                     rid = row._mapping["id"]
                     pending_data.append({
                         "id": rid,
@@ -214,27 +216,42 @@ def render_spelling_admin():
                         "email": row._mapping["parent_email"],
                         "created_at": row._mapping["created_at"],
                     })
-                
-                df_pending = pd.DataFrame(pending_data)
-                
-                # Display table with radio buttons
-                st.markdown("Select a registration to approve or discard:")
-                selected_radio = st.radio(
-                    "Select Registration",
-                    options=df_pending["radio"].tolist(),
-                    key="reg_radio_select",
-                    label_visibility="collapsed"
-                )
+                # Fallback for dict or other iterable types
+                elif isinstance(row, dict) and "id" in row:
+                    rid = row["id"]
+                    pending_data.append({
+                        "id": rid,
+                        "radio": f"Select {rid}",
+                        "name": row["student_name"],
+                        "email": row["parent_email"],
+                        "created_at": row["created_at"],
+                    })
 
-                # Find the selected row
-                selected_row = df_pending[df_pending["radio"] == selected_radio].iloc[0] if not df_pending.empty else None
-                
-                st.dataframe(
-                    df_pending.drop(columns=["radio"]),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_order=["id", "name", "email", "created_at"]
-                )
+            df_pending = pd.DataFrame(pending_data)
+
+            # If table exists but has no rows
+            if df_pending.empty:
+                st.info("No valid registrations found.")
+                return
+
+            # Display table with radio buttons
+            st.markdown("Select a registration to approve or discard:")
+            selected_radio = st.radio(
+                "Select Registration",
+                options=df_pending["radio"].tolist(),
+                key="reg_radio_select",
+                label_visibility="collapsed"
+            )
+
+            # Find the selected row
+            selected_row = df_pending[df_pending["radio"] == selected_radio].iloc[0]
+
+            st.dataframe(
+                df_pending.drop(columns=["radio"]),
+                use_container_width=True,
+                hide_index=True,
+                column_order=["id", "name", "email", "created_at"]
+            )
 
                 if selected_row is not None:
                     rid = int(selected_row["id"])
