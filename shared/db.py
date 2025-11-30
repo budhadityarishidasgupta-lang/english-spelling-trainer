@@ -27,9 +27,30 @@ def fetch_all(sql, params=None):
 
 # Helper: run INSERT/UPDATE/DELETE
 def execute(query, params=None):
+    """Execute a write query.
+
+    Behaviour:
+    - For plain INSERT/UPDATE/DELETE (no RETURNING): returns {"status": "success"} or {"error": ...}
+    - For INSERT ... RETURNING / UPDATE ... RETURNING: returns a list of rows, like fetch_all(),
+      so existing call-sites that expect rows continue to work.
+    """
     try:
         with engine.begin() as conn:
-            conn.execute(text(query), params or {})
+            result = conn.execute(text(query), params or {})
+
+            # If this is a RETURNING query, fetch and return rows
+            if "RETURNING" in query.upper():
+                try:
+                    rows = result.fetchall()
+                except Exception:
+                    # Some drivers expose .all() instead of .fetchall()
+                    try:
+                        rows = result.all()
+                    except Exception:
+                        rows = []
+                return rows
+
+        # Non-RETURNING write: simple status dict
         return {"status": "success"}
     except SQLAlchemyError as e:
         return {"error": str(e)}
