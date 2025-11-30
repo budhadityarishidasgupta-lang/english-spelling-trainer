@@ -1,16 +1,21 @@
-from shared.db import fetch_all, execute
 from datetime import date
-from passlib.hash import bcrypt   # <-- correct hashing
+from passlib.hash import bcrypt
+
+from shared.db import fetch_all, execute
+
 
 # ---------------------------------------
 # Utility: Password hashing
 # ---------------------------------------
 
 def _hash_password(password: str) -> str:
-    """Use bcrypt (compatible with login system)."""
+    """Use bcrypt (compatible with the existing login system)."""
     return bcrypt.hash(password)
 
-# --- User Management ---
+
+# ---------------------------------------
+# User Management
+# ---------------------------------------
 
 def create_student_user(name: str, email: str, temp_password: str = "Learn123!") -> int | dict:
     """
@@ -18,30 +23,31 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     Returns the new user_id or an error dict.
     """
     hashed_password = _hash_password(temp_password)
-    
-    # 1. Insert into users table
-    result = execute(
+
+    # 1) Insert into users and fetch the generated user_id
+    rows = fetch_all(
         """
-        INSERT INTO users (name, email, password_hash, role)
-        VALUES (:n, :e, :p, 'student')
-        RETURNING id
+        INSERT INTO users (name, email, password_hash, role, is_active, created_at)
+        VALUES (:n, :e, :p, 'student', TRUE, NOW())
+        RETURNING user_id
         """,
-        {
-            "n": name,
-            "e": email,
-            "p": hashed_password,
-        },
+        {"n": name, "e": email, "p": hashed_password},
     )
 
-    if isinstance(result, dict) and "error" in result:
-        return result
+    if not rows:
+        return {"error": "Failed to create user row"}
 
-    # The execute function for INSERT RETURNING should return a list of rows or an error dict.
-    # Assuming it returns the ID directly or a list containing the ID.
-    new_user_id = result[0]["id"] if isinstance(result, list) and result else result
+    row = rows[0]
+    if hasattr(row, "_mapping"):
+        new_user_id = row._mapping["user_id"]
+    elif isinstance(row, dict):
+        new_user_id = row["user_id"]
+    else:
+        # fallback: assume positional tuple
+        new_user_id = row[0]
 
-    # 2. Insert into user_categories table
-    category_result = execute(
+    # 2) Tag as a spelling student in user_categories
+    cat_result = execute(
         """
         INSERT INTO user_categories (user_id, category)
         VALUES (:uid, 'spelling')
@@ -49,52 +55,50 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
         {"uid": new_user_id},
     )
 
-    if isinstance(category_result, dict) and "error" in category_result:
-        # In a real app, we would roll back the user creation here.
-        return category_result
+    if isinstance(cat_result, dict) and "error" in cat_result:
+        return cat_result
 
     return new_user_id
 
+
 def get_spelling_students():
     """
-    Retrieves all students in the 'spelling' category with their class name.
+    Retrieves all students in the 'spelling' category with their class name and last active date.
     """
     rows = fetch_all(
         """
-        SELECT 
-            u.id, u.name, u.email, u.is_active,
-            
-            -- correct classroom lookup
+        SELECT
+            u.user_id AS id,
+            u.name,
+            u.email,
+            u.is_active,
             (
-                SELECT cl.name 
+                SELECT cl.name
                 FROM class_students cs
                 JOIN classes cl ON cl.class_id = cs.class_id
-                WHERE cs.student_id = u.id
+                WHERE cs.student_id = u.user_id
                 LIMIT 1
             ) AS class_name,
-
-            -- real last active from spelling attempts
             (
                 SELECT MAX(a.created_at)
                 FROM attempts a
-                WHERE a.user_id = u.id
+                WHERE a.user_id = u.user_id
             ) AS last_active
-
         FROM users u
-        JOIN user_categories c ON c.user_id = u.id
-
+        JOIN user_categories c ON c.user_id = u.user_id
         WHERE c.category = 'spelling'
         ORDER BY u.name;
         """
     )
     return rows
 
-# --- Classroom Management ---
+
+# ---------------------------------------
+# Classroom Management
+# ---------------------------------------
 
 def get_all_classes():
-    """
-    Retrieves all classrooms.
-    """
+    """Retrieves all classrooms."""
     rows = fetch_all(
         """
         SELECT class_id, name, start_date, is_archived, archived_at
@@ -104,11 +108,10 @@ def get_all_classes():
     )
     return rows
 
+
 def create_classroom(name: str, start_date: date) -> int | dict:
-    """
-    Creates a new classroom.
-    """
-    result = execute(
+    """Creates a new classroom."""
+    rows = fetch_all(
         """
         INSERT INTO classes (name, start_date)
         VALUES (:n, :sd)
@@ -116,12 +119,20 @@ def create_classroom(name: str, start_date: date) -> int | dict:
         """,
         {"n": name, "sd": start_date},
     )
-    return result[0]["class_id"] if isinstance(result, list) and result else result
+    if not rows:
+        return {"error": "Failed to create classroom"}
 
-def archive_classroom(class_id: int) -> dict | None:
-    """
-    Archives a classroom.
-    """
+    row = rows[0]
+    if hasattr(row, "_mapping"):
+        return row._mapping["class_id"]
+    elif isinstance(row, dict):
+        return row["class_id"]
+    else:
+        return row[0]
+
+
+def archive_classroom(class_id: int):
+    """Archives a classroom (does not delete students)."""
     return execute(
         """
         UPDATE classes
@@ -131,15 +142,17 @@ def archive_classroom(class_id: int) -> dict | None:
         {"id": class_id},
     )
 
+
 def get_class_roster(class_id: int):
-    """
-    Retrieves the roster for a specific class.
-    """
+    """Retrieves the roster for a specific class."""
     rows = fetch_all(
         """
-        SELECT u.id, u.name, u.email
+        SELECT
+            u.user_id AS id,
+            u.name,
+            u.email
         FROM users u
-        JOIN class_students cs ON cs.student_id = u.id
+        JOIN class_students cs ON cs.student_id = u.user_id
         WHERE cs.class_id = :cid
         ORDER BY u.name
         """,
@@ -147,10 +160,9 @@ def get_class_roster(class_id: int):
     )
     return rows
 
-def assign_student_to_class(class_id: int, student_id: int) -> dict | None:
-    """
-    Assigns a student to a class.
-    """
+
+def assign_student_to_class(class_id: int, student_id: int):
+    """Assigns a student to a class."""
     return execute(
         """
         INSERT INTO class_students (class_id, student_id)
@@ -160,10 +172,9 @@ def assign_student_to_class(class_id: int, student_id: int) -> dict | None:
         {"cid": class_id, "sid": student_id},
     )
 
-def unassign_student_from_class(class_id: int, student_id: int) -> dict | None:
-    """
-    Unassigns a student from a class.
-    """
+
+def unassign_student_from_class(class_id: int, student_id: int):
+    """Unassigns a student from a class."""
     return execute(
         """
         DELETE FROM class_students
