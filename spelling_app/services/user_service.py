@@ -58,6 +58,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, :r)
+        ON CONFLICT (email) DO NOTHING
         RETURNING user_id;
         """,
         {"n": name, "e": email, "p": password_hash, "r": role},
