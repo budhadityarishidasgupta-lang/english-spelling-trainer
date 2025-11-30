@@ -92,10 +92,10 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
 
         rows = fetch_all(
             """
-            INSERT INTO users (name, email, password_hash, role)
-            VALUES (:n, :e, :p, 'student')
-            ON CONFLICT (email) DO NOTHING
-            RETURNING user_id;
+INSERT INTO users (name, email, password_hash, role)
+VALUES (:n, :e, :p, 'student')
+ON CONFLICT (email) DO NOTHING
+RETURNING user_id;
             """,
             {"n": student_name, "e": parent_email, "p": hashed_password},
         )
