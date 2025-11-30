@@ -16,10 +16,24 @@ engine = create_engine(
 
 # Helper: run SELECT and return rows
 def fetch_all(sql, params=None):
+    """
+    Run a SELECT (or any query expected to return rows) and
+    always return a concrete list of row objects.
+
+    This keeps behaviour consistent with execute() for RETURNING
+    queries and avoids Result/iterator surprises.
+    """
     with engine.connect() as connection:
         try:
             result = connection.execute(text(sql), params or {})
-            return result
+            try:
+                rows = result.fetchall()
+            except Exception:
+                try:
+                    rows = result.all()
+                except Exception:
+                    rows = []
+            return rows
         except Exception as e:
             print("SQL ERROR in fetch_all():", e)
             print("Failed SQL:", sql)
@@ -31,14 +45,13 @@ def execute(query, params=None):
 
     Behaviour:
     - For plain INSERT/UPDATE/DELETE (no RETURNING): returns {"status": "success"} or {"error": ...}
-    - For INSERT ... RETURNING / UPDATE ... RETURNING: returns a list of rows, like fetch_all(),
-      so existing call-sites that expect rows continue to work.
+    - For INSERT ... RETURNING / UPDATE ... RETURNING: returns a list of rows,
+      so writers that expect rows continue to work.
     """
     try:
         with engine.begin() as conn:
             result = conn.execute(text(query), params or {})
 
-            # If this is a RETURNING query, fetch and return rows
             if "RETURNING" in query.upper():
                 try:
                     rows = result.fetchall()
