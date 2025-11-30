@@ -267,7 +267,7 @@ def render_spelling_admin():
                                 if isinstance(new_user_id, dict) and "error" in new_user_id:
                                     st.error(f"Error creating user: {new_user_id['error']}")
                                 else:
-                                    delete_pending_registration(rid)
+                                    # create_student_user already deletes from pending_registrations_spelling
                                     st.success(
                                         f"Student **{name}** created successfully! (User ID: {new_user_id})"
                                     )
