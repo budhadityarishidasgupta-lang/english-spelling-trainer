@@ -47,20 +47,16 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
     """
     Approve a spelling student registration.
 
-    Logic:
     1. If a user with this email already exists:
          - Reuse its user_id
          - Ensure 'spelling' category exists
-         - Delete pending_registrations_spelling row
+         - Delete pending_registrations_spelling row(s)
          - Return user_id
     2. If not:
-         - Create a new user (role='student')
+         - Create a new user (role='student') in an idempotent way
          - Assign 'spelling' category
-         - Delete pending_registrations_spelling row
+         - Delete pending_registrations_spelling row(s)
          - Return user_id
-
-    This is the ONLY function that should be used
-    for spelling student approval/creation.
     """
 
     try:
@@ -91,24 +87,33 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
 
             return user_id
 
-        # 2. User does not exist → create new user
+        # 2. User does not exist → attempt to create (idempotent on email)
         hashed_password = _hash_password(temp_password)
 
         rows = fetch_all(
             """
             INSERT INTO users (name, email, password_hash, role)
             VALUES (:n, :e, :p, 'student')
+            ON CONFLICT (email) DO NOTHING
             RETURNING user_id;
             """,
             {"n": student_name, "e": parent_email, "p": hashed_password},
         )
 
         if not rows:
-            return {"error": "Could not insert user."}
+            # Conflict or no RETURNING row → fetch existing user_id explicitly
+            existing_after = fetch_all(
+                "SELECT user_id FROM users WHERE email = :email",
+                {"email": parent_email},
+            )
+            if not existing_after:
+                return {"error": "Could not insert or locate user by email."}
+            user_id = _extract_user_id(existing_after[0])
+        else:
+            user_id = _extract_user_id(rows[0])
 
-        user_id = _extract_user_id(rows[0])
         if not user_id:
-            return {"error": "Could not extract user_id from insert result."}
+            return {"error": "Could not resolve user_id for created user."}
 
         # Assign spelling category
         fetch_all(
