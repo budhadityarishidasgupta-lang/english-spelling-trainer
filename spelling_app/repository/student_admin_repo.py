@@ -24,27 +24,44 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     """
     hashed_password = _hash_password(temp_password)
 
-    # 1) Insert into users and fetch the generated user_id
-    rows = fetch_all(
+    # Execute insert
+    result = execute(
         """
-        INSERT INTO users (name, email, password_hash, role, is_active, created_at)
-        VALUES (:n, :e, :p, 'student', TRUE, NOW())
-        RETURNING user_id
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (:n, :e, :p, 'student')
+        RETURNING id
         """,
-        {"n": name, "e": email, "p": hashed_password},
+        {
+            "n": name,
+            "e": email,
+            "p": hashed_password,
+        },
     )
 
-    if not rows:
-        return {"error": "Failed to create user row"}
+    # Handle error dicts
+    if isinstance(result, dict) and "error" in result:
+        return result
 
-    row = rows[0]
-    if hasattr(row, "_mapping"):
-        new_user_id = row._mapping["user_id"]
-    elif isinstance(row, dict):
-        new_user_id = row["user_id"]
+    # Handle SQLAlchemy CursorResult
+    if hasattr(result, "fetchone"):
+        row = result.fetchone()
+        if row and "id" in row._mapping:
+            new_user_id = row._mapping["id"]
+        else:
+            return {"error": "Failed to extract user ID from cursor result."}
+
+    # Handle list return (older execute() behavior)
+    elif isinstance(result, list) and result:
+        row = result[0]
+        if isinstance(row, dict):
+            new_user_id = row.get("id")
+        elif hasattr(row, "_mapping"):
+            new_user_id = row._mapping.get("id")
+        else:
+            return {"error": "Unknown row format (list case)."}
+
     else:
-        # fallback: assume positional tuple
-        new_user_id = row[0]
+        return {"error": "Unexpected execute() return type."}
 
     # 2) Tag as a spelling student in user_categories
     cat_result = execute(
