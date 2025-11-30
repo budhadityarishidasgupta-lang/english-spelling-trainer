@@ -201,85 +201,83 @@ def render_spelling_admin():
 
             if not pending:
                 st.info("No pending registrations.")
-                return
+            else:
+                # Build pending_data safely for DataFrame + radio
+                pending_data = []
+                for row in pending:
+                    if hasattr(row, "_mapping"):
+                        rid = row._mapping["id"]
+                        pending_data.append(
+                            {
+                                "id": rid,
+                                "radio": f"Select {rid}",
+                                "name": row._mapping["student_name"],
+                                "email": row._mapping["parent_email"],
+                                "created_at": row._mapping["created_at"],
+                            }
+                        )
+                    elif isinstance(row, dict) and "id" in row:
+                        rid = row["id"]
+                        pending_data.append(
+                            {
+                                "id": rid,
+                                "radio": f"Select {rid}",
+                                "name": row["student_name"],
+                                "email": row["parent_email"],
+                                "created_at": row["created_at"],
+                            }
+                        )
 
-            # Build pending_data safely
-            pending_data = []
-            for row in pending:
-                # Check if row is a SQLAlchemy RowMapping (common return type)
-                if hasattr(row, "_mapping"):
-                    rid = row._mapping["id"]
-                    pending_data.append({
-                        "id": rid,
-                        "radio": f"Select {rid}",
-                        "name": row._mapping["student_name"],
-                        "email": row._mapping["parent_email"],
-                        "created_at": row._mapping["created_at"],
-                    })
-                # Fallback for dict or other iterable types
-                elif isinstance(row, dict) and "id" in row:
-                    rid = row["id"]
-                    pending_data.append({
-                        "id": rid,
-                        "radio": f"Select {rid}",
-                        "name": row["student_name"],
-                        "email": row["parent_email"],
-                        "created_at": row["created_at"],
-                    })
+                df_pending = pd.DataFrame(pending_data)
 
-            df_pending = pd.DataFrame(pending_data)
+                if df_pending.empty:
+                    st.info("No valid registrations found.")
+                else:
+                    st.markdown("Select a registration to approve or discard:")
+                    selected_radio = st.radio(
+                        "Select Registration",
+                        options=df_pending["radio"].tolist(),
+                        key="reg_radio_select",
+                        label_visibility="collapsed",
+                    )
 
-            # If table exists but has no rows
-            if df_pending.empty:
-                st.info("No valid registrations found.")
-                return
+                    selected_row = df_pending[df_pending["radio"] == selected_radio].iloc[0]
 
-            # Display table with radio buttons
-            st.markdown("Select a registration to approve or discard:")
-            selected_radio = st.radio(
-                "Select Registration",
-                options=df_pending["radio"].tolist(),
-                key="reg_radio_select",
-                label_visibility="collapsed"
-            )
+                    st.dataframe(
+                        df_pending.drop(columns=["radio"]),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_order=["id", "name", "email", "created_at"],
+                    )
 
-            # Find the selected row
-            selected_row = df_pending[df_pending["radio"] == selected_radio].iloc[0]
+                    if selected_row is not None:
+                        rid = int(selected_row["id"])
+                        name = selected_row["name"]
+                        email = selected_row["email"]
+                        created = selected_row["created_at"]
 
-            st.dataframe(
-                df_pending.drop(columns=["radio"]),
-                use_container_width=True,
-                hide_index=True,
-                column_order=["id", "name", "email", "created_at"]
-            )
+                        st.markdown("---")
+                        st.markdown(f"**Selected:** {name} ({email})")
 
-            # Correct indentation
-            if selected_row is not None:
-                rid = int(selected_row["id"])
-                name = selected_row["name"]
-                email = selected_row["email"]
-                created = selected_row["created_at"]
+                        colA, colB = st.columns(2)
 
-                st.markdown("---")
-                st.markdown(f"**Selected:** {name} ({email})")
+                        with colA:
+                            if st.button("✅ Approve & Create Student", key="approve_student_btn"):
+                                new_user_id = create_student_user(name, email)
+                                if isinstance(new_user_id, dict) and "error" in new_user_id:
+                                    st.error(f"Error creating user: {new_user_id['error']}")
+                                else:
+                                    delete_pending_registration(rid)
+                                    st.success(
+                                        f"Student **{name}** created successfully! (User ID: {new_user_id})"
+                                    )
+                                    st.experimental_rerun()
 
-                colA, colB = st.columns(2)
-
-                with colA:
-                    if st.button(f"✅ Approve & Create Student", key="approve_student_btn"):
-                        new_user_id = create_student_user(name, email)
-                        if isinstance(new_user_id, dict) and "error" in new_user_id:
-                            st.error(f"Error creating user: {new_user_id['error']}")
-                        else:
-                            delete_pending_registration(rid)
-                            st.success(f"Student **{name}** created successfully! (User ID: {new_user_id})")
-                            st.experimental_rerun()
-
-                with colB:
-                    if st.button(f"❌ Discard Request", key="reject_student_btn"):
-                        delete_pending_registration(rid)
-                        st.warning(f"Request for {name} discarded.")
-                        st.experimental_rerun()
+                        with colB:
+                            if st.button("❌ Discard Request", key="reject_student_btn"):
+                                delete_pending_registration(rid)
+                                st.warning(f"Request for {name} discarded.")
+                                st.experimental_rerun()
 
         # -------------------------------------------
         # SECTION B — Classrooms
