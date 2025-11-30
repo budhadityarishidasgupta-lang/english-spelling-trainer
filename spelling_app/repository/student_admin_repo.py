@@ -51,6 +51,16 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
             {"email": email},
         )
 
+        # Ensure the student is in the spelling category
+        execute(
+            """
+            INSERT INTO user_categories (user_id, category)
+            VALUES (:uid, 'spelling')
+            ON CONFLICT DO NOTHING
+            """,
+            {"uid": existing_user_id},
+        )
+
         return existing_user_id
 
     hashed_password = _hash_password(temp_password)
