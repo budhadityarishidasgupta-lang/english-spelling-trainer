@@ -24,47 +24,33 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     """
     hashed_password = _hash_password(temp_password)
 
-    # Execute insert
+    # --- Insert into users table ---
     result = execute(
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, 'student')
         RETURNING user_id
         """,
-        {
-            "n": name,
-            "e": email,
-            "p": hashed_password,
-        },
+        {"n": name, "e": email, "p": hashed_password},
     )
 
-    # Handle error dicts
+    # --- Handle error dict ---
     if isinstance(result, dict) and "error" in result:
         return result
 
-    # Handle SQLAlchemy CursorResult
-    if hasattr(result, "fetchone"):
-        row = result.fetchone()
-        if row and "user_id" in row._mapping:
-            new_user_id = row._mapping["user_id"]
-        else:
-            return {"error": "Failed to extract user ID from cursor result."}
+    # --- Handle SQLAlchemy CursorResult ---
+    try:
+        row = result.fetchone()     # works for CursorResult
+        if row is None:
+            return {"error": "Insert returned no rows"}
 
-    # Handle list return (older execute() behavior)
-    elif isinstance(result, list) and result:
-        row = result[0]
-        if isinstance(row, dict):
-            new_user_id = row.get("user_id")
-        elif hasattr(row, "_mapping"):
-            new_user_id = row._mapping.get("user_id")
-        else:
-            return {"error": "Unknown row format (list case)."}
+        new_user_id = row[0]        # first column is user_id
 
-    else:
-        return {"error": "Unexpected execute() return type."}
+    except Exception as e:
+        return {"error": f"Unexpected execute() return type: {e}"}
 
-    # 2) Tag as a spelling student in user_categories
-    cat_result = execute(
+    # --- Insert into user_categories ---
+    category = execute(
         """
         INSERT INTO user_categories (user_id, category)
         VALUES (:uid, 'spelling')
@@ -72,8 +58,8 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
         {"uid": new_user_id},
     )
 
-    if isinstance(cat_result, dict) and "error" in cat_result:
-        return cat_result
+    if isinstance(category, dict) and "error" in category:
+        return category
 
     return new_user_id
 
