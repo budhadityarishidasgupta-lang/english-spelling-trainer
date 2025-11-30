@@ -253,31 +253,33 @@ def render_spelling_admin():
                 column_order=["id", "name", "email", "created_at"]
             )
 
-                if selected_row is not None:
-                    rid = int(selected_row["id"])
-                    name = selected_row["name"]
-                    email = selected_row["email"]
+            # Correct indentation
+            if selected_row is not None:
+                rid = int(selected_row["id"])
+                name = selected_row["name"]
+                email = selected_row["email"]
+                created = selected_row["created_at"]
 
-                    st.markdown("---")
-                    st.markdown(f"**Selected:** {name} ({email})")
+                st.markdown("---")
+                st.markdown(f"**Selected:** {name} ({email})")
 
-                    colA, colB = st.columns(2)
+                colA, colB = st.columns(2)
 
-                    with colA:
-                        if st.button(f"✅ Approve & Create Student", key="approve_student_btn"):
-                            new_user_id = create_student_user(name, email)
-                            if isinstance(new_user_id, dict) and "error" in new_user_id:
-                                st.error(f"Error creating user: {new_user_id['error']}")
-                            else:
-                                delete_pending_registration(rid)
-                                st.success(f"Student **{name}** created successfully! (User ID: {new_user_id})")
-                                st.experimental_rerun()
-
-                    with colB:
-                        if st.button(f"❌ Discard Request", key="reject_student_btn"):
+                with colA:
+                    if st.button(f"✅ Approve & Create Student", key="approve_student_btn"):
+                        new_user_id = create_student_user(name, email)
+                        if isinstance(new_user_id, dict) and "error" in new_user_id:
+                            st.error(f"Error creating user: {new_user_id['error']}")
+                        else:
                             delete_pending_registration(rid)
-                            st.warning(f"Request for {name} discarded.")
+                            st.success(f"Student **{name}** created successfully! (User ID: {new_user_id})")
                             st.experimental_rerun()
+
+                with colB:
+                    if st.button(f"❌ Discard Request", key="reject_student_btn"):
+                        delete_pending_registration(rid)
+                        st.warning(f"Request for {name} discarded.")
+                        st.experimental_rerun()
 
         # -------------------------------------------
         # SECTION B — Classrooms
