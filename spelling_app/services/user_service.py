@@ -16,43 +16,59 @@ def _extract_user_id(row):
 
 
 def create_user(name, email, password_hash, role):
-    # Step 1 — check if user already exists
+    # 1. Check if user already exists
     existing = fetch_all(
         "SELECT user_id FROM users WHERE email = :email",
         {"email": email}
     )
-    existing_rows = list(existing) if existing else []
-    if existing_rows:
-        user_id = _extract_user_id(existing_rows[0])
 
-        # Remove the pending entry if it exists
+    if existing:
+        row = existing[0]
+        user_id = row.get("user_id") if isinstance(row, dict) else row._mapping["user_id"]
+
+        # Remove pending registration if exists
         execute("DELETE FROM pending_registrations WHERE email = :email", {"email": email})
+
+        # Ensure student is categorized under spelling
+        execute(
+            """
+            INSERT INTO user_categories (user_id, category)
+            VALUES (:uid, 'spelling')
+            ON CONFLICT DO NOTHING;
+            """,
+            {"uid": user_id}
+        )
 
         return user_id
 
+    # 2. Create new user
     result = execute(
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, :r)
-        RETURNING id;
+        RETURNING user_id;
         """,
         {"n": name, "e": email, "p": password_hash, "r": role}
     )
 
-    # NEW: safe, type-agnostic extraction
+    # Normalize return format
     if isinstance(result, dict):
-        return result.get("id")
-
-    # Handle list responses from execute()
-    if isinstance(result, list) and result:
-        return _extract_user_id(result[0])
-
-    # Fallback for CursorResult or Row
-    try:
+        user_id = result.get("user_id")
+    else:
         row = result.fetchone()
-        if row:
-            return _extract_user_id(row)
-    except Exception:
-        pass
+        if hasattr(row, "_mapping"):
+            user_id = row._mapping.get("user_id")
+        else:
+            user_id = row.get("user_id")
 
-    return None
+    # 3. Add spelling category for newly created user
+    execute(
+        """
+        INSERT INTO user_categories (user_id, category)
+        VALUES (:uid, 'spelling')
+        ON CONFLICT DO NOTHING;
+        """,
+        {"uid": user_id}
+    )
+
+    return user_id
