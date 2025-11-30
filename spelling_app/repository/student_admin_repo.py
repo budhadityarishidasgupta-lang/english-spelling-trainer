@@ -1,37 +1,48 @@
 from shared.db import fetch_all, execute
-from spelling_app.services.user_service import _hash_password, _extract_user_id
+from spelling_app.services.user_service import _extract_user_id, _hash_password
 
 
 def create_student_user(student_name: str, parent_email: str, temp_password: str = "Learn123!") -> int | dict:
     """
-    Approves a spelling student registration:
-    - Reuses existing user if email already exists
-    - Otherwise creates new student
-    - Adds spelling category
-    - Removes pending registration
+    Approve a spelling student registration.
+    Steps:
+    1. Check if user already exists (correct column user_id).
+    2. If exists:
+         - Ensure spelling category exists.
+         - Delete pending registration.
+         - Return existing user_id.
+    3. If not exists:
+         - Create new user (using fetch_all for RETURNING).
+         - Assign spelling category.
+         - Delete pending registration.
+         - Return new user_id.
     """
 
     try:
-        # 1. CHECK IF USER ALREADY EXISTS (correct column name!)
+        # -----------------------
+        # 1. Check existing user
+        # -----------------------
         existing = fetch_all(
             "SELECT user_id FROM users WHERE email = :email",
             {"email": parent_email},
         )
 
         if existing:
+            # User already exists → REUSE user_id
             user_id = _extract_user_id(existing[0])
 
-            # Ensure spelling category exists
+            # Assign spelling category
             fetch_all(
                 """
                 INSERT INTO user_categories (user_id, category)
                 VALUES (:uid, 'spelling')
-                ON CONFLICT DO NOTHING;
+                ON CONFLICT DO NOTHING
+                RETURNING user_id;
                 """,
                 {"uid": user_id},
             )
 
-            # Remove pending
+            # Delete pending entry
             execute(
                 "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
                 {"email": parent_email},
@@ -39,10 +50,12 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
 
             return user_id
 
-        # 2. USER DOES NOT EXIST → CREATE NEW USER
+        # -----------------------
+        # 2. Create NEW user
+        # -----------------------
         hashed_password = _hash_password(temp_password)
 
-        result = fetch_all(
+        user_insert = fetch_all(
             """
             INSERT INTO users (name, email, password_hash, role)
             VALUES (:n, :e, :p, 'student')
@@ -51,22 +64,26 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
             {"n": student_name, "e": parent_email, "p": hashed_password},
         )
 
-        if not result:
-            return {"error": "Failed to insert user"}
+        if not user_insert:
+            return {"error": "Could not insert user."}
 
-        user_id = _extract_user_id(result[0])
+        user_id = _extract_user_id(user_insert[0])
 
-        # 3. ASSIGN SPELLING CATEGORY
+        if not user_id:
+            return {"error": "Could not extract user_id."}
+
+        # Assign spelling category
         fetch_all(
             """
             INSERT INTO user_categories (user_id, category)
             VALUES (:uid, 'spelling')
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT DO NOTHING
+            RETURNING user_id;
             """,
             {"uid": user_id},
         )
 
-        # 4. DELETE FROM SPELLING PENDING TABLE
+        # Delete pending
         execute(
             "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
             {"email": parent_email},
