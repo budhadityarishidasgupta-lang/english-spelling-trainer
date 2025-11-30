@@ -4,6 +4,20 @@ from passlib.hash import bcrypt
 from shared.db import fetch_all, execute
 
 
+def _extract_user_id(row):
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("user_id") or row._mapping.get("id")
+    if isinstance(row, dict):
+        return row.get("user_id") or row.get("id")
+    try:
+        return row["user_id"]
+    except Exception:
+        try:
+            return row[0]
+        except Exception:
+            return None
+
+
 # ---------------------------------------
 # Utility: Password hashing
 # ---------------------------------------
@@ -22,6 +36,23 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     Creates a new student user and assigns them to the 'spelling' category.
     Returns the new user_id or an error dict.
     """
+    # Skip creation if the email already exists
+    existing = fetch_all(
+        "SELECT user_id FROM users WHERE email = :email",
+        {"email": email},
+    )
+    existing_rows = list(existing) if existing else []
+    if existing_rows:
+        existing_user_id = _extract_user_id(existing_rows[0])
+
+        # Remove any pending registration tied to this email
+        execute(
+            "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
+            {"email": email},
+        )
+
+        return existing_user_id
+
     hashed_password = _hash_password(temp_password)
 
     # --- Insert into users table ---
@@ -38,16 +69,14 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     if isinstance(result, dict) and "error" in result:
         return result
 
-    # --- Handle SQLAlchemy CursorResult ---
-    try:
-        row = result.fetchone()     # works for CursorResult
-        if row is None:
-            return {"error": "Insert returned no rows"}
+    # --- Extract user_id from result ---
+    rows = result if isinstance(result, list) else list(result)
+    if not rows:
+        return {"error": "Insert returned no rows"}
 
-        new_user_id = row[0]        # first column is user_id
-
-    except Exception as e:
-        return {"error": f"Unexpected execute() return type: {e}"}
+    new_user_id = _extract_user_id(rows[0])
+    if new_user_id is None:
+        return {"error": "Unable to parse user_id from insert result"}
 
     # --- Insert into user_categories ---
     category = execute(

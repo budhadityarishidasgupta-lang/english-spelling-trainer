@@ -19,7 +19,38 @@ def get_pending_registrations():
         ORDER BY created_at DESC
         """
     )
-    return rows
+    rows_list = list(rows) if rows else []
+
+    # Filter out registrations where the user already exists
+    cleaned = []
+    for row in rows_list:
+        email = None
+        if hasattr(row, "_mapping"):
+            email = row._mapping.get("parent_email")
+        elif isinstance(row, dict):
+            email = row.get("parent_email")
+        else:
+            try:
+                email = row["parent_email"]
+            except Exception:
+                try:
+                    email = row[1]
+                except Exception:
+                    email = None
+
+        if email is None:
+            cleaned.append(row)
+            continue
+
+        existing = fetch_all(
+            "SELECT user_id FROM users WHERE email = :email",
+            {"email": email},
+        )
+        existing_rows = list(existing) if existing else []
+        if not existing_rows:
+            cleaned.append(row)
+
+    return cleaned
 
 
 def delete_pending_registration(req_id: int):
