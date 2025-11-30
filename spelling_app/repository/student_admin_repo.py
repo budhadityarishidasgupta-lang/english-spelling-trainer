@@ -1,7 +1,7 @@
 from datetime import date
-from passlib.hash import bcrypt
 
 from shared.db import fetch_all, execute
+from spelling_app.services.user_service import create_user
 
 
 def _extract_user_id(row):
@@ -19,88 +19,44 @@ def _extract_user_id(row):
 
 
 # ---------------------------------------
-# Utility: Password hashing
-# ---------------------------------------
-
-def _hash_password(password: str) -> str:
-    """Use bcrypt (compatible with the existing login system)."""
-    return bcrypt.hash(password)
-
-
-# ---------------------------------------
 # User Management
 # ---------------------------------------
 
-def create_student_user(name: str, email: str, temp_password: str = "Learn123!") -> int | dict:
+def create_student_user(student_name: str, parent_email: str):
     """
-    Creates a new student user and assigns them to the 'spelling' category.
-    Returns the new user_id or an error dict.
+    Approve a spelling registration for this parent_email:
+    - Create or reuse a user row in `users` with role='student'
+    - Tag the user in `user_categories` as 'spelling'
+    - Return the user_id, or {"error": "..."} on failure
     """
-    # Skip creation if the email already exists
-    existing = fetch_all(
-        "SELECT user_id FROM users WHERE email = :email",
-        {"email": email},
-    )
-    existing_rows = list(existing) if existing else []
-    if existing_rows:
-        existing_user_id = _extract_user_id(existing_rows[0])
 
-        # Remove any pending registration tied to this email
-        execute(
-            "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
-            {"email": email},
+    try:
+        # 1. Create or reuse core user account
+        #    (empty password_hash; login not used for spelling right now)
+        user_id = create_user(
+            name=student_name,
+            email=parent_email,
+            password_hash="",
+            role="student",
         )
 
-        # Ensure the student is in the spelling category
+        if not user_id:
+            return {"error": "Could not resolve or create user_id."}
+
+        # 2. Ensure spelling category exists for this user
         execute(
             """
             INSERT INTO user_categories (user_id, category)
             VALUES (:uid, 'spelling')
-            ON CONFLICT DO NOTHING
+            ON CONFLICT DO NOTHING;
             """,
-            {"uid": existing_user_id},
+            {"uid": user_id},
         )
 
-        return existing_user_id
+        return user_id
 
-    hashed_password = _hash_password(temp_password)
-
-    # --- Insert into users table ---
-    result = execute(
-        """
-        INSERT INTO users (name, email, password_hash, role)
-        VALUES (:n, :e, :p, 'student')
-        RETURNING user_id
-        """,
-        {"n": name, "e": email, "p": hashed_password},
-    )
-
-    # --- Handle error dict ---
-    if isinstance(result, dict) and "error" in result:
-        return result
-
-    # --- Extract user_id from result ---
-    rows = result if isinstance(result, list) else list(result)
-    if not rows:
-        return {"error": "Insert returned no rows"}
-
-    new_user_id = _extract_user_id(rows[0])
-    if new_user_id is None:
-        return {"error": "Unable to parse user_id from insert result"}
-
-    # --- Insert into user_categories ---
-    category = execute(
-        """
-        INSERT INTO user_categories (user_id, category)
-        VALUES (:uid, 'spelling')
-        """,
-        {"uid": new_user_id},
-    )
-
-    if isinstance(category, dict) and "error" in category:
-        return category
-
-    return new_user_id
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def get_spelling_students():
