@@ -29,7 +29,7 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, 'student')
-        RETURNING id
+        RETURNING user_id
         """,
         {
             "n": name,
@@ -45,8 +45,8 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     # Handle SQLAlchemy CursorResult
     if hasattr(result, "fetchone"):
         row = result.fetchone()
-        if row and "id" in row._mapping:
-            new_user_id = row._mapping["id"]
+        if row and "user_id" in row._mapping:
+            new_user_id = row._mapping["user_id"]
         else:
             return {"error": "Failed to extract user ID from cursor result."}
 
@@ -54,9 +54,9 @@ def create_student_user(name: str, email: str, temp_password: str = "Learn123!")
     elif isinstance(result, list) and result:
         row = result[0]
         if isinstance(row, dict):
-            new_user_id = row.get("id")
+            new_user_id = row.get("user_id")
         elif hasattr(row, "_mapping"):
-            new_user_id = row._mapping.get("id")
+            new_user_id = row._mapping.get("user_id")
         else:
             return {"error": "Unknown row format (list case)."}
 
