@@ -403,9 +403,12 @@ def render_spelling_admin():
                                     key="sp_remove_student_select"
                                 )
                                 student_remove_id = student_remove_map.get(student_remove_label)
-                                
+
                                 if st.button(f"Remove {student_remove_label.split('(')[0].strip()}", key="remove_student_btn"):
-                                    unassign_student_from_class(student_remove_id)
+                                    unassign_student_from_class(
+                                        selected_class_assign_id,
+                                        student_remove_id,
+                                    )
                                     st.success(f"Student removed from {selected_class_assign_label}.")
                                     st.experimental_rerun()
                             else:
