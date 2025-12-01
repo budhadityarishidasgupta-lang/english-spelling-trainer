@@ -63,11 +63,11 @@ def create_student_user(name: str, email: str):
 
     result = execute(sql, params)
 
-    # CASE 1: DB error
+    # DB error
     if isinstance(result, dict) and "error" in result:
         return {"error": result["error"]}
 
-    # CASE 2: normal RETURNING → list
+    # Normal RETURNING → list
     if isinstance(result, list):
         if not result:
             return {"error": "Insert returned empty list"}
