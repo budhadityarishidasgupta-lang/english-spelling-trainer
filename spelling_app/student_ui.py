@@ -12,6 +12,7 @@ from spelling_app.services.student_service import (
     submit_spelling_attempt,
     get_dashboard_data,
 )
+from shared.db import fetch_all
 from spelling_app.services.enrollment_service import get_courses_for_student
 from spelling_app.repository.student_repo import get_lesson_progress_detailed, get_course_progress_detailed
 from spelling_app.utils.ui_components import (
@@ -134,8 +135,75 @@ def render_main_student_app():
 
     if page == "Dashboard":
         render_dashboard()
+
+    ##############################################
+    # SPELLING PRACTICE PAGE
+    ##############################################
     elif page == "Spelling Practice":
-        render_spelling_practice()
+
+        st.title("Spelling Practice")
+
+        # Ensure course is selected
+        course_id = st.session_state.get("selected_course_id")
+        if not course_id:
+            st.error("Please select a course first.")
+            return
+
+        # Load all words for this course
+        words = fetch_all(
+            """
+            SELECT word, pattern, pattern_code
+            FROM spelling_words
+            WHERE course_id = :cid
+            ORDER BY word_id ASC
+            """,
+            {"cid": course_id}
+        )
+
+        # Normalize DB rows
+        if hasattr(words, "all"):
+            words = [dict(r._mapping) for r in words.all()]
+        else:
+            words = [dict(r._mapping) for r in words]
+
+        if not words:
+            st.warning("No words found for this course.")
+            return
+
+        # Initialize session state
+        if "practice_index" not in st.session_state:
+            st.session_state.practice_index = 0
+
+        index = st.session_state.practice_index
+
+        # If finished
+        if index >= len(words):
+            st.success("🎉 You have completed all words in this course!")
+            if st.button("Restart Course"):
+                st.session_state.practice_index = 0
+                st.experimental_rerun()
+            return
+
+        # Get current word
+        current = words[index]
+        pattern = current["pattern"]
+        correct_word = current["word"]
+
+        # Display pattern
+        st.subheader(f"Pattern: {pattern}")
+
+        st.write("Type the correct spelling for this word pattern:")
+
+        # User input
+        user_input = st.text_input("Your spelling:", key=f"spell_{index}")
+
+        if st.button("Submit Answer"):
+            if user_input.strip().lower() == correct_word.lower():
+                st.success("Correct! 🎉")
+                st.session_state.practice_index += 1
+                st.experimental_rerun()
+            else:
+                st.error("Incorrect. Try again!")
 
 # --- Dashboard (Patch 3G, 3H) ---
 
