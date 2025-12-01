@@ -8,23 +8,12 @@ from spelling_app.services.student_service import (
     check_login,
     logout,
     get_available_courses,
-    get_available_lessons,
-    start_lesson,
-    get_current_word,
-    submit_spelling_attempt,
     get_dashboard_data,
 )
 from shared.db import fetch_all
 from spelling_app.services.enrollment_service import get_courses_for_student
-from spelling_app.repository.student_repo import get_lesson_progress_detailed, get_course_progress_detailed
-from spelling_app.utils.ui_components import (
-    render_badge,
-    render_stat_card,
-    render_streak_bar,
-    render_course_card,
-    render_lesson_card_html,
-    render_lesson_card_button,
-)
+from spelling_app.repository.student_repo import get_course_progress_detailed
+from spelling_app.utils.ui_components import render_badge, render_stat_card, render_streak_bar
 
 # --- Load Student CSS safely ---
 css_path = os.path.join("spelling_app", "styles", "student.css")
@@ -147,7 +136,7 @@ def render_main_student_app():
     ##############################################
     if page == "Dashboard":
 
-        st.title("Dashboard")
+    st.title("Dashboard")
 
         user_id = st.session_state.get("user_id")
 
@@ -316,8 +305,7 @@ def render_dashboard():
 
     st.markdown("---")
     st.subheader("Your Courses & Progress")
-    
-    # 4. Course Cards
+
     courses = get_available_courses(user_id)
     if not courses:
         st.warning("You are not enrolled in any spelling courses.")
@@ -325,98 +313,5 @@ def render_dashboard():
 
     for course in courses:
         course_progress_data = get_course_progress_detailed(user_id, course["course_id"])
-        course_progress = course_progress_data.get("progress", 0)
-        
-        lessons = get_available_lessons(course["course_id"], user_id)
-        
-        lessons_html = ""
-        for lesson in lessons:
-            lesson_progress_data = get_lesson_progress_detailed(user_id, lesson["lesson_id"])
-            mastered = lesson_progress_data.get("mastered_words", 0)
-            total = lesson_progress_data.get("total_words", 0)
-            
-            # Generate HTML for the lesson card
-            lessons_html += render_lesson_card_html(lesson, mastered, total, f"course_{course['course_id']}")
-            
-            # Render the hidden Streamlit button for the lesson card
-            render_lesson_card_button(
-                lesson, 
-                f"course_{course['course_id']}", 
-                lambda lesson_id: start_lesson(st, lesson_id)
-            )
-
-        render_course_card(course, course_progress, lessons_html)
-
-# --- Spelling Practice Engine ---
-
-def render_spelling_practice():
-    st.title("Spelling Practice")
-    st.markdown("---")
-
-    if st.session_state.current_lesson is None:
-        render_lesson_selection()
-    else:
-        render_active_practice()
-
-def render_lesson_selection():
-    st.subheader("Select a Lesson to Begin")
-    
-    user_id = st.session_state.user_id
-    courses = get_available_courses(user_id)
-    if not courses:
-        st.warning("You are not enrolled in any spelling courses.")
-        return
-
-    course_titles = [c["title"] for c in courses]
-    selected_course_title = st.selectbox("Choose Course", course_titles, key="lesson_select_course")
-    
-    selected_course = next(c for c in courses if c["title"] == selected_course_title)
-    
-    lessons = get_available_lessons(selected_course["course_id"], user_id)
-    if not lessons:
-        st.info("No lessons available for this course.")
-        return
-
-    lesson_names = [l["lesson_name"] for l in lessons]
-    selected_lesson_name = st.selectbox("Choose Lesson", lesson_names, key="lesson_select_lesson")
-    
-    selected_lesson = next(l for l in lessons if l["lesson_name"] == selected_lesson_name)
-
-    if st.button("Start Practice"):
-        if start_lesson(st, selected_lesson["lesson_id"]):
-            st.experimental_rerun()
-        else:
-            st.error("This lesson has no words. Please choose another.")
-
-def render_active_practice():
-    word_data = get_current_word(st)
-    
-    if word_data is None:
-        st.success("Congratulations! You have completed all words in this lesson.")
-        if st.button("Choose Another Lesson"):
-            st.session_state.current_lesson = None
-            st.session_state.word_list = None
-            st.session_state.current_word_index = 0
-            st.experimental_rerun()
-        return
-
-    # Progress bar based on word index
-    st.progress(
-        st.session_state.current_word_index / len(st.session_state.word_list), 
-        text=f"Word {st.session_state.current_word_index + 1} of {len(st.session_state.word_list)}"
-    )
-
-    st.markdown(f'<div class="word-prompt">{word_data["word"]}</div>', unsafe_allow_html=True)
-    st.markdown("---")
-
-    with st.form("spelling_attempt_form"):
-        attempt = st.text_input("Type the word here", key="attempt_input")
-        submitted = st.form_submit_button("Check Spelling")
-
-        if submitted:
-            if submit_spelling_attempt(st, attempt):
-                st.markdown('<div class="feedback-correct">Correct! Moving to the next word.</div>', unsafe_allow_html=True)
-                st.experimental_rerun()
-            else:
-                st.markdown(f'<div class="feedback-incorrect">Incorrect. The correct spelling is: **{word_data["word"]}**</div>', unsafe_allow_html=True)
-                st.warning("Try again!")
+        progress = course_progress_data.get("progress", 0)
+        st.metric(f"{course['title']} Progress", f"{progress:.2f}%")
