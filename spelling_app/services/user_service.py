@@ -64,10 +64,17 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
-    # fetch_all returns a list; grab the first element safely
-    row = result[0] if isinstance(result, list) and result else None
+    # Handle list returned by execute()
+    if isinstance(result, list):
+        if len(result) == 0:
+            return None
+        row = result[0]
+        if hasattr(row, "_mapping"):
+            return row._mapping
+        return row
 
-    if not row:
-        raise RuntimeError("Failed to create user – no user_id returned.")
+    # Handle error dict
+    if isinstance(result, dict) and "error" in result:
+        return None
 
-    return _extract_user_id(row)
+    return None
