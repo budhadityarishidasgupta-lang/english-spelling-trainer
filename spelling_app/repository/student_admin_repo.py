@@ -1,7 +1,8 @@
 from datetime import date
 from passlib.hash import bcrypt
 
-from shared.db import fetch_all, execute
+from shared.db import execute, fetch_all
+from spelling_app.services.user_service import hash_password
 
 
 # ---------------------------------------
