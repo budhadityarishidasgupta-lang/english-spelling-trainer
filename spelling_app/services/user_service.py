@@ -52,7 +52,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
             return row.get("user_id")
         return row[0] if isinstance(row, (list, tuple)) else None
 
-    # 2. Insert new user
+    # 2. Create new user
     result = fetch_all(
         """
         INSERT INTO users (name, email, password_hash, role)
@@ -62,7 +62,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
-    # --- RETURNING always returns a list ---
+    # RETURNING → always list
     if isinstance(result, list) and result:
         row = result[0]
         if hasattr(row, "_mapping"):
@@ -74,7 +74,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         except Exception:
             return None
 
-    # --- Error dict ---
+    # Error dict
     if isinstance(result, dict) and "error" in result:
         return None
 
