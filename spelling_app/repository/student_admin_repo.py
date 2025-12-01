@@ -100,16 +100,27 @@ RETURNING user_id;
             {"n": student_name, "e": parent_email, "p": hashed_password},
         )
 
-        # execute() now returns a list for RETURNING queries.
-        # Handle both the list response and legacy error dicts gracefully.
-        user_id = None
+        # NEW unified execute() list-based response
         if isinstance(result, list):
-            if result:
-                user_id = _extract_user_id(result[0])
+            if len(result) == 0:
+                return {"error": "No result returned"}
+            row = result[0]
+
+            if hasattr(row, "_mapping"):
+                result = row._mapping
+            elif isinstance(row, dict):
+                result = row
             else:
-                user_id = None
-        elif isinstance(result, dict) and "error" in result:
+                return {"error": f"Unknown row type: {type(row)}"}
+
+        # Error dict returned from execute()
+        if isinstance(result, dict) and "error" in result:
             return result
+
+        if not isinstance(result, (dict,)):
+            return {"error": f"Unexpected execute() return type: {type(result)}"}
+
+        user_id = _extract_user_id(result)
 
         if not user_id:
             # Conflict or no RETURNING row → fetch existing user_id explicitly
