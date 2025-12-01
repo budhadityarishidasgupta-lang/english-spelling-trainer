@@ -34,7 +34,7 @@ def _extract_user_id(row):
 # Utility: Password hashing
 # ---------------------------------------
 
-def _hash_password(password: str) -> str:
+def hash_password(password: str) -> str:
     """Use bcrypt (compatible with the existing login system)."""
     return bcrypt.hash(password)
 
@@ -43,119 +43,50 @@ def _hash_password(password: str) -> str:
 # User Management (SPELLING-ONLY)
 # ---------------------------------------
 
-def create_student_user(student_name: str, parent_email: str, temp_password: str = "Learn123!") -> int | dict:
+def create_student_user(name: str, email: str):
     """
-    Approve a spelling student registration.
-
-    1. If a user with this email already exists:
-         - Reuse its user_id
-         - Ensure 'spelling' category exists
-         - Delete pending_registrations_spelling row(s)
-         - Return user_id
-    2. If not:
-         - Create a new user (role='student') in an idempotent way
-         - Assign 'spelling' category
-         - Delete pending_registrations_spelling row(s)
-         - Return user_id
+    Creates a spelling student user safely with both list-based and cursor-based execute() results.
+    Returns the new user_id or an error dict.
     """
 
-    try:
-        # 1. Check if user already exists
-        existing = fetch_all(
-            "SELECT user_id FROM users WHERE email = :email",
-            {"email": parent_email},
-        )
-        if existing:
-            user_id = _extract_user_id(existing[0])
+    sql = """
+        INSERT INTO users (name, email, password_hash, role)
+        VALUES (:n, :e, :p, 'student')
+        RETURNING user_id;
+    """
 
-            # Ensure spelling category exists
-            fetch_all(
-                """
-                INSERT INTO user_categories (user_id, category)
-                VALUES (:uid, 'spelling')
-                ON CONFLICT DO NOTHING
-                RETURNING user_id;
-                """,
-                {"uid": user_id},
-            )
+    params = {
+        "n": name,
+        "e": email,
+        "p": hash_password("Learn123!")  # or your default password
+    }
 
-            # Delete pending row(s) for this email
-            execute(
-                "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
-                {"email": parent_email},
-            )
+    result = execute(sql, params)
 
-            return user_id
+    # --- CASE 1: synonyms-style execute() returns a list ---
+    if isinstance(result, list):
+        if len(result) == 0:
+            return {"error": "Insert returned empty list"}
+        row = result[0]
+        if isinstance(row, dict):
+            return row.get("user_id")
+        if hasattr(row, "_mapping"):
+            return row._mapping.get("user_id")
+        return {"error": f"Unknown row structure: {row}"}
 
-        # 2. User does not exist → attempt to create (idempotent on email)
-        hashed_password = _hash_password(temp_password)
+    # --- CASE 2: SQLAlchemy CursorResult ---
+    if hasattr(result, "fetchone"):
+        r = result.fetchone()
+        if r is None:
+            return {"error": "No row returned by fetchone()"}
+        if isinstance(r, dict):
+            return r.get("user_id")
+        if hasattr(r, "_mapping"):
+            return r._mapping.get("user_id")
+        return {"error": f"Unexpected row type: {r}"}
 
-        result = execute(
-            """
-INSERT INTO users (name, email, password_hash, role)
-VALUES (:n, :e, :p, 'student')
-ON CONFLICT (email) DO NOTHING
-RETURNING user_id;
-            """,
-            {"n": student_name, "e": parent_email, "p": hashed_password},
-        )
-
-        # NEW unified execute() list-based response
-        if isinstance(result, list):
-            if len(result) == 0:
-                return {"error": "No result returned"}
-            row = result[0]
-
-            if hasattr(row, "_mapping"):
-                result = row._mapping
-            elif isinstance(row, dict):
-                result = row
-            else:
-                return {"error": f"Unknown row type: {type(row)}"}
-
-        # Error dict returned from execute()
-        if isinstance(result, dict) and "error" in result:
-            return result
-
-        if not isinstance(result, (dict,)):
-            return {"error": f"Unexpected execute() return type: {type(result)}"}
-
-        user_id = _extract_user_id(result)
-
-        if not user_id:
-            # Conflict or no RETURNING row → fetch existing user_id explicitly
-            existing_after = fetch_all(
-                "SELECT user_id FROM users WHERE email = :email",
-                {"email": parent_email},
-            )
-            if not existing_after:
-                return {"error": "Could not insert or locate user by email."}
-            user_id = _extract_user_id(existing_after[0])
-
-        if not user_id:
-            return {"error": "Could not resolve user_id for created user."}
-
-        # Assign spelling category
-        fetch_all(
-            """
-            INSERT INTO user_categories (user_id, category)
-            VALUES (:uid, 'spelling')
-            ON CONFLICT DO NOTHING
-            RETURNING user_id;
-            """,
-            {"uid": user_id},
-        )
-
-        # Delete pending row(s)
-        execute(
-            "DELETE FROM pending_registrations_spelling WHERE parent_email = :email",
-            {"email": parent_email},
-        )
-
-        return user_id
-
-    except Exception as e:
-        return {"error": str(e)}
+    # --- Unexpected case ---
+    return {"error": f"Unexpected execute() return type: {type(result)} -> {result}"}
 
 
 # ---------------------------------------
