@@ -47,10 +47,6 @@ def hash_password(password: str) -> str:
 def create_student_user(name: str, email: str):
     """
     Creates a spelling student user using the new execute() return format.
-    execute() ALWAYS returns either:
-    - list of rows  (SELECT or RETURNING)
-    - dict {rows_affected: ...}
-    - dict {error: ...}
     """
 
     sql = """
@@ -67,13 +63,13 @@ def create_student_user(name: str, email: str):
 
     result = execute(sql, params)
 
-    # --- CASE 1: error dict ---
+    # CASE 1: DB error
     if isinstance(result, dict) and "error" in result:
         return {"error": result["error"]}
 
-    # --- CASE 2: RETURNING always gives list ---
+    # CASE 2: normal RETURNING → list
     if isinstance(result, list):
-        if len(result) == 0:
+        if not result:
             return {"error": "Insert returned empty list"}
 
         row = result[0]
@@ -87,9 +83,8 @@ def create_student_user(name: str, email: str):
         try:
             return row[0]
         except Exception:
-            return {"error": f"Unrecognised row structure: {row}"}
+            return {"error": f"Unknown row structure: {row}"}
 
-    # --- CASE 3: non-list unexpected ---
     return {"error": f"Unexpected execute() return type: {type(result)} -> {result}"}
 
 
