@@ -54,7 +54,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         return _extract_user_id(existing[0])
 
     # Create new user
-    rows = fetch_all(
+    result = fetch_all(
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, :r)
@@ -64,7 +64,9 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
-    if not rows:
+    row = result[0] if isinstance(result, list) and result else None
+
+    if not row:
         raise RuntimeError("Failed to create user – no user_id returned.")
 
-    return _extract_user_id(rows[0])
+    return _extract_user_id(row)
