@@ -12,6 +12,7 @@ from spelling_app.services.student_service import (
     submit_spelling_attempt,
     get_dashboard_data,
 )
+from spelling_app.services.enrollment_service import get_courses_for_student
 from spelling_app.repository.student_repo import get_lesson_progress_detailed, get_course_progress_detailed
 from spelling_app.utils.ui_components import (
     inject_css,
@@ -36,7 +37,39 @@ def render_spelling_student_page():
     if not st.session_state.is_logged_in:
         render_login_page()
     else:
-        render_main_student_app()
+        if "page" not in st.session_state:
+            st.session_state.page = "Course Selection"
+
+        page = st.session_state.page
+
+        ##############################################
+        # COURSE SELECTION PAGE
+        ##############################################
+        if page == "Course Selection":
+
+            st.title("Course Selection")
+
+            courses = get_courses_for_student(st.session_state.user_id)
+
+            if not courses:
+                st.warning("You are not enrolled in any courses.")
+                return
+
+            course_map = {c["title"]: c["course_id"] for c in courses}
+
+            selected_course_title = st.selectbox(
+                "Select a course to practice:",
+                list(course_map.keys())
+            )
+
+            # When user clicks Start Practice
+            if st.button("Start Practice"):
+                st.session_state.selected_course_id = course_map[selected_course_title]
+                st.session_state.page = "Spelling Practice"
+                st.experimental_rerun()
+
+        else:
+            render_main_student_app()
 
 # --- Login/Registration Page (Patch 3E) ---
 
@@ -97,7 +130,7 @@ def render_main_student_app():
         logout(st)
         st.experimental_rerun()
 
-    page = st.sidebar.radio("Navigation", ["Dashboard", "Spelling Practice"], key="main_nav")
+    page = st.sidebar.radio("Navigation", ["Dashboard", "Spelling Practice"], key="page")
 
     if page == "Dashboard":
         render_dashboard()
