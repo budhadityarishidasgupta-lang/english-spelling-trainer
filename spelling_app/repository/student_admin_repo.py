@@ -90,7 +90,7 @@ def create_student_user(student_name: str, parent_email: str, temp_password: str
         # 2. User does not exist → attempt to create (idempotent on email)
         hashed_password = _hash_password(temp_password)
 
-        rows = fetch_all(
+        result = execute(
             """
 INSERT INTO users (name, email, password_hash, role)
 VALUES (:n, :e, :p, 'student')
@@ -100,7 +100,18 @@ RETURNING user_id;
             {"n": student_name, "e": parent_email, "p": hashed_password},
         )
 
-        if not rows:
+        # execute() now returns a list for RETURNING queries.
+        # Handle both the list response and legacy error dicts gracefully.
+        user_id = None
+        if isinstance(result, list):
+            if result:
+                user_id = _extract_user_id(result[0])
+            else:
+                user_id = None
+        elif isinstance(result, dict) and "error" in result:
+            return result
+
+        if not user_id:
             # Conflict or no RETURNING row → fetch existing user_id explicitly
             existing_after = fetch_all(
                 "SELECT user_id FROM users WHERE email = :email",
@@ -109,8 +120,6 @@ RETURNING user_id;
             if not existing_after:
                 return {"error": "Could not insert or locate user by email."}
             user_id = _extract_user_id(existing_after[0])
-        else:
-            user_id = _extract_user_id(rows[0])
 
         if not user_id:
             return {"error": "Could not resolve user_id for created user."}
