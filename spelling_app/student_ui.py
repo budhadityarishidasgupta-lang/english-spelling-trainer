@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 from spelling_app.services.help_service import get_help_text
@@ -17,7 +18,6 @@ from shared.db import fetch_all
 from spelling_app.services.enrollment_service import get_courses_for_student
 from spelling_app.repository.student_repo import get_lesson_progress_detailed, get_course_progress_detailed
 from spelling_app.utils.ui_components import (
-    inject_css,
     render_badge,
     render_stat_card,
     render_streak_bar,
@@ -26,6 +26,15 @@ from spelling_app.utils.ui_components import (
     render_lesson_card_button,
 )
 
+# --- Load Student CSS safely ---
+css_path = os.path.join("spelling_app", "styles", "student.css")
+
+if os.path.exists(css_path):
+    with open(css_path, "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+else:
+    st.error("Could not find student.css. UI will be unstyled.")
+
 # --- Main Application Flow ---
 
 def render_spelling_student_page():
@@ -33,7 +42,6 @@ def render_spelling_student_page():
     Main entry point for the student application.
     Handles CSS injection, session state, and routing between login and main app.
     """
-    inject_css()
     initialize_session_state(st)
 
     if not st.session_state.is_logged_in:
