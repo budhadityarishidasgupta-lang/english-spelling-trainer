@@ -200,6 +200,7 @@ def create_classroom(name: str, start_date: date) -> int | dict:
         """,
         {"n": name, "sd": start_date},
     )
+    # fetch_all returns a list; guard against unexpected return types
     row = result[0] if isinstance(result, list) and result else None
 
     if not row:
