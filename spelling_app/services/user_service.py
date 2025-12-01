@@ -62,10 +62,8 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
-    # --- handle normal RETURNING (always list) ---
-    if isinstance(result, list):
-        if len(result) == 0:
-            return None
+    # --- RETURNING always returns a list ---
+    if isinstance(result, list) and result:
         row = result[0]
         if hasattr(row, "_mapping"):
             return row._mapping.get("user_id")
@@ -76,7 +74,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         except Exception:
             return None
 
-    # --- handle errors ---
+    # --- Error dict ---
     if isinstance(result, dict) and "error" in result:
         return None
 
