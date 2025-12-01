@@ -64,6 +64,7 @@ def create_user(name: str, email: str, password_hash: str, role: str):
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
+    # fetch_all returns a list; grab the first element safely
     row = result[0] if isinstance(result, list) and result else None
 
     if not row:
