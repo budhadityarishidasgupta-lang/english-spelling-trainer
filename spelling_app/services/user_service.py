@@ -32,48 +32,51 @@ def _extract_user_id(row):
 
 def create_user(name: str, email: str, password_hash: str, role: str):
     """
-    Generic user creator (for non-spelling flows):
-
-    - If a user with this email already exists, returns its user_id.
-    - Otherwise inserts a new user and returns the new user_id.
-
-    NO spelling-specific logic here:
-    - does NOT delete pending registrations
-    - does NOT touch user_categories
-
-    Spelling approvals must use create_student_user in student_admin_repo.
+    Generic user creator using new execute() return types.
+    execute() ALWAYS returns:
+      - list (for SELECT / RETURNING)
+      - dict {rows_affected: ...}
+      - dict {error: ...}
     """
 
-    # Check if user already exists
+    # 1. Check if user already exists
     existing = fetch_all(
         "SELECT user_id FROM users WHERE email = :email",
         {"email": email},
     )
-
     if existing:
-        return _extract_user_id(existing[0])
+        row = existing[0]
+        if hasattr(row, "_mapping"):
+            return row._mapping.get("user_id")
+        if isinstance(row, dict):
+            return row.get("user_id")
+        return row[0] if isinstance(row, (list, tuple)) else None
 
-    # Create new user
+    # 2. Insert new user
     result = fetch_all(
         """
         INSERT INTO users (name, email, password_hash, role)
         VALUES (:n, :e, :p, :r)
-        ON CONFLICT (email) DO NOTHING
         RETURNING user_id;
         """,
         {"n": name, "e": email, "p": password_hash, "r": role},
     )
 
-    # Handle list returned by execute()
+    # --- handle normal RETURNING (always list) ---
     if isinstance(result, list):
         if len(result) == 0:
             return None
         row = result[0]
         if hasattr(row, "_mapping"):
-            return row._mapping
-        return row
+            return row._mapping.get("user_id")
+        if isinstance(row, dict):
+            return row.get("user_id")
+        try:
+            return row[0]
+        except Exception:
+            return None
 
-    # Handle error dict
+    # --- handle errors ---
     if isinstance(result, dict) and "error" in result:
         return None
 
