@@ -1,4 +1,9 @@
+import sys, os
 import streamlit as st
+
+block_path = os.path.join(os.getcwd(), "synonym_legacy")
+if block_path in sys.path:
+    sys.path.remove(block_path)
 
 from spelling_app.student_ui import render_spelling_student_page
 
