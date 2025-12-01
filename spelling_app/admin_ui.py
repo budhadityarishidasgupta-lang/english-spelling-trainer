@@ -1,3 +1,11 @@
+import sys
+import os
+
+block_path = os.path.join(os.getcwd(), "..", "synonym_legacy")
+block_path = os.path.abspath(block_path)
+if block_path in sys.path:
+    sys.path.remove(block_path)
+
 import streamlit as st
 import pandas as pd
 from shared.db import fetch_all, execute
