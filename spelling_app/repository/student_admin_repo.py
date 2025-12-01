@@ -46,8 +46,11 @@ def hash_password(password: str) -> str:
 
 def create_student_user(name: str, email: str):
     """
-    Creates a spelling student user safely with both list-based and cursor-based execute() results.
-    Returns the new user_id or an error dict.
+    Creates a spelling student user using the new execute() return format.
+    execute() ALWAYS returns either:
+    - list of rows  (SELECT or RETURNING)
+    - dict {rows_affected: ...}
+    - dict {error: ...}
     """
 
     sql = """
@@ -59,34 +62,34 @@ def create_student_user(name: str, email: str):
     params = {
         "n": name,
         "e": email,
-        "p": hash_password("Learn123!")  # or your default password
+        "p": hash_password("Learn123!")
     }
 
     result = execute(sql, params)
 
-    # --- CASE 1: synonyms-style execute() returns a list ---
+    # --- CASE 1: error dict ---
+    if isinstance(result, dict) and "error" in result:
+        return {"error": result["error"]}
+
+    # --- CASE 2: RETURNING always gives list ---
     if isinstance(result, list):
         if len(result) == 0:
             return {"error": "Insert returned empty list"}
+
         row = result[0]
-        if isinstance(row, dict):
-            return row.get("user_id")
+
         if hasattr(row, "_mapping"):
             return row._mapping.get("user_id")
-        return {"error": f"Unknown row structure: {row}"}
 
-    # --- CASE 2: SQLAlchemy CursorResult ---
-    if hasattr(result, "fetchone"):
-        r = result.fetchone()
-        if r is None:
-            return {"error": "No row returned by fetchone()"}
-        if isinstance(r, dict):
-            return r.get("user_id")
-        if hasattr(r, "_mapping"):
-            return r._mapping.get("user_id")
-        return {"error": f"Unexpected row type: {r}"}
+        if isinstance(row, dict):
+            return row.get("user_id")
 
-    # --- Unexpected case ---
+        try:
+            return row[0]
+        except Exception:
+            return {"error": f"Unrecognised row structure: {row}"}
+
+    # --- CASE 3: non-list unexpected ---
     return {"error": f"Unexpected execute() return type: {type(result)} -> {result}"}
 
 
