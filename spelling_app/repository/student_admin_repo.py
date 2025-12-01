@@ -192,7 +192,7 @@ def get_all_classes():
 
 def create_classroom(name: str, start_date: date) -> int | dict:
     """Creates a new classroom."""
-    rows = fetch_all(
+    result = fetch_all(
         """
         INSERT INTO classes (name, start_date)
         VALUES (:n, :sd)
@@ -200,10 +200,11 @@ def create_classroom(name: str, start_date: date) -> int | dict:
         """,
         {"n": name, "sd": start_date},
     )
-    if not rows:
+    row = result[0] if isinstance(result, list) and result else None
+
+    if not row:
         return {"error": "Failed to create classroom"}
 
-    row = rows[0]
     if hasattr(row, "_mapping"):
         return row._mapping["class_id"]
     if isinstance(row, dict):
