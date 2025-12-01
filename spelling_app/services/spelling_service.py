@@ -1,14 +1,6 @@
 import pandas as pd
-from spelling_app.repository.course_repo import (
-    get_all_spelling_courses,
-    get_spelling_course_by_id,
-)
-from spelling_app.repository.item_repo import (
-    create_item,
-    map_item_to_lesson,
-)
-from shared.db import fetch_all, execute
-from spelling_app.utils.text_normalization import normalize_word
+from spelling_app.repository.course_repo import get_all_spelling_courses
+from shared.db import execute
 
 # ------------------------------------------------------------
 # LOAD SPELLING COURSES
@@ -48,56 +40,15 @@ def load_course_data():
     return normalized
 
 
-def load_lessons_for_course(course_id: int):
-    """
-    Loads lessons from global 'lessons' table for a given course.
-    """
-    rows = fetch_all(
-        """
-        SELECT lesson_id, course_id, lesson_name
-        FROM lessons
-        WHERE course_id=:course_id
-        ORDER BY lesson_id ASC;
-        """,
-        {"course_id": course_id},
-    )
-
-    if isinstance(rows, dict):
-        return rows
-
-    return [dict(r._mapping) for r in rows] if rows else []
-
-
-def ensure_lesson_exists(lesson_id: int, course_id: int, lesson_name: str):
-    """
-    Ensures a lesson record exists in the global 'lessons' table.
-    """
-    return execute(
-        """
-        INSERT INTO lessons (lesson_id, course_id, lesson_name)
-        VALUES (:lesson_id, :course_id, :lesson_name)
-        ON CONFLICT (lesson_id) DO UPDATE SET lesson_name=excluded.lesson_name;
-        """,
-        {"lesson_id": lesson_id, "course_id": course_id, "lesson_name": lesson_name},
-    )
-
 # ------------------------------------------------------------
 # CSV UPLOAD FOR SPELLINGS
 # ------------------------------------------------------------
 
 def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, course_id: int):
 
-    # Validate course exists
-    course = get_spelling_course_by_id(course_id)
-    if course is None or (isinstance(course, dict) and "error" in course):
-        return {"error": f"Invalid course id {course_id}"}
-
-    required_cols = {"word", "lesson_id", "lesson_name"}
+    required_cols = {"word", "pattern", "pattern_code"}
     if not required_cols.issubset(df.columns):
-        # FIX: proper f-string with single quotes around join separator
-        return {
-            "error": f"CSV must contain columns: {', '.join(sorted(required_cols))}"
-        }
+        return {"error": f"CSV must contain columns: {', '.join(sorted(required_cols))}"}
 
     df = df.copy()
     df["word"] = df["word"].astype(str).str.strip()
@@ -107,32 +58,23 @@ def process_csv_upload(df: pd.DataFrame, update_mode: str, preview_only: bool, c
     summary = []
 
     for _, row in df.iterrows():
-        raw_word = row.get("word", "")
-        lesson_name = str(row.get("lesson_name", "")).strip()
-        lesson_id = int(row["lesson_id"])
-        word = normalize_word(raw_word)
+        word = str(row["word"]).strip()
+        pattern = str(row["pattern"]).strip()
+        pattern_code = int(row["pattern_code"])
 
-        # -------------------------
-        # Create/update lesson (global table)
-        # -------------------------
-        ensure_lesson_exists(lesson_id, course_id, lesson_name)
-        summary.append({"word": word, "lesson_id": lesson_id, "lesson_name": lesson_name, "action": f"Ensure lesson {lesson_name}"})
+        if preview_only:
+            summary.append({"word": word, "pattern": pattern, "pattern_code": pattern_code})
+            continue
 
-        # -------------------------
-        # Create item + map to lesson_words
-        # -------------------------
-        if not preview_only:
-            item_id = create_item(word)
+        execute(
+            """
+            INSERT INTO spelling_words (course_id, word, pattern, pattern_code)
+            VALUES (:cid, :w, :p, :pc)
+            ON CONFLICT DO NOTHING;
+            """,
+            {"cid": course_id, "w": word, "p": pattern, "pc": pattern_code},
+        )
 
-            if isinstance(item_id, dict):
-                return item_id
-            if item_id is None:
-                return {"error": f"Database error inserting '{word}'"}
+        summary.append({"word": word, "pattern": pattern, "pattern_code": pattern_code})
 
-            link = map_item_to_lesson(lesson_id, item_id)
-            if isinstance(link, dict):
-                return link
-
-        summary.append({"word": word, "lesson_id": lesson_id, "lesson_name": lesson_name, "action": f"INSERT {word}"})
-
-    return {"message": "CSV updated successfully", "details": summary}
+    return {"message": "CSV uploaded", "details": summary}
