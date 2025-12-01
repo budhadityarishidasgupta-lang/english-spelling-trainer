@@ -2,68 +2,67 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-# Load database URL from environment variable (Render or local)
+# Load database URL from environment variable
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable not set.")
 
-# Create SQLAlchemy engine with correct schema search_path
+# Create SQLAlchemy engine
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
 )
 
-# Helper: run SELECT and return rows
+# --------------------------------------------------------------------
+# fetch_all() — Always return list of rows (for SELECT queries)
+# --------------------------------------------------------------------
 def fetch_all(sql, params=None):
-    """
-    Run a SELECT (or any query expected to return rows) and
-    always return a concrete list of row objects.
-
-    This keeps behaviour consistent with execute() for RETURNING
-    queries and avoids Result/iterator surprises.
-    """
     with engine.connect() as connection:
         try:
             result = connection.execute(text(sql), params or {})
             try:
-                rows = result.fetchall()
+                return result.fetchall()
             except Exception:
                 try:
-                    rows = result.all()
+                    return result.all()
                 except Exception:
-                    rows = []
-            return rows
+                    return []
         except Exception as e:
             print("SQL ERROR in fetch_all():", e)
-            print("Failed SQL:", sql)
+            print("FAILED SQL:", sql)
             return []
 
-# Helper: run INSERT/UPDATE/DELETE
-def execute(query, params=None):
-    """Execute a write query.
+# --------------------------------------------------------------------
+# execute() — Unified write/return behaviour
+# --------------------------------------------------------------------
+def execute(query: str, params=None):
+    """
+    Unified DB executor:
 
-    Behaviour:
-    - For plain INSERT/UPDATE/DELETE (no RETURNING): returns {"status": "success"} or {"error": ...}
-    - For INSERT ... RETURNING / UPDATE ... RETURNING: returns a list of rows,
-      so writers that expect rows continue to work.
+    SELECT → returns list of rows  
+    INSERT/UPDATE/DELETE with RETURNING → returns list of rows  
+    Non-returning INSERT/UPDATE/DELETE → returns dict {"rows_affected": n}
+
+    Guaranteed to NEVER return a Result object.
     """
     try:
         with engine.begin() as conn:
             result = conn.execute(text(query), params or {})
 
+            # SELECT → always rows
+            if query.strip().upper().startswith("SELECT"):
+                return result.fetchall()
+
+            # INSERT/UPDATE/DELETE with RETURNING
             if "RETURNING" in query.upper():
                 try:
-                    rows = result.fetchall()
+                    return result.fetchall()
                 except Exception:
-                    # Some drivers expose .all() instead of .fetchall()
-                    try:
-                        rows = result.all()
-                    except Exception:
-                        rows = []
-                return rows
+                    return []
 
-        # Non-RETURNING write: simple status dict
-        return {"status": "success"}
+            # Non-returning write → simple dict
+            return {"rows_affected": result.rowcount}
+
     except SQLAlchemyError as e:
         return {"error": str(e)}
