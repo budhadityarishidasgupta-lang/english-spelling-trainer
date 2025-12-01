@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from spelling_app.services.help_service import get_help_text
 from spelling_app.repository.registration_repo import create_pending_registration
 from spelling_app.services.student_service import (
@@ -133,8 +134,75 @@ def render_main_student_app():
 
     page = st.sidebar.radio("Navigation", ["Dashboard", "Spelling Practice"], key="page")
 
+    ##############################################
+    # STUDENT DASHBOARD (Simplified)
+    ##############################################
     if page == "Dashboard":
-        render_dashboard()
+
+        st.title("Dashboard")
+
+        user_id = st.session_state.get("user_id")
+
+        # --- Count assigned courses ---
+        course_rows = fetch_all(
+            """
+            SELECT c.course_id, c.title
+            FROM enrollments e
+            JOIN courses c ON c.course_id = e.course_id
+            WHERE e.user_id = :uid
+            """,
+            {"uid": user_id}
+        )
+
+        if hasattr(course_rows, "all"):
+            course_rows = [dict(r._mapping) for r in course_rows.all()]
+        else:
+            course_rows = [dict(r._mapping) for r in course_rows]
+
+        # --- Count total words across assigned courses ---
+        word_rows = fetch_all(
+            """
+            SELECT COUNT(*) 
+            FROM spelling_words
+            WHERE course_id IN (
+                SELECT course_id FROM enrollments WHERE user_id = :uid
+            )
+            """,
+            {"uid": user_id}
+        )
+
+        if hasattr(word_rows, "all"):
+            total_words = word_rows.all()[0][0]
+        else:
+            total_words = word_rows[0][0]
+
+        # --- Count attempts made by user ---
+        attempt_rows = fetch_all(
+            """
+            SELECT COUNT(*) 
+            FROM attempts
+            WHERE user_id = :uid
+            """,
+            {"uid": user_id}
+        )
+
+        if hasattr(attempt_rows, "all"):
+            total_attempts = attempt_rows.all()[0][0]
+        else:
+            total_attempts = attempt_rows[0][0]
+
+        # --- UI ---
+        st.subheader("Your Learning Summary")
+
+        st.metric("Assigned Courses", len(course_rows))
+        st.metric("Total Words Available", total_words)
+        st.metric("Words Practiced (attempts)", total_attempts)
+
+        if course_rows:
+            st.write("### Your Courses:")
+            st.write(pd.DataFrame(course_rows))
+        else:
+            st.warning("You are not assigned to any courses yet.")
 
     ##############################################
     # SPELLING PRACTICE PAGE
