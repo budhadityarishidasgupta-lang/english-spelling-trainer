@@ -44,28 +44,31 @@ def check_login(st, email: str, password: str) -> bool:
     Checks login against the real users table using bcrypt hash verification.
     """
     sql = text("SELECT user_id, name, email, password_hash, is_active FROM users WHERE email=:e")
-    result = engine.execute(sql, {"e": email}).mappings().first()
 
-    if not result:
+    with engine.connect() as conn:
+        row = conn.execute(sql, {"e": email}).mappings().first()
+
+    if not row:
         return False  # Email not found
 
-    if not result["is_active"]:
+    if not row["is_active"]:
         return False  # User disabled
 
-    stored_hash = result["password_hash"]
+    stored_hash = row["password_hash"]
 
-    # Password hash must be bytes for bcrypt
+    # Convert to bytes for bcrypt
     if isinstance(stored_hash, str):
         stored_hash = stored_hash.encode()
 
     if bcrypt.checkpw(password.encode(), stored_hash):
-        # SUCCESS → set session state
+        # SUCCESS → update session state
         st.session_state.is_logged_in = True
-        st.session_state.user_id = result["user_id"]
-        st.session_state.user_name = result["name"]
+        st.session_state.user_id = row["user_id"]
+        st.session_state.user_name = row["name"]
         return True
 
     return False
+
 
 
 def logout(st):
