@@ -81,14 +81,58 @@ def render_login_page():
                 st.error("Invalid email or password.")
 
 
-def render_student_dashboard():
-    st.title("Spelling Student Dashboard (Clean)")
-    st.write(f"Logged in as **{st.session_state.user_name}**")
-    st.write("This is just a placeholder dashboard for now.")
+def get_student_courses(user_id: int):
+    rows = fetch_all(
+        """
+        SELECT c.course_id, c.course_name
+        FROM spelling_courses c
+        JOIN spelling_enrollments e ON c.course_id = e.course_id
+        WHERE e.user_id = :uid
+        ORDER BY c.course_name
+        """,
+        {"uid": user_id},
+    )
+    if not rows:
+        return []
 
-    if st.button("Logout"):
+    courses = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        courses.append({"course_id": m["course_id"], "course_name": m["course_name"]})
+    return courses
+
+
+def render_student_dashboard():
+    st.title("📘 Spelling Student Dashboard")
+    st.write(f"Logged in as **{st.session_state.user_name}**")
+
+    # ---------- GET COURSES ----------
+    user_id = st.session_state.user_id
+    courses = get_student_courses(user_id)
+
+    if not courses:
+        st.warning("No courses assigned to your account yet. Please contact your teacher.")
+        return
+
+    # ---------- SELECT COURSE ----------
+    course_names = [c["course_name"] for c in courses]
+    selected_name = st.selectbox("Select your course:", course_names)
+
+    # store selected course
+    selected_course = next(c for c in courses if c["course_name"] == selected_name)
+    st.session_state.selected_course_id = selected_course["course_id"]
+
+    st.success(f"Selected course: {selected_name}")
+
+    if st.button("Go to Lessons"):
+        st.session_state.page = "lessons"
+        st.experimental_rerun()
+
+    # Logout button
+    if st.sidebar.button("Logout"):
         logout()
         st.experimental_rerun()
+
 
 def admin_reset_password_panel():
     st.sidebar.markdown("### 🔧 Admin: Reset Password (temporary)")
@@ -108,13 +152,22 @@ def admin_reset_password_panel():
 def main():
     init_session()
 
-    # TEMP: always show admin reset panel in sidebar
     admin_reset_password_panel()
 
     if not st.session_state.is_logged_in:
         render_login_page()
-    else:
+        return
+
+    # PAGE ROUTING
+    if "page" not in st.session_state:
+        st.session_state.page = "dashboard"
+
+    if st.session_state.page == "dashboard":
         render_student_dashboard()
+
+    elif st.session_state.page == "lessons":
+        st.write("Lessons page will be added next.")
+
 
 
 if __name__ == "__main__":
