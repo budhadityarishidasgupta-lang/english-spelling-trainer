@@ -135,8 +135,7 @@ def render_main_student_app():
     # STUDENT DASHBOARD (Simplified)
     ##############################################
     if page == "Dashboard":
-
-    st.title("Dashboard")
+        st.title("Dashboard")
 
         user_id = st.session_state.get("user_id")
 
