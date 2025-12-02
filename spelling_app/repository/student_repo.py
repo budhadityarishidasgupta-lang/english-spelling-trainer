@@ -184,6 +184,69 @@ def get_lesson_progress_detailed(user_id: int, course_id: int, pattern_code: int
         "progress": progress,
     }
 
+def get_course_progress_detailed(user_id: int, course_id: int):
+    """
+    Returns detailed progress for a specific course.
+
+    Stats returned:
+      - total_words: number of spelling_words for this course
+      - attempted_words: distinct spelling_words the user attempted
+      - progress: percentage attempted
+    """
+
+    # Total words in the course
+    total_rows = fetch_all(
+        """
+        SELECT COUNT(*) AS total_words
+        FROM spelling_words
+        WHERE course_id = :cid
+        """,
+        {"cid": course_id},
+    )
+    total_words = 0
+    if total_rows:
+        row = total_rows[0]
+        if hasattr(row, "_mapping"):
+            total_words = row._mapping.get("total_words", 0)
+        elif isinstance(row, (tuple, list)):
+            total_words = row[0]
+        elif isinstance(row, dict):
+            total_words = row.get("total_words", 0)
+
+    # Distinct words attempted (item_id = word_id)
+    attempted_rows = fetch_all(
+        """
+        SELECT COUNT(DISTINCT item_id) AS attempted_words
+        FROM attempts
+        WHERE user_id = :uid
+          AND item_id IN (
+              SELECT word_id
+              FROM spelling_words
+              WHERE course_id = :cid
+          )
+        """,
+        {"uid": user_id, "cid": course_id},
+    )
+    attempted_words = 0
+    if attempted_rows:
+        row = attempted_rows[0]
+        if hasattr(row, "_mapping"):
+            attempted_words = row._mapping.get("attempted_words", 0)
+        elif isinstance(row, (tuple, list)):
+            attempted_words = row[0]
+        elif isinstance(row, dict):
+            attempted_words = row.get("attempted_words", 0)
+
+    progress = 0.0
+    if total_words > 0:
+        progress = (attempted_words / total_words) * 100.0
+
+    return {
+        "total_words": total_words,
+        "attempted_words": attempted_words,
+        "progress": progress,
+    }
+
 def get_lessons_for_course(course_id: int):
     """
     Returns distinct lessons (pattern groups) for a spelling course:
