@@ -33,7 +33,9 @@ def render_spelling_student_page():
     """
         # ⭐ ADD THIS LINE HERE — FIRST STREAMLIT CALL INSIDE FUNCTION
     inject_student_css()
-    initialize_session_state(st)
+    # Only initialize ONCE
+    if "is_logged_in" not in st.session_state:
+        initialize_session_state(st)
 
     if not st.session_state.is_logged_in:
         render_login_page()
