@@ -1,5 +1,8 @@
 import sys
 import os
+import streamlit as st
+st.set_page_config(page_title="Spelling Student App", layout="wide")
+
 
 block_path = os.path.join(os.getcwd(), "..", "synonym_legacy")
 block_path = os.path.abspath(block_path)
