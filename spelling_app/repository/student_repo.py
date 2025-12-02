@@ -93,6 +93,97 @@ def get_user_stats_detailed(user_id: int):
         "mastered_words": mastered_words,
     }
 
+def get_lesson_progress_detailed(user_id: int, course_id: int, pattern_code: int):
+    """
+    Returns progress details for a specific lesson (pattern group) inside a course.
+
+    Returns:
+      - total_words: total words in this lesson
+      - attempted_words: how many unique words user attempted
+      - correct_attempts: number of correct attempts
+      - progress: attempted_words / total_words * 100
+    """
+
+    # Total words for this lesson
+    total_rows = fetch_all(
+        """
+        SELECT COUNT(*) AS total_words
+        FROM spelling_words
+        WHERE course_id = :cid AND pattern_code = :pcode;
+        """,
+        {"cid": course_id, "pcode": pattern_code},
+    )
+    total_words = 0
+    if total_rows:
+        row = total_rows[0]
+        if hasattr(row, "_mapping"):
+            total_words = row._mapping.get("total_words", 0)
+        elif isinstance(row, (tuple, list)):
+            total_words = row[0]
+        elif isinstance(row, dict):
+            total_words = row.get("total_words", 0)
+
+    # Distinct attempted words
+    attempted_rows = fetch_all(
+        """
+        SELECT COUNT(DISTINCT a.item_id) AS attempted_words
+        FROM attempts a
+        WHERE a.user_id = :uid
+          AND a.item_id IN (
+              SELECT word_id
+              FROM spelling_words
+              WHERE course_id = :cid AND pattern_code = :pcode
+          );
+        """,
+        {"uid": user_id, "cid": course_id, "pcode": pattern_code},
+    )
+    attempted_words = 0
+    if attempted_rows:
+        row = attempted_rows[0]
+        if hasattr(row, "_mapping"):
+            attempted_words = row._mapping.get("attempted_words", 0)
+        elif isinstance(row, (tuple, list)):
+            attempted_words = row[0]
+        elif isinstance(row, dict):
+            attempted_words = row.get("attempted_words", 0)
+
+    # Correct attempts
+    correct_rows = fetch_all(
+        """
+        SELECT COUNT(*) AS correct_attempts
+        FROM attempts a
+        WHERE a.user_id = :uid
+          AND a.is_correct = TRUE
+          AND a.item_id IN (
+              SELECT word_id
+              FROM spelling_words
+              WHERE course_id = :cid AND pattern_code = :pcode
+          );
+        """,
+        {"uid": user_id, "cid": course_id, "pcode": pattern_code},
+    )
+    correct_attempts = 0
+    if correct_rows:
+        row = correct_rows[0]
+        if hasattr(row, "_mapping"):
+            correct_attempts = row._mapping.get("correct_attempts", 0)
+        elif isinstance(row, (tuple, list)):
+            correct_attempts = row[0]
+        elif isinstance(row, dict):
+            correct_attempts = row.get("correct_attempts", 0)
+
+    # Progress percentage
+    progress = 0.0
+    if total_words > 0:
+        progress = (attempted_words / total_words) * 100.0
+
+    return {
+        "total_words": total_words,
+        "attempted_words": attempted_words,
+        "correct_attempts": correct_attempts,
+        "progress": progress,
+    }
+
 def get_lessons_for_course(course_id: int):
     """
     Returns distinct lessons (pattern groups) for a spelling course:
