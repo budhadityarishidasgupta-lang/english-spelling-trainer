@@ -1,4 +1,7 @@
 import streamlit as st
+st.set_page_config(page_title="Spelling Student App", layout="wide")
+
+import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from datetime import date
