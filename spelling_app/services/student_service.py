@@ -23,17 +23,15 @@ SESSION_KEYS = [
 # --- Core Service Functions ---
 
 def initialize_session_state(st):
-    """Initializes all required session state variables."""
-    for key in SESSION_KEYS:
-        if key not in st.session_state:
-            if key == "is_logged_in":
-                st.session_state[key] = False
-            elif key == "user_id":
-                st.session_state[key] = 0
-            elif key == "user_name":
-                st.session_state[key] = "Guest"
-            else:
-                st.session_state[key] = None
+    """Initializes session state variables without overwriting login."""
+    if "is_logged_in" not in st.session_state:
+        st.session_state.is_logged_in = False
+
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = None
+
+    if "user_name" not in st.session_state:
+        st.session_state.user_name = None
 
 import bcrypt
 from sqlalchemy import text
