@@ -35,25 +35,38 @@ def initialize_session_state(st):
             else:
                 st.session_state[key] = None
 
+import bcrypt
+from sqlalchemy import text
+from shared.db import engine
+
 def check_login(st, email: str, password: str) -> bool:
     """
-    Placeholder for actual login logic. Mocks login for 'student@test.com'.
-    
-    In a real application, this would query the users table and verify the password hash.
+    Checks login against the real users table using bcrypt hash verification.
     """
-    # Mocked user data for testing the UI
-    MOCK_USER_ID = 1
-    MOCK_USER_NAME = "Test Student"
-    MOCK_EMAIL = "student@test.com"
-    MOCK_PASSWORD = "password"
-    
-    if email == MOCK_EMAIL and password == MOCK_PASSWORD:
+    sql = text("SELECT user_id, name, email, password_hash, is_active FROM users WHERE email=:e")
+    result = engine.execute(sql, {"e": email}).mappings().first()
+
+    if not result:
+        return False  # Email not found
+
+    if not result["is_active"]:
+        return False  # User disabled
+
+    stored_hash = result["password_hash"]
+
+    # Password hash must be bytes for bcrypt
+    if isinstance(stored_hash, str):
+        stored_hash = stored_hash.encode()
+
+    if bcrypt.checkpw(password.encode(), stored_hash):
+        # SUCCESS → set session state
         st.session_state.is_logged_in = True
-        st.session_state.user_id = MOCK_USER_ID
-        st.session_state.user_name = MOCK_USER_NAME
+        st.session_state.user_id = result["user_id"]
+        st.session_state.user_name = result["name"]
         return True
-    
+
     return False
+
 
 def logout(st):
     """Clears session state and logs out the user."""
