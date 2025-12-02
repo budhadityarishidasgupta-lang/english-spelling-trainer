@@ -29,6 +29,42 @@ def _to_list(rows):
             return []
     return []
 
+def get_lessons_for_course(course_id: int):
+    """
+    Returns distinct lessons (pattern groups) for a spelling course:
+      lesson_id    = pattern_code
+      lesson_name  = pattern
+    """
+    sql = """
+    SELECT DISTINCT
+        pattern_code AS lesson_id,
+        pattern      AS lesson_name
+    FROM spelling_words
+    WHERE course_id = :cid
+    ORDER BY pattern_code;
+    """
+    rows = fetch_all(sql, {"cid": course_id})
+    return _to_list(rows)
+
+def get_words_for_lesson(course_id: int, pattern_code: int):
+    """
+    Returns all words belonging to a specific lesson (pattern_code)
+    inside the given course.
+    """
+    sql = """
+    SELECT
+        word_id,
+        word,
+        pattern_code,
+        pattern
+    FROM spelling_words
+    WHERE course_id = :cid
+      AND pattern_code = :pcode
+    ORDER BY word_id;
+    """
+    rows = fetch_all(sql, {"cid": course_id, "pcode": pattern_code})
+    return _to_list(rows)
+
 # --- Student-Facing Repository Functions ---
 
 def get_student_courses(user_id: int) -> List[Dict[str, Any]]:
