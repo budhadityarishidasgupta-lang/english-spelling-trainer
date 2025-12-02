@@ -29,6 +29,70 @@ def _to_list(rows):
             return []
     return []
 
+def get_user_stats_detailed(user_id: int):
+    """
+    Returns aggregated statistics for a student, used in the dashboard:
+      - total_attempts
+      - correct_attempts
+      - accuracy (0–100)
+      - mastered_words (correct 3 times)
+    """
+
+    # Total attempts
+    total_rows = fetch_all(
+        "SELECT COUNT(*) AS total_attempts FROM attempts WHERE user_id = :uid",
+        {"uid": user_id},
+    )
+    total_attempts = 0
+    if total_rows:
+        row = total_rows[0]
+        if hasattr(row, "_mapping"):
+            total_attempts = row._mapping.get("total_attempts", 0)
+        elif isinstance(row, (list, tuple)):
+            total_attempts = row[0]
+        elif isinstance(row, dict):
+            total_attempts = row.get("total_attempts", 0)
+
+    # Correct attempts
+    correct_rows = fetch_all(
+        "SELECT COUNT(*) AS correct_attempts FROM attempts WHERE user_id = :uid AND is_correct = TRUE",
+        {"uid": user_id},
+    )
+    correct_attempts = 0
+    if correct_rows:
+        row = correct_rows[0]
+        if hasattr(row, "_mapping"):
+            correct_attempts = row._mapping.get("correct_attempts", 0)
+        elif isinstance(row, (list, tuple)):
+            correct_attempts = row[0]
+        elif isinstance(row, dict):
+            correct_attempts = row.get("correct_attempts", 0)
+
+    # Accuracy (avoid divide-by-zero)
+    accuracy = 0.0
+    if total_attempts > 0:
+        accuracy = (correct_attempts / total_attempts) * 100.0
+
+    # Mastered words = correct 3+ times
+    mastered_rows = fetch_all(
+        """
+        SELECT item_id
+        FROM attempts
+        WHERE user_id = :uid AND is_correct = TRUE
+        GROUP BY item_id
+        HAVING COUNT(*) >= 3
+        """,
+        {"uid": user_id},
+    )
+    mastered_words = len(mastered_rows) if isinstance(mastered_rows, list) else 0
+
+    return {
+        "total_attempts": total_attempts,
+        "correct_attempts": correct_attempts,
+        "accuracy": accuracy,
+        "mastered_words": mastered_words,
+    }
+
 def get_lessons_for_course(course_id: int):
     """
     Returns distinct lessons (pattern groups) for a spelling course:
