@@ -101,6 +101,57 @@ def get_student_courses(user_id: int):
         courses.append({"course_id": m["course_id"], "course_name": m["course_name"]})
     return courses
 
+def get_lessons_for_course(course_id: int):
+    rows = fetch_all(
+        """
+        SELECT lesson_id, lesson_name, sort_order
+        FROM spelling_lessons
+        WHERE course_id = :cid
+        ORDER BY sort_order, lesson_name
+        """,
+        {"cid": course_id},
+    )
+
+    lessons = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        lessons.append({
+            "lesson_id": m["lesson_id"],
+            "lesson_name": m["lesson_name"]
+        })
+    return lessons
+
+def render_lessons_page():
+    st.title("📘 Select a Lesson")
+
+    course_id = st.session_state.get("selected_course_id")
+    if not course_id:
+        st.error("No course selected.")
+        st.session_state.page = "dashboard"
+        st.experimental_rerun()
+
+    lessons = get_lessons_for_course(course_id)
+
+    if not lessons:
+        st.warning("No lessons found for this course yet.")
+        return
+
+    lesson_names = [l["lesson_name"] for l in lessons]
+    selected_lesson_name = st.selectbox("Choose your lesson:", lesson_names)
+
+    selected_lesson = next(l for l in lessons if l["lesson_name"] == selected_lesson_name)
+    st.session_state.selected_lesson_id = selected_lesson["lesson_id"]
+
+    st.success(f"Selected: {selected_lesson_name}")
+
+    if st.button("Start Practice"):
+        st.session_state.page = "practice"
+        st.experimental_rerun()
+
+    if st.sidebar.button("Back to Courses"):
+        st.session_state.page = "dashboard"
+        st.experimental_rerun()
+
 
 def render_student_dashboard():
     st.title("📘 Spelling Student Dashboard")
@@ -164,10 +215,10 @@ def main():
 
     if st.session_state.page == "dashboard":
         render_student_dashboard()
-
     elif st.session_state.page == "lessons":
-        st.write("Lessons page will be added next.")
-
+        render_lessons_page()
+    elif st.session_state.page == "practice":
+        st.write("Practice will be added next.")
 
 
 if __name__ == "__main__":
