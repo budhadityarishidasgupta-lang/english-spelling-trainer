@@ -152,6 +152,81 @@ def render_lessons_page():
         st.session_state.page = "dashboard"
         st.experimental_rerun()
 
+def get_words_for_lesson(lesson_id: int):
+    rows = fetch_all(
+        """
+        SELECT word_id, word
+        FROM spelling_words
+        WHERE lesson_id = :lid
+        ORDER BY word_id
+        """,
+        {"lid": lesson_id},
+    )
+
+    words = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        words.append({
+            "word_id": m["word_id"],
+            "word": m["word"]
+        })
+    return words
+
+
+def render_practice_page():
+    st.title("✏️ Practice")
+
+    lesson_id = st.session_state.get("selected_lesson_id")
+    if not lesson_id:
+        st.error("No lesson selected.")
+        st.session_state.page = "lessons"
+        st.experimental_rerun()
+
+    # Load words
+    words = get_words_for_lesson(lesson_id)
+
+    if not words:
+        st.warning("No words found for this lesson.")
+        return
+
+    # Initialize a pointer to which word you are on
+    if "practice_index" not in st.session_state:
+        st.session_state.practice_index = 0
+
+    index = st.session_state.practice_index
+    if index >= len(words):
+        st.success("🎉 You finished all words in this lesson!")
+        if st.button("Back to lessons"):
+            st.session_state.page = "lessons"
+            st.session_state.practice_index = 0
+            st.experimental_rerun()
+        return
+
+    current_word = words[index]["word"]
+
+    st.subheader(f"Word {index + 1} of {len(words)}")
+
+with st.form("practice_form"):
+    answer = st.text_input("Type the word:")
+    submitted = st.form_submit_button("Submit")
+
+if submitted:
+    if answer.strip().lower() == current_word.lower():
+        st.success("Correct! 🎉")
+    else:
+        st.error(f"Incorrect ❌ — The correct word is: **{current_word}**")
+
+    if st.button("Next"):
+        st.session_state.practice_index += 1
+        st.experimental_rerun()
+
+
+    # Back button
+    if st.sidebar.button("Back to Lessons"):
+        st.session_state.page = "lessons"
+        st.session_state.practice_index = 0
+        st.experimental_rerun()
+
 
 def render_student_dashboard():
     st.title("📘 Spelling Student Dashboard")
@@ -218,7 +293,7 @@ def main():
     elif st.session_state.page == "lessons":
         render_lessons_page()
     elif st.session_state.page == "practice":
-        st.write("Practice will be added next.")
+        render_practice_page()
 
 
 if __name__ == "__main__":
