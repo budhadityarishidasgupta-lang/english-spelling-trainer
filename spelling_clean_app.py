@@ -102,7 +102,7 @@ def get_student_courses(user_id: int):
         FROM spelling_courses c
         JOIN spelling_enrollments e ON e.course_id = c.course_id
         WHERE e.user_id = :uid
-        ORDER BY c.sort_order, c.course_name
+        ORDER BY c.course_name
         """,
         {"uid": user_id},
     )
@@ -110,12 +110,10 @@ def get_student_courses(user_id: int):
     courses = []
     for r in rows:
         m = getattr(r, "_mapping", r)
-        courses.append(
-            {
-                "course_id": m["course_id"],
-                "course_name": m["course_name"],
-            }
-        )
+        courses.append({
+            "course_id": m["course_id"],
+            "course_name": m["course_name"]
+        })
     return courses
 
 
@@ -179,6 +177,8 @@ def render_student_dashboard():
     user_id = st.session_state.get("user_id")
     courses = get_student_courses(user_id)
 
+    st.write("DEBUG COURSES:", courses)  # TEMP DEBUG
+
     if not courses:
         st.warning("No courses assigned to your account yet.")
         return
@@ -218,10 +218,11 @@ def render_practice_page():
             st.experimental_rerun()
         return
 
-    if "practice_index" not in st.session_state:
+# Ensure practice index always exists and is integer
+    if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
-    index = st.session_state.practice_index
+    index = int(st.session_state.practice_index)
 
     if index >= len(words):
         st.success("🎉 You finished all words!")

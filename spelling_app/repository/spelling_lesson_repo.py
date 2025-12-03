@@ -1,3 +1,5 @@
+# spelling_app/repository/spelling_lesson_repo.py
+
 from shared.db import fetch_all, execute
 
 
@@ -30,17 +32,24 @@ def _to_list(rows):
 
 
 def get_lesson_by_name(course_id: int, lesson_name: str):
-    """Return a single lesson row as dict or None."""
+    """
+    Return a single lesson row (dict) or None.
+    """
     rows = fetch_all(
         """
-        SELECT lesson_id, course_id, lesson_name, sort_order
+        SELECT
+            lesson_id,
+            course_id,
+            lesson_name,
+            sort_order
         FROM spelling_lessons
-        WHERE course_id = :course_id AND lesson_name = :lesson_name
+        WHERE course_id = :course_id
+          AND lesson_name = :lesson_name
         """,
         {"course_id": course_id, "lesson_name": lesson_name},
     )
 
-    if isinstance(rows, dict):  # DB error
+    if isinstance(rows, dict):
         return rows
 
     rows = _to_list(rows)
@@ -51,30 +60,40 @@ def get_lesson_by_name(course_id: int, lesson_name: str):
 
 
 def create_spelling_lesson(course_id: int, lesson_name: str, sort_order: int):
-    """Atomic find-or-create with safe RETURNING."""
+    """
+    Create or update a spelling lesson safely using RETURNING.
+    Ensures a lesson always exists for a name under a course.
+    """
+
     rows = fetch_all(
         """
         INSERT INTO spelling_lessons (course_id, lesson_name, sort_order)
         VALUES (:course_id, :lesson_name, :sort_order)
         ON CONFLICT (course_id, lesson_name)
         DO UPDATE SET sort_order = EXCLUDED.sort_order
-        RETURNING lesson_id, course_id, lesson_name, sort_order;
+        RETURNING
+            lesson_id,
+            course_id,
+            lesson_name,
+            sort_order;
         """,
         {"course_id": course_id, "lesson_name": lesson_name, "sort_order": sort_order},
     )
 
-    if isinstance(rows, dict):  # DB error
+    if isinstance(rows, dict):
         return rows
 
     rows = _to_list(rows)
     if not rows:
-        return {"error": "Database error: lesson creation returned no rows."}
+        return {"error": "Error: lesson creation returned no rows."}
 
     return _to_dict(rows[0])
 
 
 def update_spelling_lesson_sort_order(lesson_id: int, sort_order: int):
-    """Update sort_order safely."""
+    """
+    Update sort order of a spelling lesson.
+    """
     return execute(
         """
         UPDATE spelling_lessons

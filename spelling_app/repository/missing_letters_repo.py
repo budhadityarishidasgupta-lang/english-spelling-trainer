@@ -1,11 +1,14 @@
+# spelling_app/repository/missing_letters_repo.py
+
 from shared.db import fetch_all
 
 
-def fetch_missing_letter_words():
+def fetch_missing_letter_words(limit: int = 10):
     """
-    For now, return 10 random words suitable for missing-letter exercises.
-    Later, implement actual letter-hiding logic at service/UI layer.
+    Returns random words suitable for missing-letter exercises.
+    'limit' controls how many items are returned.
     """
+
     sql = """
         SELECT
             word_id,
@@ -13,12 +16,12 @@ def fetch_missing_letter_words():
             difficulty
         FROM spelling_words
         ORDER BY RANDOM()
-        LIMIT 10;
+        LIMIT :limit;
     """
 
-    result = fetch_all(sql)
+    rows = fetch_all(sql, {"limit": limit})
 
-    if isinstance(result, dict):
-        return result
+    if isinstance(rows, dict):  # DB error
+        return rows
 
-    return [dict(getattr(r, "_mapping", r)) for r in result]
+    return [dict(getattr(r, "_mapping", r)) for r in rows]

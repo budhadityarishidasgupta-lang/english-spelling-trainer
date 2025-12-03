@@ -1,156 +1,119 @@
+# spelling_app/repository/course_repo.py
+
 from shared.db import fetch_all, execute
 
 
-# ------------------------------------------------------------
-# GENERAL COURSE FUNCTIONS (Legacy/Synonym)
-# ------------------------------------------------------------
-
-def get_all_courses():
-    sql = """
-    SELECT
-        course_id,
-        title,
-        description,
-        created_at
-    FROM courses
-    ORDER BY course_id ASC;
-    """
-    result = fetch_all(sql)
-
-    # If fetch_all returns an error dict, just bubble it up
-    if isinstance(result, dict):
-        return result
-
-    # Normal case: SQLAlchemy rows -> list[dict]
-    return [dict(getattr(row, "_mapping", row)) for row in result] if result else []
-
-
-def get_course(course_id):
-    sql = """
-    SELECT course_id, title, description, created_at
-    FROM courses
-    WHERE course_id = :id
-    """
-
-    result = fetch_all(sql, {"id": course_id})
-
-    return [dict(row) for row in result] if result else []
-
-
-# ------------------------------------------------------------
-# SPELLING COURSES (Option 1: stored in global "courses" table)
-# ------------------------------------------------------------
-
 def get_all_spelling_courses():
     """
-    Returns all courses where course_type='spelling'.
-    Always returns a list of dicts.
+    Returns all spelling courses from spelling_courses table.
+    Always returns a list of dicts or an error dict.
     """
-    rows = fetch_all(
-        """
-        SELECT course_id, title, description, course_type, created_at
-        FROM courses
-        WHERE course_type = 'spelling'
+    sql = """
+        SELECT
+            course_id,
+            title,
+            description,
+            created_at
+        FROM spelling_courses
         ORDER BY course_id ASC;
-        """
-    )
+    """
 
-    # DB error?
+    rows = fetch_all(sql)
+
     if isinstance(rows, dict):
         return rows
 
-    # Normalize
-    return [dict(r._mapping) for r in rows] if rows else []
+    return [dict(getattr(r, "_mapping", r)) for r in rows] if rows else []
 
 
 def get_spelling_course_by_id(course_id: int):
-    rows = fetch_all(
-        """
-        SELECT course_id, title, description, course_type, created_at
-        FROM courses
-        WHERE course_id=:course_id AND course_type='spelling'
-        LIMIT 1;
-        """,
-        {"course_id": course_id},
-    )
+    """
+    Returns a single spelling course row as a dict, or None.
+    """
 
-    # Normalize SQLAlchemy CursorResult → list of dicts
+    sql = """
+        SELECT
+            course_id,
+            title,
+            description,
+            created_at
+        FROM spelling_courses
+        WHERE course_id = :course_id
+        LIMIT 1;
+    """
+
+    rows = fetch_all(sql, {"course_id": course_id})
+
     if isinstance(rows, dict):
         return rows
 
     if not rows:
         return None
 
-    first = None
-
-    for row in rows:
-        # Case 1: dict already
-        if isinstance(row, dict):
-            first = row
-            break
-
-        # Case 2: SQLAlchemy Row / RowMapping
-        if hasattr(row, "_mapping"):
-            first = dict(row._mapping)
-            break
-
-        # Case 3: fallback
-        try:
-            first = dict(row)
-            break
-        except Exception:
-            continue
-
-    return first
+    row = rows[0]
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+    if isinstance(row, dict):
+        return row
+    try:
+        return dict(row)
+    except Exception:
+        return None
 
 
-def create_course(title, description=None, level=None):
+def create_spelling_course(title: str, description: str | None = None):
     """
-    Insert a new spelling course into the courses table.
-    course_type is always set to 'spelling'.
+    Insert a new spelling course and return course_id.
     """
+
     sql = """
-        INSERT INTO courses (title, description, course_type)
-        VALUES (:title, :description, 'spelling')
+        INSERT INTO spelling_courses (title, description)
+        VALUES (:title, :description)
         RETURNING course_id;
     """
-    result = fetch_all(sql, {"title": title, "description": description})
 
-    # Normal case: return the created ID
-    if isinstance(result, list) and len(result) > 0:
-        row = result[0]
-        return row._mapping["course_id"]
+    rows = fetch_all(sql, {"title": title, "description": description})
 
-    # Bubble up error dicts
-    return result
+    if isinstance(rows, dict):
+        return rows
+
+    if rows:
+        row = rows[0]
+        if hasattr(row, "_mapping"):
+            return row._mapping.get("course_id")
+        if isinstance(row, dict):
+            return row.get("course_id")
+        try:
+            return row[0]
+        except Exception:
+            return None
+
+    return None
 
 
-def update_spelling_course(course_id, title=None, description=None, difficulty=None, course_type=None):
-    set_clauses = []
+def update_spelling_course(course_id: int, title: str | None = None, description: str | None = None):
+    """
+    Update title/description for a spelling course.
+    """
+
+    fields = []
     params = {"course_id": course_id}
 
     if title is not None:
-        set_clauses.append("title = :title")
+        fields.append("title = :title")
         params["title"] = title
 
     if description is not None:
-        set_clauses.append("description = :description")
+        fields.append("description = :description")
         params["description"] = description
 
-    if difficulty is not None:
-        set_clauses.append("difficulty = :difficulty")
-        params["difficulty"] = difficulty
-
-    if course_type is not None:
-        set_clauses.append("course_type = :course_type")
-        params["course_type"] = course_type
-
-    if not set_clauses:
-        return {"error": "No updatable fields provided"}
+    if not fields:
+        return {"error": "No fields to update"}
 
     sql = f"""
-        UPDATE courses
-        SET {", ".join(set_clauses)}
-        WHERE course_id = :course_id
+        UPDATE spelling_courses
+        SET {", ".join(fields)}
+        WHERE course_id = :course_id;
     """
+
     return execute(sql, params)
