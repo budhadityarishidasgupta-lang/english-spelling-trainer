@@ -1,406 +1,294 @@
-# --------------------------------------------------------
-# FIX PYTHON PATH (MUST RUN BEFORE ANY OTHER IMPORTS)
-# --------------------------------------------------------
-import os
-import sys
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-# --------------------------------------------------------
-# IMPORTS
-# --------------------------------------------------------
-from dotenv import load_dotenv
+import pandas as pd
 import streamlit as st
-import sqlalchemy
+from dotenv import load_dotenv
+from passlib.hash import bcrypt as passlib_bcrypt
 
-from shared.db import engine, fetch_all
-from spelling_app.repository.spelling_lesson_repo import (
-    update_lesson_name,
-    delete_lesson,
-)
-from spelling_app.repository.student_pending_repo import (
-    list_pending_registrations,
-    approve_pending_registration,
-    delete_pending_registration,
-)
-from spelling_app.repository.student_repo import (
-    list_registered_students,
-    get_student_courses,
-    assign_course_to_student,
-    remove_course_from_student,
-    update_student_status,
-    update_student_class_name,
-)
-from spellings_admin_clean.upload_manager_clean import process_spelling_csv
-from spellings_admin_clean.course_manager_clean import (
-    list_courses,
-    create_course_admin,
-)
-
-# --------------------------------------------------------
-# STREAMLIT CONFIG (MUST BE FIRST STREAMLIT CALL)
-# --------------------------------------------------------
-st.set_page_config(
-    page_title="Spelling Admin Console (Clean Build)",
-    layout="wide",
-)
-
-# --------------------------------------------------------
-# ENV + DEBUG
-# --------------------------------------------------------
 load_dotenv()
 
-st.write("DEBUG DATABASE_URL:", os.getenv("DATABASE_URL"))
-
-with engine.connect() as conn:
-    schema_path = conn.execute(sqlalchemy.text("SHOW search_path;")).scalar()
-
-st.write("DEBUG: Active search_path:", schema_path)
-
-
-# --------------------------------------------------------
-# HELPER UI FUNCTIONS
-# --------------------------------------------------------
-def ui_get_lessons_for_course(course_id: int):
-    rows = fetch_all(
-        """
-        SELECT lesson_id, lesson_name
-        FROM spelling_lessons
-        WHERE course_id = :cid
-        ORDER BY lesson_id ASC;
-        """,
-        {"cid": course_id},
-    )
-
-    if isinstance(rows, dict) or not rows:
-        return []
-
-    return [dict(getattr(r, "_mapping", r)) for r in rows]
+from spelling_app.repository.course_repo import get_all_spelling_courses
+from spelling_app.repository.student_repo import (
+    assign_courses_to_student,
+    approve_spelling_student,
+    get_pending_spelling_students,
+    get_student_courses,
+    list_registered_spelling_students,
+    remove_courses_from_student,
+    update_student_profile,
+)
+from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+from spellings_admin_clean.utils_clean import read_csv_to_df, show_upload_summary
+from spellings_admin_clean.word_manager_clean import (
+    get_lesson_words,
+    get_lessons_for_course,
+)
 
 
-def ui_get_lesson_words(lesson_id: int):
-    rows = fetch_all(
-        """
-        SELECT w.word_id, w.word, w.pattern_code
-        FROM spelling_words w
-        JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
-        WHERE lw.lesson_id = :lid
-        ORDER BY w.word_id ASC;
-        """,
-        {"lid": lesson_id},
-    )
-
-    if isinstance(rows, dict) or not rows:
-        return []
-
-    return [dict(getattr(r, "_mapping", r)) for r in rows]
+DEFAULT_PASSWORD = "Learn123!"
 
 
 def ui_get_all_courses():
-    courses = list_courses()
-    if isinstance(courses, dict):
-        return []
-    return courses or []
+    courses = get_all_spelling_courses() or []
+    normalized = []
+    for course in courses:
+        course_id = course.get("course_id")
+        name = (
+            course.get("course_name")
+            or course.get("title")
+            or f"Course {course_id}"
+        )
+        normalized.append({"course_id": course_id, "course_name": name})
+    return normalized
 
 
-# --------------------------------------------------------
-# COURSE SECTION
-# --------------------------------------------------------
-def render_course_section():
-    st.subheader("Courses")
+def generate_default_password_hash() -> str:
+    return passlib_bcrypt.hash(DEFAULT_PASSWORD)
 
-    courses = list_courses()
-    if isinstance(courses, dict):
-        st.error("Error loading courses.")
-        courses = []
 
-    course_options = {
-        f"{c['course_id']}: {c['course_name']}": c["course_id"] for c in courses
+# ---------------------------------------------------------
+# PENDING REGISTRATIONS
+# ---------------------------------------------------------
+def render_pending_registration_section():
+    st.subheader("Pending registrations")
+
+    pending_students = get_pending_spelling_students()
+    if not pending_students:
+        st.info("No pending student registrations.")
+        return
+
+    header_cols = st.columns([3, 3, 3, 2])
+    header_cols[0].write("**Name**")
+    header_cols[1].write("**Email**")
+    header_cols[2].write("**Created at**")
+    header_cols[3].write(" ")
+
+    for student in pending_students:
+        cols = st.columns([3, 3, 3, 2])
+        cols[0].write(student.get("student_name", "-"))
+        cols[1].write(student.get("email", "-"))
+        cols[2].write(student.get("created_at", "-"))
+        pending_id = student.get("pending_id")
+        if cols[3].button("Approve", key=f"approve_{pending_id}"):
+            password_hash = generate_default_password_hash()
+            approve_spelling_student(pending_id, password_hash)
+            st.success(
+                f"Approved {student.get('student_name')} with default password."
+            )
+            st.experimental_rerun()
+
+
+# ---------------------------------------------------------
+# WORDS / LESSONS
+# ---------------------------------------------------------
+def render_words_lessons_section(course_id: int):
+    st.subheader("Words & lessons overview")
+
+    lessons = get_lessons_for_course(course_id)
+    if not lessons:
+        st.info("No lessons found yet. Upload a CSV to create lessons and words.")
+        return
+
+    lesson_label_map = {
+        f"{lesson['lesson_id']}: {lesson['lesson_name']}": lesson["lesson_id"]
+        for lesson in lessons
     }
 
-    selected_course_label = st.selectbox(
-        "Select course",
-        options=list(course_options.keys()) if course_options else ["No courses yet"],
+    selected_lesson_label = st.selectbox(
+        "Select lesson",
+        options=list(lesson_label_map.keys()),
     )
+    lesson_id = lesson_label_map[selected_lesson_label]
 
-    selected_course_id = None
-    if course_options:
-        selected_course_id = course_options.get(selected_course_label)
-
-    with st.expander("Create new course"):
-        new_title = st.text_input("Course title", key="new_course_title")
-        new_desc = st.text_area("Course description", key="new_course_desc")
-        if st.button("Create course"):
-            if not new_title.strip():
-                st.error("Title is required.")
-            else:
-                cid = create_course_admin(new_title.strip(), new_desc.strip() or None)
-                if isinstance(cid, dict) and "error" in cid:
-                    st.error(f"Error creating course: {cid['error']}")
-                elif cid:
-                    st.success(f"Created course with ID {cid}")
-                else:
-                    st.error("Error creating course.")
-                st.experimental_rerun()
-
-    return selected_course_id
+    lesson_words = get_lesson_words(course_id=course_id, lesson_id=lesson_id)
+    if not lesson_words:
+        st.info("No words mapped to this lesson yet.")
+    else:
+        st.dataframe(lesson_words)
 
 
-# --------------------------------------------------------
-# UPLOAD SECTION
-# --------------------------------------------------------
 def render_upload_section(course_id: int):
     st.subheader("Upload CSV for course words & lessons")
 
     uploaded = st.file_uploader(
-        "Upload CSV (columns: word, pattern_code, lesson_name OR pattern_text + difficulty)",
+        "Upload CSV (columns: word, pattern_code, lesson_name)",
         type=["csv"],
         key="spelling_csv_uploader",
     )
 
     if uploaded is not None:
-        import pandas as pd
-
-        try:
-            df = pd.read_csv(uploaded)
-        except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-            return
-
+        df = read_csv_to_df(uploaded)
         if df.empty:
-            st.warning("CSV appears empty or invalid.")
+            st.warning("CSV appears to be empty or invalid.")
             return
 
-        st.write("Preview:")
+        st.write("Preview of uploaded CSV:")
         st.dataframe(df.head())
 
         if st.button("Process CSV for this course"):
             summary = process_spelling_csv(df=df, course_id=course_id)
-            if isinstance(summary, dict) and summary.get("error"):
-                st.error(summary["error"])
-                st.write(summary)
-            else:
-                st.success("Upload processed.")
-                st.write(summary)
-            st.experimental_rerun()
+            show_upload_summary(summary)
 
 
-# --------------------------------------------------------
-# WORD + LESSON OVERVIEW
-# --------------------------------------------------------
-def render_words_lessons_section(course_id: int):
-    st.subheader("Words & Lessons Overview")
+# ---------------------------------------------------------
+# REGISTERED STUDENTS (TABLE VIEW)
+# ---------------------------------------------------------
+def render_registered_students_section(all_courses):
+    st.subheader("Registered spelling students")
 
-    lessons = ui_get_lessons_for_course(course_id)
-    if not lessons:
-        st.info("No lessons found yet. Upload a CSV.")
-        return
-
-    lesson_label_map = {
-        f"{l['lesson_id']}: {l['lesson_name']}": l["lesson_id"] for l in lessons
-    }
-
-    selected_label = st.selectbox(
-        "Select lesson",
-        options=list(lesson_label_map.keys()),
-    )
-
-    lesson_id = lesson_label_map[selected_label]
-
-    # -------- Lesson edit / delete --------
-    st.markdown("### Edit or delete this lesson")
-
-    current_name = selected_label.split(": ", 1)[1]
-    new_lesson_name = st.text_input(
-        "Lesson name",
-        value=current_name,
-        key="edit_lesson_name",
-    )
-
-    colA, colB = st.columns(2)
-
-    with colA:
-        if st.button("💾 Save lesson name", key="save_lesson_name"):
-            update_lesson_name(lesson_id, new_lesson_name.strip())
-            st.success("Lesson renamed.")
-            st.experimental_rerun()
-
-    with colB:
-        if st.button("🗑 Delete lesson", key="delete_lesson_button"):
-            delete_lesson(lesson_id)
-            st.success("Lesson deleted.")
-            st.experimental_rerun()
-
-    # -------- Words in lesson --------
-    words = ui_get_lesson_words(lesson_id)
-
-    if not words:
-        st.info("No words mapped to this lesson yet.")
-        return
-
-    st.write("Words in this lesson:")
-    st.dataframe(words)
-
-
-# --------------------------------------------------------
-# STUDENT MANAGEMENT: PENDING REGISTRATIONS
-# --------------------------------------------------------
-def render_pending_registrations_section():
-    st.subheader("Pending registrations")
-
-    pending = list_pending_registrations()
-
-    if isinstance(pending, dict):
-        st.error("Error loading pending registrations.")
-        return
-
-    if not pending:
-        st.info("No pending registrations.")
-        return
-
-    for row in pending:
-        col1, col2, col3, col4 = st.columns([3, 4, 2, 2])
-
-        with col1:
-            st.write(row["student_name"])
-
-        with col2:
-            st.write(row["email"])
-
-        with col3:
-            approve_key = f"approve_{row['id']}"
-            if st.button("✅ Approve", key=approve_key):
-                result = approve_pending_registration(row["id"])
-                if isinstance(result, dict) and result.get("error"):
-                    st.error(result["error"])
-                else:
-                    st.success(
-                        f"Approved {result.get('email')} "
-                        f"(temp password: {result.get('default_password')})"
-                    )
-                st.experimental_rerun()
-
-        with col4:
-            reject_key = f"reject_{row['id']}"
-            if st.button("🗑 Disregard", key=reject_key):
-                delete_pending_registration(row["id"])
-                st.success("Registration disregarded.")
-                st.experimental_rerun()
-
-
-# --------------------------------------------------------
-# STUDENT MANAGEMENT: REGISTERED STUDENTS
-# --------------------------------------------------------
-def render_registered_students_section():
-    st.subheader("Registered students")
-
-    students = list_registered_students()
+    students = list_registered_spelling_students()
     if not students:
-        st.info("No registered students found.")
+        st.info("No registered spelling students yet.")
         return
 
-    all_courses = ui_get_all_courses()
-    course_label_map = {
-        f"{c['course_id']}: {c['course_name']}": c["course_id"] for c in all_courses
-    }
-    course_labels = list(course_label_map.keys())
+    df = pd.DataFrame(students)
+    if df.empty:
+        st.info("No registered spelling students yet.")
+        return
 
-    for student in students:
-        st.markdown("---")
-        col1, col2, col3 = st.columns([3, 3, 4])
+    # Ensure column exists
+    df["registered_courses"] = df["registered_courses"].fillna("")
 
-        # Basic info
-        with col1:
-            st.write(f"**Name:** {student['name']}")
-            st.write(f"**Email:** {student['email']}")
-            st.write("**Password:** Learn123! (default for new users)")
+    df = df[
+        ["user_id", "name", "email", "class_name", "status", "registered_courses"]
+    ]
+    df.set_index("user_id", inplace=True)
 
-        # Class name + status
-        with col2:
-            current_class = student.get("class_name") or ""
-            new_class = st.text_input(
-                "Class name",
-                value=current_class,
-                key=f"class_{student['user_id']}",
-            )
+    original_df = df.copy(deep=True)
 
-            current_status = (student.get("status") or "ACTIVE").upper()
-            new_status = st.selectbox(
+    # Make email clickable (mailto)
+    df_display = df.copy(deep=True)
+    df_display["email"] = df_display["email"].apply(
+        lambda email: f"mailto:{email}" if isinstance(email, str) and email else ""
+    )
+
+    edited_df = st.data_editor(
+        df_display,
+        hide_index=True,
+        num_rows="fixed",
+        column_config={
+            "name": st.column_config.TextColumn("Name", disabled=True),
+            "email": st.column_config.LinkColumn("Email", disabled=True),
+            "class_name": st.column_config.TextColumn("Class name"),
+            "status": st.column_config.SelectboxColumn(
                 "Status",
                 options=["ACTIVE", "ARCHIVED"],
-                index=0 if current_status == "ACTIVE" else 1,
-                key=f"status_{student['user_id']}",
-            )
+                required=True,
+            ),
+            "registered_courses": st.column_config.TextColumn(
+                "Registered courses", disabled=True
+            ),
+        },
+    )
 
-            if st.button("💾 Save profile", key=f"save_profile_{student['user_id']}"):
-                update_student_class_name(student["user_id"], new_class.strip())
-                update_student_status(student["user_id"], new_status)
-                st.success("Student profile updated.")
-                st.experimental_rerun()
+    if st.button("💾 Save profile changes"):
+        updates_applied = False
+        for user_id, row in edited_df.iterrows():
+            original_row = original_df.loc[user_id]
+            new_class = row.get("class_name")
+            new_status = row.get("status")
 
-        # Course assignment
-        with col3:
-            enrolled = get_student_courses(student["user_id"])
-            enrolled_names = ", ".join([c["course_name"] for c in enrolled]) or "None"
+            if (
+                original_row.get("class_name") != new_class
+                or original_row.get("status") != new_status
+            ):
+                update_student_profile(
+                    user_id=int(user_id),
+                    class_name=new_class if new_class else None,
+                    status=new_status,
+                )
+                updates_applied = True
 
-            st.write(f"**Registered courses:** {enrolled_names}")
+        if updates_applied:
+            st.success("Student profiles updated.")
+            st.experimental_rerun()
+        else:
+            st.info("No changes detected.")
 
-            selection = st.multiselect(
-                "Select courses",
-                options=course_labels,
-                key=f"courses_select_{student['user_id']}",
-            )
-            selected_course_ids = [course_label_map[label] for label in selection]
-
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("➕ Assign", key=f"assign_{student['user_id']}"):
-                    if not selected_course_ids:
-                        st.warning("Select at least one course to assign.")
-                    else:
-                        for cid in selected_course_ids:
-                            assign_course_to_student(student["user_id"], cid)
-                        st.success("Courses assigned.")
-                        st.experimental_rerun()
-            with c2:
-                if st.button("➖ De-register", key=f"deregister_{student['user_id']}"):
-                    if not selected_course_ids:
-                        st.warning("Select at least one course to de-register.")
-                    else:
-                        for cid in selected_course_ids:
-                            remove_course_from_student(student["user_id"], cid)
-                        st.success("Courses de-registered.")
-                        st.experimental_rerun()
+    render_course_assignment_panel(all_courses, students)
 
 
-# --------------------------------------------------------
+# ---------------------------------------------------------
+# COURSE ASSIGNMENT
+# ---------------------------------------------------------
+def render_course_assignment_panel(all_courses, students):
+    st.subheader("Assign or remove courses for a student")
+
+    student_options = {
+        f"{s['name']} ({s['email']})": s["user_id"]
+        for s in students
+        if s.get("user_id")
+    }
+
+    if not student_options:
+        st.info("No students available for course assignment.")
+        return
+
+    selected_student_label = st.selectbox(
+        "Select student",
+        options=list(student_options.keys()),
+    )
+    selected_user_id = student_options[selected_student_label]
+
+    current_courses = get_student_courses(selected_user_id)
+    current_course_names = ", ".join(
+        [c.get("course_name") or "" for c in current_courses]
+    )
+    st.write(f"Current registered courses: {current_course_names or 'None'}")
+
+    course_options = {c["course_name"]: c["course_id"] for c in all_courses}
+    selected_courses = st.multiselect(
+        "Select courses",
+        options=list(course_options.keys()),
+    )
+    selected_course_ids = [course_options[name] for name in selected_courses]
+
+    assign_col, remove_col = st.columns(2)
+    with assign_col:
+        if st.button("➕ Assign selected courses") and selected_course_ids:
+            assign_courses_to_student(selected_user_id, selected_course_ids)
+            st.success("Courses assigned successfully.")
+            st.experimental_rerun()
+    with remove_col:
+        if st.button("➖ Remove selected courses") and selected_course_ids:
+            remove_courses_from_student(selected_user_id, selected_course_ids)
+            st.success("Courses removed successfully.")
+            st.experimental_rerun()
+
+
+# ---------------------------------------------------------
 # MAIN
-# --------------------------------------------------------
+# ---------------------------------------------------------
 def main():
+    st.set_page_config(
+        page_title="Spelling Admin Console (Clean Build)",
+        layout="wide",
+    )
+
     st.title("Spelling Admin Console (Clean Build)")
 
-    course_id = render_course_section()
-
-    if not course_id:
-        st.info("Create or select a course to continue.")
+    courses = ui_get_all_courses()
+    if not courses:
+        st.info("No spelling courses available. Please create one before proceeding.")
         return
+
+    course_options = {c["course_name"]: c["course_id"] for c in courses}
+    selected_course_name = st.selectbox(
+        "Select course for CSV upload",
+        options=list(course_options.keys()),
+    )
+    selected_course_id = course_options[selected_course_name]
 
     col1, col2 = st.columns([2, 2])
 
     with col1:
-        render_upload_section(course_id)
+        render_upload_section(selected_course_id)
 
     with col2:
-        render_words_lessons_section(course_id)
+        render_words_lessons_section(selected_course_id)
 
-    st.markdown("---")
-    st.header("Student Management")
-
-    render_pending_registrations_section()
-    st.markdown("---")
-    render_registered_students_section()
+    st.divider()
+    render_pending_registration_section()
+    st.divider()
+    render_registered_students_section(courses)
 
 
 if __name__ == "__main__":
