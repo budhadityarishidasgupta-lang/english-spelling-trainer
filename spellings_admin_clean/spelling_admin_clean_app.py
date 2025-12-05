@@ -1,3 +1,10 @@
+# --- FIX PYTHON PATH FOR LOCAL RUNS ---
+import os, sys
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+# --- END PATH FIX ---
+
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
@@ -293,3 +300,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Load from Word Manager 
+from spellings_admin_clean.word_manager_clean import (
+    get_lesson_words,
+    get_lessons_for_course,
+)

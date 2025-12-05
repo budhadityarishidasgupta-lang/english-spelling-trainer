@@ -82,3 +82,53 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
     Maps a word to a lesson. Ignores duplicates.
     """
     return map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+
+# ---------------------------------------------------------
+# FETCH LESSONS FOR COURSE
+# ---------------------------------------------------------
+from spelling_app.repository.spelling_lesson_repo import (
+    get_lessons_for_course as repo_get_lessons_for_course,
+    get_lesson_words as repo_get_lesson_words,
+)
+
+
+def get_lessons_for_course(course_id: int):
+    """
+    Returns a list of lessons for the selected course.
+    Each lesson is a dict: {lesson_id, course_id, lesson_name}
+    """
+    rows = repo_get_lessons_for_course(course_id)
+
+    if not rows or isinstance(rows, dict):
+        return []
+
+    lessons = []
+    for row in rows:
+        if hasattr(row, "_mapping"):
+            lessons.append(dict(row._mapping))
+        elif isinstance(row, dict):
+            lessons.append(row)
+    return lessons
+
+
+# ---------------------------------------------------------
+# FETCH WORDS MAPPED TO A LESSON
+# ---------------------------------------------------------
+def get_lesson_words(course_id: int, lesson_id: int):
+    """
+    Returns all words mapped to a given lesson_id.
+    Output columns: word_id, word, pattern_code, lesson_id
+    """
+    rows = repo_get_lesson_words(course_id=course_id, lesson_id=lesson_id)
+
+    if not rows or isinstance(rows, dict):
+        return []
+
+    words = []
+    for row in rows:
+        if hasattr(row, "_mapping"):
+            words.append(dict(row._mapping))
+        elif isinstance(row, dict):
+            words.append(row)
+    return words
+
