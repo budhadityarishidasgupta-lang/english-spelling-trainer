@@ -140,3 +140,63 @@ def delete_lesson(lesson_id: int):
     """
     return fetch_all(sql, {"lesson_id": lesson_id})
 
+# ============================================================
+# LESSON LIST FOR A COURSE
+# ============================================================
+
+def get_lessons_for_course(course_id: int):
+    """
+    Returns all lessons for a given course.
+    Output: list of dicts with {lesson_id, lesson_name, course_id}
+    """
+    rows = fetch_all(
+        """
+        SELECT lesson_id, lesson_name, course_id
+        FROM spelling_lessons
+        WHERE course_id = :cid
+        ORDER BY lesson_id ASC;
+        """,
+        {"cid": course_id},
+    )
+
+    if isinstance(rows, dict) or not rows:
+        return []
+
+    out = []
+    for r in _to_list(rows):
+        out.append(_to_dict(r))
+    return out
+
+
+# ============================================================
+# WORDS IN A LESSON
+# ============================================================
+
+def get_lesson_words(course_id: int, lesson_id: int):
+    """
+    Returns all words mapped to a lesson.
+    Output: list of dicts with {word_id, word, pattern_code, lesson_id}
+    """
+    rows = fetch_all(
+        """
+        SELECT
+            w.word_id,
+            w.word,
+            w.pattern_code,
+            lw.lesson_id
+        FROM spelling_words w
+        JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
+        WHERE lw.lesson_id = :lid
+        ORDER BY w.word_id ASC;
+        """,
+        {"lid": lesson_id},
+    )
+
+    if isinstance(rows, dict) or not rows:
+        return []
+
+    out = []
+    for r in _to_list(rows):
+        out.append(_to_dict(r))
+    return out
+
