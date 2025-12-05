@@ -11,8 +11,13 @@ if not DATABASE_URL:
 # Create SQLAlchemy engine
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
+    echo=False,
+    future=True,
+    isolation_level="AUTOCOMMIT",
 )
+
+
+
 
 # --------------------------------------------------------------------
 # fetch_all() — Always return list of rows (for SELECT queries)

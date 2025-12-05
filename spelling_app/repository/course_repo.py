@@ -6,102 +6,97 @@ from shared.db import fetch_all, execute
 def get_all_spelling_courses():
     """
     Returns all spelling courses from spelling_courses table.
-    Always returns a list of dicts or an error dict.
     """
     sql = """
         SELECT
             course_id,
-            title,
-            description,
-            created_at
+            course_name,
+            description
         FROM spelling_courses
         ORDER BY course_id ASC;
     """
-
     rows = fetch_all(sql)
 
     if isinstance(rows, dict):
-        return rows
+        return []
 
-    return [dict(getattr(r, "_mapping", r)) for r in rows] if rows else []
+    result = []
+    for r in rows:
+        if hasattr(r, "_mapping"):
+            result.append(dict(r._mapping))
+        else:
+            result.append(dict(r))
+
+    return result
 
 
 def get_spelling_course_by_id(course_id: int):
-    """
-    Returns a single spelling course row as a dict, or None.
-    """
-
     sql = """
         SELECT
             course_id,
-            title,
-            description,
-            created_at
+            course_name,
+            description
         FROM spelling_courses
         WHERE course_id = :course_id
         LIMIT 1;
     """
-
     rows = fetch_all(sql, {"course_id": course_id})
 
     if isinstance(rows, dict):
-        return rows
+        return None
 
     if not rows:
         return None
 
     row = rows[0]
-    if hasattr(row, "_mapping"):
-        return dict(row._mapping)
-    if isinstance(row, dict):
-        return row
-    try:
-        return dict(row)
-    except Exception:
-        return None
+    return dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
 
 
-def create_spelling_course(title: str, description: str | None = None):
+def create_spelling_course(course_name: str, description: str | None = None):
     """
-    Insert a new spelling course and return course_id.
+    Insert a new spelling course.
     """
-
     sql = """
-        INSERT INTO spelling_courses (title, description)
-        VALUES (:title, :description)
+        INSERT INTO spelling_courses (course_name, description)
+        VALUES (:course_name, :description)
         RETURNING course_id;
     """
 
-    rows = fetch_all(sql, {"title": title, "description": description})
+    rows = fetch_all(
+        sql,
+        {"course_name": course_name, "description": description},
+    )
 
     if isinstance(rows, dict):
-        return rows
+        return None
 
-    if rows:
-        row = rows[0]
-        if hasattr(row, "_mapping"):
-            return row._mapping.get("course_id")
-        if isinstance(row, dict):
-            return row.get("course_id")
-        try:
-            return row[0]
-        except Exception:
-            return None
+    if not rows:
+        return None
 
-    return None
+    row = rows[0]
+
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("course_id")
+
+    if isinstance(row, dict):
+        return row.get("course_id")
+
+    try:
+        return row[0]
+    except:
+        return None
 
 
-def update_spelling_course(course_id: int, title: str | None = None, description: str | None = None):
+def update_spelling_course(course_id: int, course_name: str | None = None, description: str | None = None):
     """
-    Update title/description for a spelling course.
+    Update a course.
     """
-
     fields = []
     params = {"course_id": course_id}
 
-    if title is not None:
-        fields.append("title = :title")
-        params["title"] = title
+    if course_name is not None:
+        fields.append("course_name = :course_name")
+        params["course_name"] = course_name
 
     if description is not None:
         fields.append("description = :description")
@@ -112,7 +107,7 @@ def update_spelling_course(course_id: int, title: str | None = None, description
 
     sql = f"""
         UPDATE spelling_courses
-        SET {", ".join(fields)}
+        SET {', '.join(fields)}
         WHERE course_id = :course_id;
     """
 
