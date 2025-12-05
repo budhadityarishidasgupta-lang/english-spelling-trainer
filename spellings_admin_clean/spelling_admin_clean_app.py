@@ -21,6 +21,12 @@ from spellings_admin_clean.word_manager_clean import (
     get_lesson_words,
     get_lessons_for_course,
 )
+from spelling_app.repository.classroom_repo import (
+    assign_students_to_class,
+    create_classroom,
+    get_students_in_class,
+    list_classrooms,
+)
 
 
 DEFAULT_PASSWORD = "Learn123!"
@@ -255,6 +261,93 @@ def render_course_assignment_panel(all_courses, students):
 
 
 # ---------------------------------------------------------
+# CLASSROOM MANAGEMENT
+# ---------------------------------------------------------
+def render_create_classroom_section():
+    st.subheader("Create classroom")
+
+    class_name = st.text_input("Class name", key="create_classroom_name")
+
+    if st.button("Create classroom"):
+        normalized_name = class_name.strip()
+        if not normalized_name:
+            st.error("Please enter a classroom name.")
+            return
+
+        created = create_classroom(normalized_name)
+        if created:
+            st.success(f"Classroom '{normalized_name}' created.")
+            st.experimental_rerun()
+        else:
+            st.error("Failed to create classroom. Please try again.")
+
+
+def render_assign_students_section():
+    st.subheader("Assign students to classroom")
+
+    classrooms = list_classrooms()
+    if not classrooms:
+        st.info("No classrooms available. Create one first.")
+        return
+
+    class_options = [c.get("class_name") for c in classrooms if c.get("class_name")]
+    if not class_options:
+        st.info("No classrooms available. Create one first.")
+        return
+
+    selected_class = st.selectbox("Select classroom", options=class_options)
+
+    students = list_registered_spelling_students()
+    if not students:
+        st.info("No registered students to assign.")
+        return
+
+    student_options = {
+        f"{s.get('name')} ({s.get('email')})": s.get("user_id")
+        for s in students
+        if s.get("user_id")
+    }
+
+    selected_students = st.multiselect(
+        "Select students",
+        options=list(student_options.keys()),
+    )
+
+    if st.button("Assign selected students"):
+        if not selected_students:
+            st.error("Please select at least one student to assign.")
+            return
+
+        student_ids = [student_options[label] for label in selected_students]
+        assign_students_to_class(student_ids, selected_class)
+        st.success("Students assigned to classroom.")
+        st.experimental_rerun()
+
+
+def render_view_classroom_section():
+    st.subheader("View classroom roster")
+
+    classrooms = list_classrooms()
+    if not classrooms:
+        st.info("No classrooms available. Create one first.")
+        return
+
+    class_options = [c.get("class_name") for c in classrooms if c.get("class_name")]
+    if not class_options:
+        st.info("No classrooms available. Create one first.")
+        return
+
+    selected_class = st.selectbox("Select classroom to view", options=class_options)
+
+    roster = get_students_in_class(selected_class)
+    if not roster:
+        st.info("No students assigned to this classroom yet.")
+        return
+
+    st.dataframe(pd.DataFrame(roster))
+
+
+# ---------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------
 def main():
@@ -285,6 +378,13 @@ def main():
     with col2:
         render_words_lessons_section(selected_course_id)
 
+    st.divider()
+    st.header("Classroom Management")
+    render_create_classroom_section()
+    st.divider()
+    render_assign_students_section()
+    st.divider()
+    render_view_classroom_section()
     st.divider()
     render_pending_registration_section()
     st.divider()
