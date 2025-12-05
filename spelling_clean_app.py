@@ -1,11 +1,9 @@
 import os
 import streamlit as st
-import pandas as pd
 from sqlalchemy import text
-from datetime import date
 
-from shared.db import engine, fetch_all, execute
-
+from shared.db import engine, fetch_all
+from spelling_app.repository.student_pending_repo import create_pending_registration
 
 ###########################################################
 #  SESSION INIT
@@ -26,24 +24,28 @@ def inject_student_css():
         """
         <style>
         body { background-color: #0e1117; }
-        .login-card { padding: 20px; background: #111; border-radius: 8px; }
+        .login-card {
+            padding: 20px;
+            background: #111;
+            border-radius: 8px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def initialize_session_state(st):
+def initialize_session_state(st_module):
     for key in SESSION_KEYS:
-        if key not in st.session_state:
+        if key not in st_module.session_state:
             if key == "is_logged_in":
-                st.session_state[key] = False
+                st_module.session_state[key] = False
             elif key == "user_id":
-                st.session_state[key] = 0
+                st_module.session_state[key] = 0
             elif key == "user_name":
-                st.session_state[key] = "Guest"
+                st_module.session_state[key] = "Guest"
             else:
-                st.session_state[key] = None
+                st_module.session_state[key] = None
 
 
 ###########################################################
@@ -53,7 +55,7 @@ def initialize_session_state(st):
 import bcrypt
 
 
-def check_login(st, email: str, password: str) -> bool:
+def check_login(st_module, email: str, password: str) -> bool:
     sql = text(
         """
         SELECT user_id, name, email, password_hash, is_active
@@ -75,20 +77,20 @@ def check_login(st, email: str, password: str) -> bool:
         stored_hash = stored_hash.encode()
 
     if bcrypt.checkpw(password.encode(), stored_hash):
-        st.session_state.is_logged_in = True
-        st.session_state.user_id = row["user_id"]
-        st.session_state.user_name = row["name"]
-        st.session_state.page = "dashboard"
+        st_module.session_state.is_logged_in = True
+        st_module.session_state.user_id = row["user_id"]
+        st_module.session_state.user_name = row["name"]
+        st_module.session_state.page = "dashboard"
         return True
 
     return False
 
 
-def logout(st):
+def logout(st_module):
     for key in SESSION_KEYS:
-        if key in st.session_state:
-            del st.session_state[key]
-    initialize_session_state(st)
+        if key in st_module.session_state:
+            del st_module.session_state[key]
+    initialize_session_state(st_module)
 
 
 ###########################################################
@@ -107,13 +109,18 @@ def get_student_courses(user_id: int):
         {"uid": user_id},
     )
 
+    if isinstance(rows, dict) or not rows:
+        return []
+
     courses = []
     for r in rows:
         m = getattr(r, "_mapping", r)
-        courses.append({
-            "course_id": m["course_id"],
-            "course_name": m["course_name"]
-        })
+        courses.append(
+            {
+                "course_id": m["course_id"],
+                "course_name": m["course_name"],
+            }
+        )
     return courses
 
 
@@ -131,6 +138,10 @@ def get_words_for_course(course_id: int):
         """,
         {"cid": course_id},
     )
+
+    if isinstance(rows, dict) or not rows:
+        return []
+
     words = []
     for r in rows:
         m = getattr(r, "_mapping", r)
@@ -168,6 +179,34 @@ def render_login_page():
 
 
 ###########################################################
+#  NEW REGISTRATION PAGE
+###########################################################
+
+def render_registration_page():
+    st.header("New Student Registration")
+
+    st.write("Enter your details below. An admin will approve your account shortly.")
+
+    name = st.text_input("Full name")
+    email = st.text_input("Email address")
+
+    if st.button("Submit registration"):
+        if not name.strip() or not email.strip():
+            st.error("Both name and email are required.")
+            return
+
+        result = create_pending_registration(name.strip(), email.strip())
+
+        if isinstance(result, dict) and result.get("error"):
+            st.error(result["error"])
+        else:
+            st.success(
+                "Registration submitted! "
+                "Once approved, you can log in using the default password: Learn123!"
+            )
+
+
+###########################################################
 #  DASHBOARD: CHOOSE COURSE
 ###########################################################
 
@@ -176,8 +215,6 @@ def render_student_dashboard():
 
     user_id = st.session_state.get("user_id")
     courses = get_student_courses(user_id)
-
-    st.write("DEBUG COURSES:", courses)  # TEMP DEBUG
 
     if not courses:
         st.warning("No courses assigned to your account yet.")
@@ -218,7 +255,7 @@ def render_practice_page():
             st.experimental_rerun()
         return
 
-# Ensure practice index always exists and is integer
+    # Ensure practice index always exists and is integer
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
@@ -264,10 +301,19 @@ def main():
     inject_student_css()
     initialize_session_state(st)
 
+    # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
-        render_login_page()
-        return
+        tab_login, tab_register = st.tabs(["Login", "New Registration"])
 
+        with tab_login:
+            render_login_page()
+
+        with tab_register:
+            render_registration_page()
+
+        return  # stop here when logged out
+
+    # LOGGED IN
     st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
     if st.sidebar.button("Logout"):
         logout(st)

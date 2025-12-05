@@ -116,3 +116,27 @@ def map_word_to_lesson(word_id: int, lesson_id: int):
         """,
         {"lesson_id": lesson_id, "word_id": word_id},
     )
+
+def update_lesson_name(lesson_id: int, new_name: str):
+    """
+    Update the lesson name.
+    """
+    sql = """
+        UPDATE spelling_lessons
+        SET lesson_name = :new_name
+        WHERE lesson_id = :lesson_id;
+    """
+    return fetch_all(sql, {"lesson_id": lesson_id, "new_name": new_name})
+
+
+def delete_lesson(lesson_id: int):
+    """
+    Delete a lesson. CASCADE deletes mappings in spelling_lesson_words.
+    Words remain in spelling_words (safe).
+    """
+    sql = """
+        DELETE FROM spelling_lessons
+        WHERE lesson_id = :lesson_id;
+    """
+    return fetch_all(sql, {"lesson_id": lesson_id})
+
