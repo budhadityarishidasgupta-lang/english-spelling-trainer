@@ -1,21 +1,40 @@
+from typing import Any, Dict, List, Optional
 from shared.db import fetch_all, execute
 
-def create_classroom(class_name: str):
+
+def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
+    if not rows or isinstance(rows, dict):
+        return []
+    out = []
+    for r in rows:
+        if hasattr(r, "_mapping"):
+            out.append(dict(r._mapping))
+        elif isinstance(r, dict):
+            out.append(r)
+    return out
+
+
+# ---------------------------------------------------------
+# CREATE CLASSROOM
+# ---------------------------------------------------------
+def create_classroom(class_name: str) -> Optional[Dict[str, Any]]:
     rows = fetch_all(
         """
         INSERT INTO spelling_classrooms (class_name)
-        VALUES (:name)
+        VALUES (:cname)
         RETURNING class_id, class_name, created_at;
         """,
-        {"name": class_name},
+        {"cname": class_name},
     )
-    if not rows or isinstance(rows, dict):
-        return None
-    row = rows[0]._mapping
-    return dict(row)
+
+    rows = _rows_to_dicts(rows)
+    return rows[0] if rows else None
 
 
-def list_classrooms():
+# ---------------------------------------------------------
+# LIST CLASSROOMS
+# ---------------------------------------------------------
+def list_classrooms() -> List[Dict[str, Any]]:
     rows = fetch_all(
         """
         SELECT class_id, class_name, created_at
@@ -23,12 +42,32 @@ def list_classrooms():
         ORDER BY created_at DESC;
         """
     )
-    if not rows or isinstance(rows, dict):
-        return []
-    return [dict(r._mapping) for r in rows]
+    return _rows_to_dicts(rows)
 
 
-def get_students_in_class(class_name: str):
+# ---------------------------------------------------------
+# ASSIGN STUDENTS TO CLASSROOM
+# ---------------------------------------------------------
+def assign_students_to_class(student_ids: List[int], class_name: str) -> None:
+    if not student_ids:
+        return
+
+    for student_id in student_ids:
+        execute(
+            """
+            UPDATE users
+            SET class_name = :cname
+            WHERE user_id = :uid
+              AND app_source = 'spelling';
+            """,
+            {"cname": class_name, "uid": student_id},
+        )
+
+
+# ---------------------------------------------------------
+# GET STUDENTS IN CLASSROOM
+# ---------------------------------------------------------
+def get_students_in_class(class_name: str) -> List[Dict[str, Any]]:
     rows = fetch_all(
         """
         SELECT user_id, name, email, status
@@ -39,19 +78,4 @@ def get_students_in_class(class_name: str):
         """,
         {"cname": class_name},
     )
-    if not rows or isinstance(rows, dict):
-        return []
-    return [dict(r._mapping) for r in rows]
-
-
-def assign_students_to_class(student_ids, class_name: str):
-    for sid in student_ids:
-        execute(
-            """
-            UPDATE users
-            SET class_name = :cname
-            WHERE user_id = :uid
-              AND app_source = 'spelling';
-            """,
-            {"uid": sid, "cname": class_name},
-        )
+    return _rows_to_dicts(rows)
