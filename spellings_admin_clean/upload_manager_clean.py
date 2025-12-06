@@ -113,6 +113,14 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             except Exception:
                 pattern_code_int = None
 
+            pattern = row.get("pattern") if "pattern" in row else None
+            example_sentence = row.get("example_sentence") if "example_sentence" in row else None
+            level_val = row.get("level", None)
+            try:
+                level_int = int(level_val) if pd.notna(level_val) else None
+            except Exception:
+                level_int = None
+
             # --- Decide lesson_name & difficulty based on mode ---
             if mode == "simple":
                 # Use lesson_name from CSV
@@ -145,11 +153,12 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             # 2) Create or get word (DB schema currently: word, pattern_code, course_id, pattern=None)
             word_id = get_or_create_word(
                 word=word,
-                pattern_code=pattern_code_int or 0,
+                pattern=pattern,
+                pattern_code=pattern_code_int,
+                level=level_int,
+                lesson_name=lesson_name,
+                example_sentence=example_sentence,
                 course_id=course_id,
-                pattern_text=pattern_text,
-                level=row.get("level"),
-                example_sentence=row.get("example_sentence"),
             )
 
             if not word_id:

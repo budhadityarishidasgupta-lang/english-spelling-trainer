@@ -1,16 +1,22 @@
-from spelling_app.repository.words_repo import (
-    get_word_by_text,
-    insert_word,
-)
+from spelling_app.repository.words_repo import get_word_by_text, insert_word
 
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name_and_course,
-    create_lesson,
+    get_or_create_lesson as repo_get_or_create_lesson,
     map_word_to_lesson,
 )
 
 
-def get_or_create_word(word: str, pattern_code: int, course_id: int):
+def get_or_create_word(
+    *,
+    word: str,
+    pattern: str | None,
+    pattern_code: int | None,
+    level: int | None,
+    lesson_name: str | None,
+    example_sentence: str | None,
+    course_id: int,
+):
     """
     Always returns an integer word_id.
     """
@@ -25,8 +31,11 @@ def get_or_create_word(word: str, pattern_code: int, course_id: int):
     # Create new word
     new_id = insert_word(
         word=word,
+        pattern=pattern,
         pattern_code=pattern_code,
-        pattern=None,   # CSV has no pattern text
+        level=level,
+        lesson_name=lesson_name,
+        example_sentence=example_sentence,
         course_id=course_id,
     )
 
@@ -51,30 +60,13 @@ def get_or_create_lesson(lesson_name: str, course_id: int):
         }
 
     # Create new lesson
-    new_row = create_lesson(
-        lesson_name=lesson_name,
-        course_id=course_id
-    )
+    lesson_id = repo_get_or_create_lesson(course_id=course_id, lesson_name=lesson_name)
 
-    # new_row may be dict OR a raw SQL row
-    if isinstance(new_row, dict) and "lesson_id" in new_row:
-        return {
-            "lesson_id": new_row["lesson_id"],
-            "course_id": new_row["course_id"],
-            "lesson_name": new_row["lesson_name"],
-        }
-
-    # If new_row is tuple or SQLAlchemy Row
-    if hasattr(new_row, "_mapping"):
-        m = new_row._mapping
-        return {
-            "lesson_id": m.get("lesson_id"),
-            "course_id": m.get("course_id"),
-            "lesson_name": m.get("lesson_name"),
-        }
+    if lesson_id:
+        return {"lesson_id": lesson_id, "course_id": course_id, "lesson_name": lesson_name}
 
     # Fallback (should not happen)
-    return {"lesson_id": new_row, "course_id": course_id, "lesson_name": lesson_name}
+    return {"lesson_id": None, "course_id": course_id, "lesson_name": lesson_name}
 
 
 def link_word_to_lesson(word_id: int, lesson_id: int):

@@ -6,7 +6,8 @@ from sqlalchemy import text
 
 from shared.db import engine, fetch_all
 from spelling_app.repository.student_pending_repo import create_pending_registration
-from spelling_app.repository.attempt_repo import get_last_attempts, record_attempt
+from spelling_app.repository.attempt_repo import record_attempt
+from spelling_app.repository.words_repo import get_words_for_course
 
 
 
@@ -134,67 +135,39 @@ def get_student_courses(user_id: int):
 #  WORDS FOR PRACTICE
 ###########################################################
 
-def get_words_for_course(course_id: int, user_id: int | None = None):
-    """
-    If user_id is None → simple list (no stats, legacy mode).
-    If user_id is provided → includes pattern, level, and basic accuracy stats.
-    """
-    if user_id is None:
-        rows = fetch_all(
-            """
-            SELECT word_id, word, pattern, level
-            FROM spelling_words
-            WHERE course_id = :cid
-            ORDER BY word_id
-            """,
-            {"cid": course_id},
-        )
-    else:
-        rows = fetch_all(
-            """
-            SELECT
-                w.word_id,
-                w.word,
-                w.pattern,
-                w.level,
-                AVG(CASE WHEN a.correct THEN 1.0 ELSE 0.0 END) AS accuracy,
-                COUNT(a.attempt_id) AS attempts
-            FROM spelling_words w
-            LEFT JOIN spelling_attempts a
-              ON a.word_id = w.word_id
-             AND a.user_id = :uid
-            WHERE w.course_id = :cid
-            GROUP BY w.word_id, w.word, w.pattern, w.level
-            ORDER BY w.word_id
-            """,
-            {"cid": course_id, "uid": user_id},
-        )
 
-    if not rows or isinstance(rows, dict):
-        return []
-
-    words = []
-    for r in rows:
-        m = getattr(r, "_mapping", r)
-        words.append(
-            {
-                "word_id": m.get("word_id"),
-                "word": m.get("word"),
-                "pattern": m.get("pattern"),
-                "level": m.get("level"),
-                # These may be None when user_id is None:
-                "accuracy": m.get("accuracy"),
-                "attempts": m.get("attempts"),
-            }
-        )
-    return words
+def sort_words(words):
+    # later we can plug in real stats; for now just use level + pattern_code + word
+    return sorted(
+        words,
+        key=lambda w: (
+            w.get("level") or 0,
+            w.get("pattern_code") or 0,
+            w["word"],
+        ),
+    )
 
 
 
 ###########################################################
 #  MISSING-LETTER QUESTION LOGIC
 ###########################################################
-def generate_missing_letter_question(word: str, base_blanks: int = 2):
+
+
+def generate_question(word: str, pattern: str):
+    # simple rule-based version
+    p = (pattern or "").lower()
+    if "gh" in p or "ph" in p:
+        return generate_missing_letter_question(word, max_blanks=2)
+    if "tion" in p or "sion" in p or "ssion" in p:
+        return generate_missing_letter_question(word, max_blanks=3)
+    if "dge" in p:
+        return generate_missing_letter_question(word, max_blanks=1)
+    # default
+    return generate_missing_letter_question(word)
+
+
+def generate_missing_letter_question(word: str, base_blanks: int = 2, max_blanks: int | None = None):
     """
     Returns masked_word, blank_indices.
     Example:
@@ -211,7 +184,8 @@ def generate_missing_letter_question(word: str, base_blanks: int = 2):
 
     # default blanks from word length
     blanks = base_blanks
-    blanks = max(1, min(blanks, 3))  # clamp 1–3
+    clamp_max = max_blanks if max_blanks is not None else 3
+    blanks = max(1, min(blanks, clamp_max))  # clamp 1–max
 
     # pick stable random indices using a seed based on the word
     rng = random.Random(hash(word) % (2**32))
@@ -328,89 +302,18 @@ def render_practice_page():
         st.error("No course selected.")
         st.session_state.page = "dashboard"
         st.experimental_rerun()
+        return
 
-    # Load words for the selected course
-        user_id = st.session_state.get("user_id")
-        words = build_session_word_list(user_id, course_id)
+    words = get_words_for_course(course_id)
+    words = sort_words(words)
 
-        if not words:
-            st.warning("No words found for this course.")
-            if st.button("Back to Courses"):
-                st.session_state.page = "dashboard"
-                st.experimental_rerun()
-            return
-
-def build_session_word_list(user_id: int, course_id: int):
-    """
-    Option 3 lite:
-      - Uses pattern + accuracy to prioritise words
-      - Approximates 70% focus pattern, 20% weak, 10% mastered via scoring
-    """
-    words = get_words_for_course(course_id, user_id=user_id)
     if not words:
-        return []
+        st.warning("No words found for this course.")
+        if st.button("Back to Courses"):
+            st.session_state.page = "dashboard"
+            st.experimental_rerun()
+        return
 
-    # Determine focus pattern = pattern with lowest accuracy (among attempted)
-    pattern_stats = {}
-    for w in words:
-        pattern = w.get("pattern") or "other"
-        acc = w.get("accuracy")
-        attempts = w.get("attempts") or 0
-
-        if attempts == 0 or acc is None:
-            # no data yet → treat as neutral for now
-            continue
-
-        if pattern not in pattern_stats:
-            pattern_stats[pattern] = {"total_acc": 0.0, "count": 0}
-
-        pattern_stats[pattern]["total_acc"] += float(acc)
-        pattern_stats[pattern]["count"] += 1
-
-    if pattern_stats:
-        # compute average accuracy per pattern
-        avg_acc = {
-            p: v["total_acc"] / v["count"] for p, v in pattern_stats.items()
-        }
-        # focus = lowest accuracy pattern
-        focus_pattern = min(avg_acc, key=avg_acc.get)
-    else:
-        # no stats yet → pick first non-null pattern or default
-        focus_pattern = None
-        for w in words:
-            if w.get("pattern"):
-                focus_pattern = w["pattern"]
-                break
-
-    # Score words
-    scored = []
-    for w in words:
-        pattern = w.get("pattern") or "other"
-        acc = w.get("accuracy")
-        attempts = w.get("attempts") or 0
-
-        is_focus = (focus_pattern is not None and pattern == focus_pattern)
-        is_weak = (attempts > 0 and acc is not None and float(acc) < 0.7)
-        is_mastered = (attempts >= 3 and acc is not None and float(acc) >= 0.9)
-
-        score = 0
-        if is_focus:
-            score += 3    # push focus pattern near top
-        if is_weak:
-            score += 2    # weak words get high priority too
-        if is_mastered:
-            score -= 1    # mastered words drift later
-
-        scored.append((score, w))
-
-    # Sort by score DESC, then word_id ASC
-    scored.sort(key=lambda x: (-x[0], x[1]["word_id"] or 0))
-
-    # Return just the word dicts in this new order
-    return [w for _, w in scored]
-
-
-    # Ensure practice_index exists
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
@@ -425,8 +328,10 @@ def build_session_word_list(user_id: int, course_id: int):
             st.experimental_rerun()
         return
 
-    # Current word
-        pattern = current.get("pattern")
+    current = words[index]
+    current_word = current["word"]
+    word_id = current.get("word_id")
+    pattern = current.get("pattern") or ""
     level = current.get("level")
 
     info_bits = []
@@ -439,20 +344,7 @@ def build_session_word_list(user_id: int, course_id: int):
         st.caption(" • ".join(info_bits))
 
 
-    # ---- ADAPTIVE DIFFICULTY RULE (Model 2) ----
-    last_three = get_last_attempts(st.session_state.user_id, word_id, limit=3)
-
-    base_blanks = 2  # default
-    if len(last_three) == 3:
-        if all(last_three):
-            base_blanks = 3   # increase difficulty
-        elif not any(last_three):
-            base_blanks = 1   # decrease difficulty
-        else:
-            base_blanks = 2   # keep normal
-
-    # Generate masked word
-    masked, blank_indices = generate_missing_letter_question(current_word, base_blanks)
+    masked, blank_indices = generate_question(current_word, pattern)
 
     st.markdown("**Fill in the missing letters:**")
     st.markdown(f"### {masked}")
