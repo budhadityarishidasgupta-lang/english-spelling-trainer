@@ -147,7 +147,11 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
                 word=word,
                 pattern_code=pattern_code_int or 0,
                 course_id=course_id,
+                pattern_text=pattern_text,
+                level=row.get("level"),
+                example_sentence=row.get("example_sentence"),
             )
+
             if not word_id:
                 continue
 

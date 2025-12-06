@@ -1,34 +1,61 @@
-# spelling_app/repository/attempt_repo.py
+from typing import List, Dict, Any
+from shared.db import fetch_all, execute
 
-from shared.db import execute
+def record_attempt(user_id: int, word_id: int, correct: bool,
+                   time_taken: int, blanks_count: int, wrong_letters_count: int):
+    execute("""
+        INSERT INTO spelling_attempts
+        (user_id, word_id, correct, time_taken, blanks_count, wrong_letters_count)
+        VALUES (:uid, :wid, :c, :t, :b, :w)
+    """, {
+        "uid": user_id,
+        "wid": word_id,
+        "c": correct,
+        "t": time_taken,
+        "b": blanks_count,
+        "w": wrong_letters_count,
+    })
 
 
-def log_attempt(
-    student_id: int,
-    item_id: int,
-    is_correct: bool,
-):
-    """
-    Insert a single attempt into spelling_attempts.
+def get_last_attempts(user_id: int, word_id: int, limit: int = 3):
+    rows = fetch_all("""
+        SELECT correct
+        FROM spelling_attempts
+        WHERE user_id = :uid
+          AND word_id = :wid
+        ORDER BY created_at DESC
+        LIMIT :lim
+    """, {
+        "uid": user_id,
+        "wid": word_id,
+        "lim": limit,
+    })
+    return [r._mapping["correct"] for r in rows] if rows else []
 
-    Only stores:
-      - student_id
-      - item_id
-      - is_correct
-      - attempted_at (NOW)
 
-    Additional metadata (course, lesson, timing, typed answer)
-    can be added later but is intentionally excluded here.
-    """
+def get_weak_words(user_id: int, threshold: float = 0.7):
+    rows = fetch_all("""
+        SELECT word_id,
+               AVG(CASE WHEN correct THEN 1 ELSE 0 END) AS accuracy
+        FROM spelling_attempts
+        WHERE user_id = :uid
+        GROUP BY word_id
+        HAVING AVG(CASE WHEN correct THEN 1 ELSE 0 END) < :th
+    """, {
+        "uid": user_id,
+        "th": threshold,
+    })
 
-    return execute(
-        """
-        INSERT INTO spelling_attempts (student_id, item_id, is_correct, attempted_at)
-        VALUES (:student_id, :item_id, :is_correct, NOW());
-        """,
-        {
-            "student_id": student_id,
-            "item_id": item_id,
-            "is_correct": is_correct,
-        },
-    )
+    return [r._mapping for r in rows] if rows else []
+
+
+def get_daily5(user_id: int):
+    rows = fetch_all("""
+        SELECT word_id
+        FROM spelling_attempts
+        WHERE user_id = :uid
+        ORDER BY created_at DESC
+        LIMIT 5
+    """, {"uid": user_id})
+
+    return [r._mapping["word_id"] for r in rows] if rows else []

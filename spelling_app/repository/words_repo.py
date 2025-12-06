@@ -1,101 +1,92 @@
-# spelling_app/repository/words_repo.py
+import pandas as pd
+from spellings_admin_clean.utils_clean import read_csv_to_df, show_upload_summary
+from spelling_app.repository.words_repo import insert_word
+from spelling_app.repository.spelling_lesson_repo import (
+    create_lesson,
+    map_word_to_lesson,
+)
+from spelling_app.repository.lesson_repo import get_lessons_by_course
 
-from shared.db import fetch_all
 
-
-def get_word_by_text(word: str, course_id: int = None):
+def process_spelling_csv(uploaded_file, course_id: int):
     """
-    Fetch a word row by exact text match (case-insensitive).
-    Optionally filter by course_id.
-    """
-    if course_id is not None:
-        sql = """
-            SELECT word_id, word, pattern_code, course_id, pattern
-            FROM spelling_words
-            WHERE LOWER(word) = LOWER(:word)
-              AND course_id = :course_id
-            LIMIT 1;
-        """
-        params = {"word": word, "course_id": course_id}
-    else:
-        sql = """
-            SELECT word_id, word, pattern_code, course_id, pattern
-            FROM spelling_words
-            WHERE LOWER(word) = LOWER(:word)
-            LIMIT 1;
-        """
-        params = {"word": word}
+    Upload CSV structure (expected):
+    -----------------------------------------
+    word, pattern, pattern_code, lesson_name
+    -----------------------------------------
 
-    rows = fetch_all(sql, params)
+    Required columns:
+      - word
+      - lesson_name
 
-    if isinstance(rows, dict):  # DB error
-        return rows
-
-    return [dict(getattr(r, "_mapping", r)) for r in rows]
-
-
-def insert_word(word: str, pattern_code: int = None, pattern: str = None, course_id: int = None):
-    """
-    Insert a word into spelling_words.
-    Matches the actual DB schema:
-      word_id (serial PK)
-      course_id (int)
-      pattern_code (int)
-      word (text)
-      pattern (text)
+    Optional:
+      - pattern
+      - pattern_code
     """
 
-    sql = """
-        INSERT INTO spelling_words (word, pattern_code, course_id, pattern)
-        VALUES (:word, :pattern_code, :course_id, :pattern)
-        RETURNING word_id;
-    """
+    df = read_csv_to_df(uploaded_file)
 
-    rows = fetch_all(
-        sql,
-        {
-            "word": word,
-            "pattern_code": pattern_code,
-            "course_id": course_id,
-            "pattern": pattern,
-        },
-    )
+    required_cols = ["word", "lesson_name"]
+    for c in required_cols:
+        if c not in df.columns:
+            return {"error": f"Missing required column: {c}"}
 
-    if isinstance(rows, dict):  # DB error
-        return rows
+    # Normalize optional columns
+    if "pattern" not in df.columns:
+        df["pattern"] = None
+    if "pattern_code" not in df.columns:
+        df["pattern_code"] = None
 
-    if not rows:
-        return None
+    # Fetch existing lessons to avoid duplicates
+    existing_lessons = get_lessons_by_course(course_id)
+    lesson_map = {l["lesson_name"].strip().lower(): l["lesson_id"] for l in existing_lessons}
 
-    row = rows[0]
+    created_lessons = 0
+    created_words = 0
+    mapped_words = 0
 
-    # SQLAlchemy row object
-    if hasattr(row, "_mapping"):
-        return row._mapping.get("word_id")
+    for _, row in df.iterrows():
+        word = str(row["word"]).strip()
+        lesson_name = str(row["lesson_name"]).strip()
+        pattern = row.get("pattern")
+        pattern_code = row.get("pattern_code")
 
-    # fallback dict mode
-    if isinstance(row, dict):
-        return row.get("word_id")
+        # -----------------------------------------
+        # 1. Create lesson if not exists
+        # -----------------------------------------
+        lesson_key = lesson_name.lower()
+        if lesson_key not in lesson_map:
+            new_lesson_id = create_lesson(lesson_name, course_id)
+            lesson_map[lesson_key] = new_lesson_id
+            created_lessons += 1
 
-    # fallback tuple mode
-    try:
-        return row[0]
-    except Exception:
-        return None
+        lesson_id = lesson_map[lesson_key]
 
+        # -----------------------------------------
+        # 2. Insert word into spelling_words
+        # -----------------------------------------
+        new_word_id = insert_word(
+            word=word,
+            pattern_code=pattern_code,
+            pattern=pattern,
+            course_id=course_id,
+        )
 
-def update_word(word_id: int, new_word: str):
-    sql = """
-        UPDATE spelling_words
-        SET word = :new_word
-        WHERE word_id = :word_id;
-    """
-    return fetch_all(sql, {"new_word": new_word, "word_id": word_id})
+        if new_word_id:
+            created_words += 1
 
+        # -----------------------------------------
+        # 3. Map word to lesson
+        # -----------------------------------------
+        if new_word_id:
+            map_word_to_lesson(lesson_id, new_word_id)
+            mapped_words += 1
 
-def delete_word(word_id: int):
-    sql = """
-        DELETE FROM spelling_words
-        WHERE word_id = :word_id;
-    """
-    return fetch_all(sql, {"word_id": word_id})
+    summary = {
+        "created_lessons": created_lessons,
+        "created_words": created_words,
+        "mapped_words": mapped_words,
+    }
+
+    show_upload_summary(summary)
+    return summary
