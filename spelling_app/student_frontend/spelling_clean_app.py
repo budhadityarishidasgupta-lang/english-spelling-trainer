@@ -7,7 +7,6 @@ from sqlalchemy import text
 from shared.db import engine, fetch_all
 from spelling_app.repository.student_pending_repo import create_pending_registration
 from spelling_app.repository.attempt_repo import record_attempt
-from spelling_app.repository.words_repo import get_words_for_course
 
 
 
@@ -24,6 +23,12 @@ SESSION_KEYS = [
     "selected_course_id",
     "practice_index",
 ]
+
+SESSION_KEYS.extend([
+    "selected_level",
+    "selected_lesson",
+    "selected_lesson_pattern_code",
+])
 
 
 def inject_student_css():
@@ -129,6 +134,51 @@ def get_student_courses(user_id: int):
             }
         )
     return courses
+
+
+def get_lessons_for_course(course_id):
+    """
+    Returns distinct levels and lesson names for left menu.
+    """
+    rows = fetch_all(
+        """
+        SELECT DISTINCT pattern_code, pattern, level, lesson_name
+        FROM spelling_words
+        WHERE course_id = :cid
+        ORDER BY level, pattern_code
+        """,
+        {"cid": course_id},
+    )
+    out = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        out.append(
+            {
+                "pattern_code": m["pattern_code"],
+                "pattern": m["pattern"],
+                "level": m["level"],
+                "lesson_name": m["lesson_name"],
+            }
+        )
+    return out
+
+
+def get_words_for_lesson(course_id, pattern_code):
+    rows = fetch_all(
+        """
+        SELECT word_id, word
+        FROM spelling_words
+        WHERE course_id = :cid
+        AND pattern_code = :pc
+        ORDER BY word_id
+        """,
+        {"cid": course_id, "pc": pattern_code},
+    )
+    out = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        out.append({"word_id": m["word_id"], "word": m["word"]})
+    return out
 
 
 ###########################################################
@@ -265,25 +315,60 @@ def render_registration_page():
 ###########################################################
 
 def render_student_dashboard():
-    st.title("📘 Select a Course")
+    st.title("📘 My Courses")
 
     user_id = st.session_state.get("user_id")
     courses = get_student_courses(user_id)
 
     if not courses:
-        st.warning("No courses assigned to your account yet.")
+        st.warning("No courses assigned yet.")
         return
 
+    # Let student choose a course
     course_names = [c["course_name"] for c in courses]
-
     selected_course_name = st.selectbox("Choose a course:", course_names)
 
     selected_course = next(c for c in courses if c["course_name"] == selected_course_name)
     st.session_state.selected_course_id = selected_course["course_id"]
+    st.session_state.selected_level = None
+    st.session_state.selected_lesson = None
+    st.session_state.selected_lesson_pattern_code = None
+    st.session_state.practice_index = 0
 
-    if st.button("Start Practice"):
-        st.session_state.page = "practice"
-        st.experimental_rerun()
+    st.info("Select a lesson from the left sidebar to begin.")
+
+
+def render_sidebar_navigation():
+    st.sidebar.title("📚 Lessons")
+
+    cid = st.session_state.get("selected_course_id")
+    if not cid:
+        st.sidebar.info("Select a course first.")
+        return
+
+    lessons = get_lessons_for_course(cid)
+    if not lessons:
+        st.sidebar.warning("No lessons found.")
+        return
+
+    levels = sorted(set(l["level"] for l in lessons))
+
+    for lvl in levels:
+        st.sidebar.markdown(f"### ⭐ Level {lvl}")
+
+        lvl_lessons = [l for l in lessons if l["level"] == lvl]
+        for lesson in lvl_lessons:
+            pattern_code = lesson["pattern_code"]
+            label = f"{lesson['lesson_name']} ({lesson['pattern']})"
+
+            if st.sidebar.button(label, key=f"lesson_{pattern_code}"):
+                st.session_state.selected_level = lvl
+                st.session_state.selected_lesson = lesson["lesson_name"]
+                st.session_state.selected_lesson_pattern_code = pattern_code
+                st.session_state.practice_index = 0
+                st.session_state.start_time = time.time()
+                st.session_state.page = "practice"
+                st.experimental_rerun()
 
 
 ###########################################################
@@ -292,27 +377,26 @@ def render_student_dashboard():
 def render_practice_page():
     st.title("✏️ Practice")
 
-    # track time per attempt
-    if "start_time" not in st.session_state:
-        st.session_state.start_time = time.time()
+    cid = st.session_state.get("selected_course_id")
+    pc = st.session_state.get("selected_lesson_pattern_code")
+    lesson_name = st.session_state.get("selected_lesson")
 
-    course_id = st.session_state.get("selected_course_id")
-
-    if not course_id:
-        st.error("No course selected.")
+    if not cid or not pc:
+        st.error("No lesson selected. Choose from the left panel.")
         st.session_state.page = "dashboard"
         st.experimental_rerun()
         return
 
-    words = get_words_for_course(course_id)
-    words = sort_words(words)
+    st.markdown(f"### Lesson: **{lesson_name}**")
 
+    words = get_words_for_lesson(cid, pc)
     if not words:
-        st.warning("No words found for this course.")
-        if st.button("Back to Courses"):
-            st.session_state.page = "dashboard"
-            st.experimental_rerun()
+        st.warning("No words found for this lesson.")
         return
+
+    # track time per attempt
+    if "start_time" not in st.session_state:
+        st.session_state.start_time = time.time()
 
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
@@ -435,6 +519,9 @@ def render_practice_page():
 def main():
     inject_student_css()
     initialize_session_state(st)
+
+    if st.session_state.is_logged_in:
+        render_sidebar_navigation()
 
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
