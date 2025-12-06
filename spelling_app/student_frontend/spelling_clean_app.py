@@ -1,12 +1,18 @@
+# --- Fix PYTHONPATH so "shared" and "spelling_app" can be imported ---
+import sys
+import os
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+# ---------------------------------------------------------------------
+
+
 import os
 import random
 import time
 import streamlit as st
 from sqlalchemy import text
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
 
 from shared.db import engine, fetch_all
 from spelling_app.repository.student_pending_repo import create_pending_registration
