@@ -99,6 +99,37 @@ def create_lesson(lesson_name: str, course_id: int):
         return None
 
 
+def get_or_create_lesson(course_id: int, lesson_name: str):
+    """Return an existing lesson_id or create a new lesson for the course."""
+    rows = fetch_all(
+        """
+        SELECT lesson_id
+        FROM spelling_lessons
+        WHERE course_id = :cid AND lesson_name = :lname
+        """,
+        {"cid": course_id, "lname": lesson_name},
+    )
+
+    if rows:
+        m = getattr(rows[0], "_mapping", rows[0])
+        return m.get("lesson_id")
+
+    rows = fetch_all(
+        """
+        INSERT INTO spelling_lessons (course_id, lesson_name)
+        VALUES (:cid, :lname)
+        RETURNING lesson_id
+        """,
+        {"cid": course_id, "lname": lesson_name},
+    )
+
+    if rows:
+        m = getattr(rows[0], "_mapping", rows[0])
+        return m.get("lesson_id")
+
+    return None
+
+
 # ============================================================
 # WORD → LESSON MAPPING
 # ============================================================
