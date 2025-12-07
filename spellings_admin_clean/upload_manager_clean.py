@@ -29,31 +29,28 @@ def _normalize_csv_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 def validate_csv_columns(df):
     """
-    Ensures the uploaded CSV contains the required columns.
-    FLEXIBLE MATCHING:
-      - case-insensitive
-      - ignores spaces, underscores, hyphens
-      - pattern + example_sentence are OPTIONAL
+    Master CSV validator.
+    - Normalises headers
+    - Maps ANY variation of headers to required ones
+    - Supports: word, pattern, pattern_code, level, lesson_name
+    - Missing columns are auto-corrected if obvious
     """
     df = _normalize_csv_headers(df)
 
-    required = ["word", "pattern_code", "level", "lesson_name"]
-    optional = ["pattern", "example_sentence"]
+    # After normalization we expect EXACT names:
+    required = ["word", "pattern", "pattern_code", "level", "lesson_name"]
 
-    # 🚀 Normalize everything: remove spaces, underscores, hyphens
-    def norm(s):
-        return s.strip().replace("\ufeff", "").lower().replace(" ", "").replace("_", "").replace("-", "")
+    actual = list(df.columns)
 
-    df_cols_norm = [norm(c) for c in df.columns]
+    # Debug: Show actual headers
+    # print("DEBUG HEADERS NORMALIZED:", actual)
 
-    missing = []
-    for col in required:
-        if norm(col) not in df_cols_norm:
-            missing.append(col)
+    missing = [c for c in required if c not in actual]
 
-    # pattern + example_sentence are OPTIONAL → do NOT include them in missing
+    if missing:
+        return missing   # caller prints error
 
-    return missing
+    return []   # no missing columns
 
 
 def _compute_difficulty(word: str, pattern_code: int | None, explicit: int | None):
