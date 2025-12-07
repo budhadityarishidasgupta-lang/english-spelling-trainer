@@ -270,7 +270,17 @@ elif menu == "Courses":
         st.warning("No courses found.")
 
     st.write("### View Lessons for a Course")
-    cid = st.number_input("Course ID", min_value=1, step=1)
+    courses = fetch_all_simple(
+        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
+    )
+    course_map = {c["course_name"]: c["course_id"] for c in courses} if courses else {}
+
+    if course_map:
+        selected_course = st.selectbox("Select Course", list(course_map.keys()))
+        cid = course_map[selected_course]
+    else:
+        st.warning("No courses available.")
+        return
 
     if st.button("Load Lessons"):
         lessons = get_lessons_for_course(cid)
