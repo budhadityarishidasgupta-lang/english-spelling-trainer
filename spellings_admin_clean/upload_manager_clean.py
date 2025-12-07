@@ -9,9 +9,21 @@ from spellings_admin_clean.word_manager_clean import (
 
 
 def _normalize_csv_headers(df: pd.DataFrame) -> pd.DataFrame:
-    """Trim whitespace/BOM and lowercase column headers."""
+    """
+    Normalize column names fully:
+      - strip spaces
+      - lowercase
+      - remove BOM
+      - replace multiple variations (spaces, underscores, hyphens) with single underscore
+    """
 
-    df.columns = [c.strip().replace("\ufeff", "").lower() for c in df.columns]
+    def clean(name: str) -> str:
+        n = name.strip().replace("\ufeff", "").lower()
+        for bad in [" ", "-", "__", "---", "_ _"]:
+            n = n.replace(bad, "_")
+        return n
+
+    df.columns = [clean(c) for c in df.columns]
     return df
 
 
