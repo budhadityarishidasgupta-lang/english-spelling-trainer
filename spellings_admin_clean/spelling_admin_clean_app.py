@@ -263,6 +263,7 @@ elif menu == "Students":
 elif menu == "Courses":
     st.subheader("📘 Course Overview")
 
+    # --- List all courses ---
     courses = get_all_spelling_courses()
     if courses:
         st.table(pd.DataFrame(courses))
@@ -270,17 +271,28 @@ elif menu == "Courses":
         st.warning("No courses found.")
 
     st.write("### View Lessons for a Course")
+
     courses = fetch_all_simple(
         "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
     )
-    course_map = {c["course_name"]: c["course_id"] for c in courses} if courses else {}
 
-    if course_map:
+    if not courses:
+        st.warning("No courses available.")
+    else:
+        course_map = {c["course_name"]: c["course_id"] for c in courses}
         selected_course = st.selectbox("Select Course", list(course_map.keys()))
         cid = course_map[selected_course]
-    else:
-        st.warning("No courses available.")
-        return
+
+        if st.button("Load Lessons"):
+            lessons = get_lessons_for_course(cid)
+
+            if lessons:
+                st.success(f"Lessons for {selected_course}")
+                df = pd.DataFrame(lessons)
+                st.table(df)
+            else:
+                st.warning("No lessons exist for this course.")
+
 
     if st.button("Load Lessons"):
         lessons = get_lessons_for_course(cid)
