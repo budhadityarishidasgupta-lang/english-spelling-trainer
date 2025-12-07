@@ -1,3 +1,5 @@
+import pandas as pd
+
 from spelling_app.repository.words_repo import get_word_by_text, insert_word
 
 from spelling_app.repository.spelling_lesson_repo import (
@@ -5,6 +7,13 @@ from spelling_app.repository.spelling_lesson_repo import (
     get_or_create_lesson as repo_get_or_create_lesson,
     map_word_to_lesson,
 )
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def get_or_create_word(
@@ -74,6 +83,58 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
     Maps a word to a lesson. Ignores duplicates.
     """
     return map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+
+
+def process_uploaded_csv(uploaded_file, course_id: int):
+    try:
+        df = pd.read_csv(uploaded_file)
+    except Exception as exc:  # pragma: no cover - defensive guard for malformed uploads
+        return {"error": f"Could not read CSV: {exc}"}
+
+    required_columns = {"word", "pattern", "pattern_code", "level", "lesson_name"}
+    if not required_columns.issubset(set(df.columns)):
+        return {"error": "CSV missing required columns."}
+
+    words_added = 0
+    lessons_set: set[str | None] = set()
+    patterns_set: set[str] = set()
+
+    for _, row in df.iterrows():
+        word = str(row.get("word", "")).strip()
+        if not word:
+            continue
+
+        pattern_raw = row.get("pattern")
+        pattern = str(pattern_raw).strip() if pattern_raw is not None else None
+        pattern = pattern or None
+        pattern_code = _safe_int(row.get("pattern_code"))
+        level = _safe_int(row.get("level"))
+        lesson_name_raw = row.get("lesson_name")
+        lesson_name = str(lesson_name_raw).strip() if lesson_name_raw is not None else None
+        lesson_name = lesson_name or None
+
+        repo_get_or_create_lesson(course_id=course_id, lesson_name=lesson_name)
+
+        insert_word(
+            word=word,
+            course_id=course_id,
+            pattern=pattern,
+            pattern_code=pattern_code,
+            level=level,
+            lesson_name=lesson_name,
+            example_sentence=None,
+        )
+
+        words_added += 1
+        lessons_set.add(lesson_name)
+        if pattern is not None:
+            patterns_set.add(pattern)
+
+    return {
+        "words_added": words_added,
+        "lessons_created": len(lessons_set),
+        "patterns": sorted(patterns_set),
+    }
 
 # ---------------------------------------------------------
 # FETCH LESSONS FOR COURSE
