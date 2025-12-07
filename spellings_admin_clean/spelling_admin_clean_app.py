@@ -45,19 +45,60 @@ from spelling_app.repository.classroom_repo import (
 )
 
 # Upload Manager (fixed)
-from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+from spelling_app.repository.course_repo import get_all_courses
+from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
 # Utilities
-from spellings_admin_clean.utils_clean import (
-    read_csv_to_df,
-    show_upload_summary,
-)
 
 # Lesson helpers
 from spellings_admin_clean.word_manager_clean import (
     get_lesson_words,
     get_lessons_for_course,
 )
+
+
+def render_spelling_csv_upload():
+    st.header("📤 Upload Spelling Word CSV")
+
+    # --- Load course dropdown ---
+    courses = get_all_courses()
+    if not courses:
+        st.error("No courses available. Create a course first.")
+        return
+
+    course_names = [c["course_name"] for c in courses]
+    selected_course = st.selectbox("Select Course", course_names)
+    selected_course_obj = next(c for c in courses if c["course_name"] == selected_course)
+    selected_course_id = selected_course_obj["course_id"]
+
+    st.info(f"Words will be uploaded into: **{selected_course}**")
+
+    uploaded_file = st.file_uploader(
+        "Upload CSV (columns: word, pattern, pattern_code, level, lesson_name)",
+        type=["csv"],
+    )
+
+    if uploaded_file is None:
+        return
+
+    if st.button("Process Upload"):
+        with st.spinner("Processing CSV…"):
+            result = process_uploaded_csv(uploaded_file, selected_course_id)
+
+        if result.get("error"):
+            st.error(result["error"])
+            return
+
+        # SUCCESS OUTPUT
+        st.success("CSV upload completed!")
+
+        st.subheader("Upload Summary")
+        st.write(f"**Words Added:** {result['words_added']}")
+        st.write(f"**Lessons Created:** {result['lessons_created']}")
+
+        if result["patterns"]:
+            st.write("**Patterns Found:**")
+            st.write(", ".join(result["patterns"]))
 
 # =========================================================
 #                SIDEBAR NAVIGATION
@@ -96,21 +137,7 @@ if menu == "Dashboard":
 # =========================================================
 
 elif menu == "Upload Words CSV":
-    st.subheader("📥 Upload Spelling Words CSV")
-
-    uploaded = st.file_uploader("Select CSV file", type="csv")
-
-    if uploaded:
-        df = read_csv_to_df(uploaded)
-        st.write("### Preview")
-        st.dataframe(df.head())
-
-        course_id = st.number_input("Course ID to upload into:", min_value=1, step=1)
-
-        if st.button("Process Upload"):
-            result = process_spelling_csv(df, course_id)
-            st.success("Upload complete!")
-            show_upload_summary(result)
+    render_spelling_csv_upload()
 
 
 # =========================================================
