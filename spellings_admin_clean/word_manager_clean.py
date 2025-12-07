@@ -9,24 +9,6 @@ from spelling_app.repository.spelling_lesson_repo import (
 )
 
 
-def validate_csv_headers(df):
-    """
-    Validates that uploaded CSV contains the required columns.
-    Allows additional optional columns like example_sentence.
-    """
-
-    required = {"word", "pattern", "pattern_code", "level", "lesson_name"}
-    uploaded = set(df.columns)
-
-    missing = required - uploaded
-
-    if missing:
-        return False, f"CSV is missing required columns: {', '.join(missing)}"
-
-    # Optional columns accepted: example_sentence, audio_url, etc.
-    return True, "ok"
-
-
 def _safe_int(value):
     try:
         return int(value)
@@ -108,10 +90,6 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         df = pd.read_csv(uploaded_file)
     except Exception as exc:  # pragma: no cover - defensive guard for malformed uploads
         return {"error": f"Could not read CSV: {exc}"}
-
-    valid, message = validate_csv_headers(df)
-    if not valid:
-        return {"error": message}
 
     words_added = 0
     lessons_set: set[str | None] = set()
