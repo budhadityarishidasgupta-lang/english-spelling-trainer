@@ -119,6 +119,8 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
     """
 
     df = _normalize_csv_headers(df)
+    # DEBUG — show what headers pandas actually sees
+    st.warning(f"DEBUG HEADERS → {list(df.columns)}")
 
     # Validate CSV structure
     missing = validate_csv_columns(df)
