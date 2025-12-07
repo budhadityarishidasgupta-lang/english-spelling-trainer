@@ -9,6 +9,24 @@ from spelling_app.repository.spelling_lesson_repo import (
 )
 
 
+def validate_csv_headers(df):
+    """
+    Validates that uploaded CSV contains the required columns.
+    Allows additional optional columns like example_sentence.
+    """
+
+    required = {"word", "pattern", "pattern_code", "level", "lesson_name"}
+    uploaded = set(df.columns)
+
+    missing = required - uploaded
+
+    if missing:
+        return False, f"CSV is missing required columns: {', '.join(missing)}"
+
+    # Optional columns accepted: example_sentence, audio_url, etc.
+    return True, "ok"
+
+
 def _safe_int(value):
     try:
         return int(value)
@@ -91,9 +109,9 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     except Exception as exc:  # pragma: no cover - defensive guard for malformed uploads
         return {"error": f"Could not read CSV: {exc}"}
 
-    required_columns = {"word", "pattern", "pattern_code", "level", "lesson_name"}
-    if not required_columns.issubset(set(df.columns)):
-        return {"error": "CSV missing required columns."}
+    valid, message = validate_csv_headers(df)
+    if not valid:
+        return {"error": message}
 
     words_added = 0
     lessons_set: set[str | None] = set()
@@ -112,6 +130,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         lesson_name_raw = row.get("lesson_name")
         lesson_name = str(lesson_name_raw).strip() if lesson_name_raw is not None else None
         lesson_name = lesson_name or None
+        example_sentence = row.get("example_sentence", None)
 
         repo_get_or_create_lesson(course_id=course_id, lesson_name=lesson_name)
 
@@ -122,7 +141,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             pattern_code=pattern_code,
             level=level,
             lesson_name=lesson_name,
-            example_sentence=None,
+            example_sentence=example_sentence,
         )
 
         words_added += 1
