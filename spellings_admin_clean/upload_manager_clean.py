@@ -8,15 +8,23 @@ from spellings_admin_clean.word_manager_clean import (
 )
 
 
+def _normalize_csv_headers(df: pd.DataFrame) -> pd.DataFrame:
+    """Trim whitespace/BOM and lowercase column headers."""
+
+    df.columns = [c.strip().replace("\ufeff", "").lower() for c in df.columns]
+    return df
+
+
 def validate_csv_columns(df):
     """
     Ensures the uploaded CSV contains the required columns.
     Case-insensitive + whitespace-tolerant + BOM-safe.
     """
+    df = _normalize_csv_headers(df)
     required = ["word", "pattern", "pattern_code", "level", "lesson_name"]
 
     # Normalize uploaded CSV column names
-    df_cols_clean = [c.strip().lower() for c in df.columns]
+    df_cols_clean = [c.strip().replace("\ufeff", "").lower() for c in df.columns]
 
     # Detect missing
     missing = []
@@ -89,6 +97,8 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
          - difficulty is computed from CSV or rules
     """
 
+    df = _normalize_csv_headers(df)
+
     # Validate CSV structure
     missing = validate_csv_columns(df)
     if missing:
@@ -96,9 +106,6 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
         return
     else:
         st.success("CSV successfully validated and ready for upload.")
-
-    # Normalise column names to lower-case for safety
-    df = df.rename(columns={c: c.strip().lower() for c in df.columns})
 
     simple_cols = {"word", "pattern_code", "lesson_name"}
     pattern_cols = {"word", "pattern_code", "pattern_text", "difficulty"}
