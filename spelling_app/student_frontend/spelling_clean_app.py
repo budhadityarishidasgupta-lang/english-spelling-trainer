@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # --- Force load .env from project root ---
 import os
 from dotenv import load_dotenv
@@ -17,9 +18,9 @@ if ROOT not in sys.path:
 # ---------------------------------------------------------------------
 
 
+import time
 import os
 import random
-import time
 import streamlit as st
 from sqlalchemy import text
 
@@ -38,6 +39,13 @@ from spelling_app.repository.attempt_repo import record_attempt
 #  SESSION INIT
 ###########################################################
 
+PRACTICE_MODES = [
+    "Practice",   # current missing-letter mode
+    "Review",     # weak words (to be implemented)
+    "Daily 5",    # daily set (to be implemented)
+    "Test",       # timed quiz (to be implemented)
+]
+
 SESSION_KEYS = [
     "is_logged_in",
     "user_id",
@@ -48,6 +56,7 @@ SESSION_KEYS = [
 ]
 
 SESSION_KEYS.extend([
+    "practice_mode",
     "selected_level",
     "selected_lesson",
     "selected_lesson_pattern_code",
@@ -342,6 +351,38 @@ def render_registration_page():
 
 
 ###########################################################
+#  MODE SELECTOR (Practice / Review / Daily 5 / Test)
+###########################################################
+
+def ensure_default_mode():
+    """
+    Ensure we always have a valid practice_mode in session.
+    """
+    if "practice_mode" not in st.session_state or st.session_state.practice_mode not in PRACTICE_MODES:
+        st.session_state.practice_mode = "Practice"
+
+
+def render_mode_selector_sidebar():
+    """
+    Renders a simple mode selector in the sidebar.
+    For now, only 'Practice' is fully implemented; the others show placeholders.
+    """
+    ensure_default_mode()
+
+    st.sidebar.markdown("### 🎯 Mode")
+    current_mode = st.sidebar.radio(
+        "Choose how you want to work today:",
+        PRACTICE_MODES,
+        index=PRACTICE_MODES.index(st.session_state.practice_mode),
+    )
+    if current_mode != st.session_state.practice_mode:
+        st.session_state.practice_mode = current_mode
+        # When changing mode, send user back to dashboard for a clean flow.
+        st.session_state.page = "dashboard"
+        st.experimental_rerun()
+
+
+###########################################################
 #  DASHBOARD: CHOOSE COURSE
 ###########################################################
 
@@ -366,7 +407,16 @@ def render_student_dashboard():
     st.session_state.selected_lesson_pattern_code = None
     st.session_state.practice_index = 0
 
-    st.info("Select a lesson from the left sidebar to begin.")
+    # Show current mode to the student
+    ensure_default_mode()
+    mode_label = st.session_state.practice_mode
+
+    st.success(f"Mode: **{mode_label}**")
+
+    if mode_label == "Practice":
+        st.info("Select a lesson from the left sidebar to begin practising.")
+    else:
+        st.info("Select a lesson from the left sidebar. This mode is in early build – behaviour may be limited.")
 
 
 def render_sidebar_navigation():
@@ -408,7 +458,29 @@ def render_sidebar_navigation():
 #  PRACTICE PAGE — MISSING LETTER MODE (FIXED)
 ###########################################################
 def render_practice_page():
-    st.title("✏️ Practice")
+    ensure_default_mode()
+    mode = st.session_state.practice_mode
+
+    # Top title reflects current mode
+    if mode == "Practice":
+        st.title("✏️ Practice")
+    elif mode == "Review":
+        st.title("🔁 Review (Weak Words)")
+    elif mode == "Daily 5":
+        st.title("📆 Daily 5")
+    elif mode == "Test":
+        st.title("⏱️ Test Mode")
+    else:
+        st.title("✏️ Practice")
+
+    # For Step A we only implement the Practice mode.
+    # Other modes show a placeholder and return early.
+    if mode != "Practice":
+        st.info(
+            "This mode is not fully implemented yet. "
+            "For now, please use **Practice** mode."
+        )
+        return
 
     cid = st.session_state.get("selected_course_id")
     pc = st.session_state.get("selected_lesson_pattern_code")
@@ -553,9 +625,6 @@ def main():
     inject_student_css()
     initialize_session_state(st)
 
-    if st.session_state.is_logged_in:
-        render_sidebar_navigation()
-
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
         tab_login, tab_register = st.tabs(["Login", "New Registration"])
@@ -569,10 +638,18 @@ def main():
         return  # stop here when logged out
 
     # LOGGED IN
+    # Sidebar content: user, logout, mode selector, lessons
     st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
+
+    # Mode selector + lesson navigation in sidebar
+    render_mode_selector_sidebar()
+    render_sidebar_navigation()
+
+    # Ensure default mode
+    ensure_default_mode()
 
     page = st.session_state.get("page", "dashboard")
 
