@@ -2,6 +2,19 @@ from typing import Dict, Any
 
 import streamlit as st
 import pandas as pd
+from shared.db import fetch_all
+
+
+# ---------------------------------------------
+# Helper returns clean dict rows for dropdowns
+# ---------------------------------------------
+def fetch_all_simple(sql, params=None):
+    rows = fetch_all(sql, params or {})
+    out = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        out.append(dict(m))
+    return out
 
 
 def read_csv_to_df(uploaded_file) -> pd.DataFrame:
