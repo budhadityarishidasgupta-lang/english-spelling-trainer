@@ -25,6 +25,7 @@ st.title("🛠️ Spelling Admin Console")
 from spelling_app.repository.course_repo import (
     get_all_spelling_courses,
 )
+from spellings_admin_clean.utils_clean import fetch_all_simple
 
 # Students
 from spelling_app.repository.student_repo import (
@@ -45,7 +46,6 @@ from spelling_app.repository.classroom_repo import (
 )
 
 # Upload Manager (fixed)
-from spelling_app.repository.course_repo import get_all_courses
 from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
 # Utilities
@@ -61,15 +61,16 @@ def render_spelling_csv_upload():
     st.header("📤 Upload Spelling Word CSV")
 
     # --- Load course dropdown ---
-    courses = get_all_courses()
+    courses = fetch_all_simple(
+        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
+    )
     if not courses:
         st.error("No courses available. Create a course first.")
         return
 
-    course_names = [c["course_name"] for c in courses]
-    selected_course = st.selectbox("Select Course", course_names)
-    selected_course_obj = next(c for c in courses if c["course_name"] == selected_course)
-    selected_course_id = selected_course_obj["course_id"]
+    course_name_to_id = {c["course_name"]: c["course_id"] for c in courses}
+    selected_course = st.selectbox("Select Course", list(course_name_to_id.keys()))
+    selected_course_id = course_name_to_id[selected_course]
 
     st.info(f"Words will be uploaded into: **{selected_course}**")
 
@@ -81,6 +82,8 @@ def render_spelling_csv_upload():
     if uploaded_file is None:
         return
 
+    st.info("CSV Loaded Successfully")
+
     if st.button("Process Upload"):
         with st.spinner("Processing CSV…"):
             result = process_uploaded_csv(uploaded_file, selected_course_id)
@@ -90,7 +93,7 @@ def render_spelling_csv_upload():
             return
 
         # SUCCESS OUTPUT
-        st.success("CSV upload completed!")
+        st.success(f"Words uploaded to **{selected_course}**!")
 
         st.subheader("Upload Summary")
         st.write(f"**Words Added:** {result['words_added']}")
