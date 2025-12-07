@@ -2,6 +2,16 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from dotenv import load_dotenv
+import pathlib
+
+# Force-load the .env from repo root
+ENV_PATH = pathlib.Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(ENV_PATH)
+print("Loaded .env from:", ENV_PATH)
+
+
+
 # Load database URL from environment variable
 DATABASE_URL = os.getenv("DATABASE_URL")
 

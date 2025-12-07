@@ -1,3 +1,12 @@
+# --- Force load .env from project root ---
+import os
+from dotenv import load_dotenv
+
+ROOT_ENV = "/workspaces/english-spelling-trainer/.env"
+load_dotenv(ROOT_ENV)
+print("Loaded DB:", os.getenv("DATABASE_URL"))
+
+
 # --- Fix PYTHONPATH so "shared" and "spelling_app" can be imported ---
 import sys
 import os
@@ -13,6 +22,10 @@ import random
 import time
 import streamlit as st
 from sqlalchemy import text
+
+from dotenv import load_dotenv
+load_dotenv()
+
 
 from shared.db import engine, fetch_all
 from spelling_app.repository.student_pending_repo import create_pending_registration
@@ -176,7 +189,7 @@ def get_lessons_for_course(course_id):
 def get_words_for_lesson(course_id, pattern_code):
     rows = fetch_all(
         """
-        SELECT word_id, word
+        SELECT word_id, word, pattern, pattern_code, level, lesson_name
         FROM spelling_words
         WHERE course_id = :cid
         AND pattern_code = :pc
@@ -187,8 +200,16 @@ def get_words_for_lesson(course_id, pattern_code):
     out = []
     for r in rows:
         m = getattr(r, "_mapping", r)
-        out.append({"word_id": m["word_id"], "word": m["word"]})
+        out.append({
+            "word_id": m["word_id"],
+            "word": m["word"],
+            "pattern": m.get("pattern"),
+            "pattern_code": m.get("pattern_code"),
+            "level": m.get("level"),
+            "lesson_name": m.get("lesson_name"),
+        })
     return out
+
 
 
 ###########################################################
@@ -361,7 +382,8 @@ def render_sidebar_navigation():
         st.sidebar.warning("No lessons found.")
         return
 
-    levels = sorted(set(l["level"] for l in lessons))
+    levels = sorted(set(int(l["level"]) for l in lessons if l["level"] is not None))
+
 
     for lvl in levels:
         st.sidebar.markdown(f"### ⭐ Level {lvl}")
@@ -369,7 +391,8 @@ def render_sidebar_navigation():
         lvl_lessons = [l for l in lessons if l["level"] == lvl]
         for lesson in lvl_lessons:
             pattern_code = lesson["pattern_code"]
-            label = f"{lesson['lesson_name']} ({lesson['pattern']})"
+            label = f"{lesson['lesson_name']} ({lesson.get('pattern','')})"
+
 
             if st.sidebar.button(label, key=f"lesson_{pattern_code}"):
                 st.session_state.selected_level = lvl
