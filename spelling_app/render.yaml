@@ -1,0 +1,12 @@
+services:
+  - name: admin-console
+    type: web
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run spellings_admin_clean/spelling_admin_clean_app.py --server.address 0.0.0.0 --server.port $PORT"
+
+  - name: student-app
+    type: web
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run spelling_app/student_frontend/spelling_clean_app.py --server.address 0.0.0.0 --server.port $PORT"
