@@ -18,19 +18,28 @@ def _normalize_csv_headers(df: pd.DataFrame) -> pd.DataFrame:
 def validate_csv_columns(df):
     """
     Ensures the uploaded CSV contains the required columns.
-    Case-insensitive + whitespace-tolerant + BOM-safe.
+    FLEXIBLE MATCHING:
+      - case-insensitive
+      - ignores spaces, underscores, hyphens
+      - pattern + example_sentence are OPTIONAL
     """
     df = _normalize_csv_headers(df)
-    required = ["word", "pattern", "pattern_code", "level", "lesson_name"]
 
-    # Normalize uploaded CSV column names
-    df_cols_clean = [c.strip().replace("\ufeff", "").lower() for c in df.columns]
+    required = ["word", "pattern_code", "level", "lesson_name"]
+    optional = ["pattern", "example_sentence"]
 
-    # Detect missing
+    # 🚀 Normalize everything: remove spaces, underscores, hyphens
+    def norm(s):
+        return s.strip().replace("\ufeff", "").lower().replace(" ", "").replace("_", "").replace("-", "")
+
+    df_cols_norm = [norm(c) for c in df.columns]
+
     missing = []
     for col in required:
-        if col.lower() not in df_cols_clean:
+        if norm(col) not in df_cols_norm:
             missing.append(col)
+
+    # pattern + example_sentence are OPTIONAL → do NOT include them in missing
 
     return missing
 
