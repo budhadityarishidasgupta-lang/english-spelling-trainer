@@ -10,18 +10,25 @@ from spellings_admin_clean.word_manager_clean import (
 
 def _normalize_csv_headers(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalize column names fully:
+    Fully normalize column names:
       - strip spaces
-      - lowercase
       - remove BOM
-      - replace multiple variations (spaces, underscores, hyphens) with single underscore
+      - lowercase
+      - collapse runs of spaces, hyphens, underscores into single "_"
     """
 
-    def clean(name: str) -> str:
-        n = name.strip().replace("\ufeff", "").lower()
-        for bad in [" ", "-", "__", "---", "_ _"]:
-            n = n.replace(bad, "_")
-        return n
+    def clean(col: str) -> str:
+        c = col.strip().replace("\ufeff", "").lower()
+
+        # replace all separators with underscore
+        for ch in [" ", "-", "__", "___", "---"]:
+            c = c.replace(ch, "_")
+
+        # collapse multiple underscores
+        while "__" in c:
+            c = c.replace("__", "_")
+
+        return c
 
     df.columns = [clean(c) for c in df.columns]
     return df
