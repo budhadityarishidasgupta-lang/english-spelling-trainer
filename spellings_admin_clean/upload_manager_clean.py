@@ -1,10 +1,30 @@
 import pandas as pd
+import streamlit as st
 
 from spellings_admin_clean.word_manager_clean import (
     get_or_create_word,
     get_or_create_lesson,
     link_word_to_lesson,
 )
+
+
+def validate_csv_columns(df):
+    """
+    Ensures the uploaded CSV contains the required columns.
+    Case-insensitive + whitespace-tolerant + BOM-safe.
+    """
+    required = ["word", "pattern", "pattern_code", "level", "lesson_name"]
+
+    # Normalize uploaded CSV column names
+    df_cols_clean = [c.strip().lower() for c in df.columns]
+
+    # Detect missing
+    missing = []
+    for col in required:
+        if col.lower() not in df_cols_clean:
+            missing.append(col)
+
+    return missing
 
 
 def _compute_difficulty(word: str, pattern_code: int | None, explicit: int | None):
@@ -68,6 +88,14 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
          - lesson_name is derived from pattern_text
          - difficulty is computed from CSV or rules
     """
+
+    # Validate CSV structure
+    missing = validate_csv_columns(df)
+    if missing:
+        st.error(f"CSV is missing required columns: {', '.join(missing)}")
+        return
+    else:
+        st.success("CSV successfully validated and ready for upload.")
 
     # Normalise column names to lower-case for safety
     df = df.rename(columns={c: c.strip().lower() for c in df.columns})
