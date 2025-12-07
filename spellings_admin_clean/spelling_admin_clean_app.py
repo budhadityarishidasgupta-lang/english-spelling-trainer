@@ -131,11 +131,21 @@ def render_classrooms_page():
         st.warning("No classrooms found.")
         class_id = None
 
-    student_id = st.number_input("Student ID", min_value=1, step=1)
+    students = fetch_all_simple("SELECT user_id, name FROM users WHERE role='student' ORDER BY name")
+    student_map = {s["name"]: s["user_id"] for s in students} if students else {}
+
+    if student_map:
+        selected_student = st.selectbox("Select Student", list(student_map.keys()))
+        student_id = student_map[selected_student]
+    else:
+        st.warning("No students found.")
+        student_id = None
 
     if st.button("Assign Student"):
         if class_id is None:
             st.error("Please create a classroom before assigning students.")
+        elif student_id is None:
+            st.error("Please select a student to assign.")
         else:
             assign_students_to_class(class_id, [student_id])
             st.success("Student assigned.")
