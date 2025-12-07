@@ -103,6 +103,56 @@ def render_spelling_csv_upload():
             st.write("**Patterns Found:**")
             st.write(", ".join(result["patterns"]))
 
+
+def render_classrooms_page():
+    st.subheader("🏫 Classroom Manager")
+
+    st.write("### Create New Classroom")
+    cname = st.text_input("Classroom Name")
+
+    if st.button("Create Classroom"):
+        create_classroom(cname)
+        st.success(f"Created classroom: {cname}")
+
+    st.write("### Existing Classrooms")
+    classes = list_classrooms()
+    st.table(pd.DataFrame(classes))
+
+    from spellings_admin_clean.utils_clean import fetch_all_simple
+
+    classes = fetch_all_simple("SELECT class_id, class_name FROM classes ORDER BY class_name")
+    class_map = {c["class_name"]: c["class_id"] for c in classes} if classes else {}
+
+    st.write("### Assign Student to Classroom")
+    if class_map:
+        selected_class = st.selectbox("Select Classroom", list(class_map.keys()))
+        class_id = class_map[selected_class]
+    else:
+        st.warning("No classrooms found.")
+        class_id = None
+
+    student_id = st.number_input("Student ID", min_value=1, step=1)
+
+    if st.button("Assign Student"):
+        if class_id is None:
+            st.error("Please create a classroom before assigning students.")
+        else:
+            assign_students_to_class(class_id, [student_id])
+            st.success("Student assigned.")
+
+    st.write("### View Students in a Class")
+    if class_map:
+        view_class = st.selectbox(
+            "Select Classroom to View", list(class_map.keys()), key="view_class_select"
+        )
+        cid = class_map[view_class]
+    else:
+        cid = st.number_input("Class ID to view", min_value=1, step=1)
+
+    if st.button("Load Class"):
+        students = get_students_in_class(cid)
+        st.table(pd.DataFrame(students))
+
 # =========================================================
 #                SIDEBAR NAVIGATION
 # =========================================================
@@ -227,30 +277,4 @@ elif menu == "Courses":
 # =========================================================
 
 elif menu == "Classrooms":
-    st.subheader("🏫 Classroom Manager")
-
-    st.write("### Create New Classroom")
-    cname = st.text_input("Classroom Name")
-
-    if st.button("Create Classroom"):
-        create_classroom(cname)
-        st.success(f"Created classroom: {cname}")
-
-    st.write("### Existing Classrooms")
-    classes = list_classrooms()
-    st.table(pd.DataFrame(classes))
-
-    st.write("### Assign Student to Classroom")
-    class_id = st.number_input("Class ID", min_value=1, step=1)
-    student_id = st.number_input("Student ID", min_value=1, step=1)
-
-    if st.button("Assign Student"):
-        assign_students_to_class(class_id, [student_id])
-        st.success("Student assigned.")
-
-    st.write("### View Students in a Class")
-    cid = st.number_input("Class ID to view", min_value=1, step=1)
-
-    if st.button("Load Class"):
-        students = get_students_in_class(cid)
-        st.table(pd.DataFrame(students))
+    render_classrooms_page()
