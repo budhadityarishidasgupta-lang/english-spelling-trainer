@@ -3,6 +3,26 @@
 from shared.db import fetch_all, execute
 
 
+def get_all_courses():
+    rows = fetch_all(
+        """
+        SELECT course_id, course_name
+        FROM spelling_courses
+        ORDER BY course_name
+        """
+    )
+
+    if isinstance(rows, dict):
+        return []
+
+    result = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        result.append({"course_id": m["course_id"], "course_name": m["course_name"]})
+
+    return result
+
+
 def get_all_spelling_courses():
     """
     Returns all spelling courses from spelling_courses table.
