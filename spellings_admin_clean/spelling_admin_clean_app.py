@@ -93,8 +93,13 @@ def render_spelling_csv_upload():
         st.success(f"Words uploaded to **{selected_course}**!")
 
         st.subheader("Upload Summary")
-        st.write(f"**Words Added:** {result['words_added']}")
-        st.write(f"**Lessons Created:** {result['lessons_created']}")
+
+        # Use keys returned by process_spelling_csv()
+        words_added = result.get("inserted_words", 0)
+        lessons_created = result.get("created_lessons", 0)
+
+        st.write(f"**Words Added:** {words_added}")
+        st.write(f"**Lessons Created:** {lessons_created}")
 
         if result["patterns"]:
             st.write("**Patterns Found:**")
