@@ -1,6 +1,6 @@
 from sqlalchemy import text
 from shared.db import engine
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from shared.db import execute, fetch_all
 
 
@@ -36,52 +36,61 @@ def get_word_by_text(word: str, course_id: int) -> List[Dict[str, Any]]:
     return [_row_to_mapping(r) for r in rows]
 
 
-# ----------------------------------------------------------
-# INSERT OR UPDATE WORD (UPSERT)
-# ----------------------------------------------------------
+# ---------------------------------------------------------
+# INSERT WORD (FULL VERSION WITH ALL REQUIRED COLUMNS)
+# ---------------------------------------------------------
+
 def insert_word(
     *,
     word: str,
-    pattern: Optional[str],
-    pattern_code: Optional[int],
-    level: Optional[int],
-    lesson_name: Optional[str],
-    example_sentence: Optional[str],
+    pattern: str | None,
+    pattern_code: int | None,
+    level: int | None,
+    lesson_name: str | None,
+    example_sentence: str | None,
     course_id: int,
-) -> Optional[int]:
+):
+    """
+    Inserts a word with full metadata.
+    Ensures new schema fields (pattern, pattern_code, level, lesson_name, example_sentence)
+    are correctly written to the DB.
+    Returns new word_id.
+    """
 
-    sql = text("""
+    sql = """
         INSERT INTO spelling_words
-            (word, pattern, pattern_code, level, lesson_name, example_sentence, course_id)
+            (word, course_id, pattern, pattern_code, level, lesson_name, example_sentence)
         VALUES
-            (:word, :pattern, :pattern_code, :level, :lesson_name, :example_sentence, :course_id)
-        ON CONFLICT (word, course_id)
-        DO UPDATE SET
-            pattern          = EXCLUDED.pattern,
-            pattern_code     = EXCLUDED.pattern_code,
-            level            = EXCLUDED.level,
-            lesson_name      = EXCLUDED.lesson_name,
-            example_sentence = EXCLUDED.example_sentence
+            (:word, :course_id, :pattern, :pattern_code, :level, :lesson_name, :example_sentence)
         RETURNING word_id;
-    """)
+    """
 
-    rows = fetch_all(
+    rows = execute(
         sql,
         {
             "word": word,
+            "course_id": course_id,
             "pattern": pattern,
             "pattern_code": pattern_code,
             "level": level,
             "lesson_name": lesson_name,
             "example_sentence": example_sentence,
-            "course_id": course_id,
         },
     )
 
-    if isinstance(rows, dict) or not rows:
+    # Handle SQLAlchemy Result formats safely
+    if not rows:
         return None
 
-    return _row_to_mapping(rows[0]).get("word_id")
+    if isinstance(rows, list):
+        r = rows[0]
+        if hasattr(r, "_mapping"):
+            return r._mapping.get("word_id")
+        if isinstance(r, dict):
+            return r.get("word_id")
+
+    # Fallback
+    return None
 
 
 # ----------------------------------------------------------
