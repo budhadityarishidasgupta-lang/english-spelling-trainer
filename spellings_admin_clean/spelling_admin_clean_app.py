@@ -50,11 +50,6 @@ from spellings_admin_clean.upload_manager_clean import process_spelling_csv
 
 # Utilities
 
-# Lesson helpers
-from spellings_admin_clean.word_manager_clean import (
-    get_lesson_words,
-    get_lessons_for_course,
-)
 from shared.db import execute, fetch_all
 
 
