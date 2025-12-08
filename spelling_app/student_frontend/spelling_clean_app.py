@@ -971,6 +971,7 @@ def main():
         return
 
     m_word = getattr(word_pick, "_mapping", word_pick)
+    wid = m_word.get("word_id") or m_word.get("col_0")
     target_word = m_word["word"]
 
     # Missing-letter transformation
@@ -1002,7 +1003,7 @@ def main():
                 "uid": st.session_state["user_id"],
                 "cid": selected_course_id,
                 "lid": selected_lesson_id,
-                "wid": m_word["word_id"],
+                "wid": wid,
                 "correct": correct,
             },
         )
