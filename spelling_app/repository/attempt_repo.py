@@ -75,3 +75,32 @@ def get_attempt_stats(user_id: int, course_id: int, lesson_id: int):
         """,
         {"uid": user_id, "cid": course_id, "lid": lesson_id},
     )
+
+
+def get_lesson_mastery(user_id: int, course_id: int, lesson_id: int):
+    """
+    Returns mastery % for a lesson:
+      correct / total * 100
+    """
+    rows = fetch_all(
+        """
+        SELECT 
+            SUM(CASE WHEN correct THEN 1 ELSE 0 END) AS correct_count,
+            COUNT(*) AS total_count
+        FROM spelling_attempts
+        WHERE user_id = :uid AND course_id = :cid AND lesson_id = :lid
+        """,
+        {"uid": user_id, "cid": course_id, "lid": lesson_id},
+    )
+
+    if not rows or isinstance(rows, dict):
+        return 0
+
+    m = getattr(rows[0], "_mapping", rows[0])
+    correct = m.get("correct_count") or 0
+    total = m.get("total_count") or 0
+
+    if total == 0:
+        return 0
+
+    return round((correct / total) * 100, 1)
