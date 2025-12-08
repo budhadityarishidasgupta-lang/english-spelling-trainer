@@ -55,6 +55,7 @@ from spellings_admin_clean.word_manager_clean import (
     get_lesson_words,
     get_lessons_for_course,
 )
+from shared.db import execute, fetch_all
 
 
 def render_spelling_csv_upload():
@@ -261,47 +262,86 @@ elif menu == "Students":
 # =========================================================
 
 elif menu == "Courses":
-    st.subheader("📘 Course Overview")
+    # =====================================================================
+    #   COURSES PANEL — CREATE / SELECT / MANAGE COURSES
+    # =====================================================================
 
-    # --- List all courses ---
-    courses = get_all_spelling_courses()
-    if courses:
-        st.table(pd.DataFrame(courses))
-    else:
-        st.warning("No courses found.")
+    st.sidebar.markdown("### 📘 Courses")
 
-    st.write("### View Lessons for a Course")
-
-    courses = fetch_all_simple(
-        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
+    # Fetch all existing courses
+    all_courses = fetch_all(
+        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_id;"
     )
 
-    if not courses:
-        st.warning("No courses available.")
-    else:
-        course_map = {c["course_name"]: c["course_id"] for c in courses}
-        selected_course = st.selectbox("Select Course", list(course_map.keys()))
-        cid = course_map[selected_course]
+    course_name_map = (
+        {row["course_name"]: row["course_id"] for row in all_courses}
+        if all_courses
+        else {}
+    )
 
-        if st.button("Load Lessons"):
-            lessons = get_lessons_for_course(cid)
+    # -----------------------------------------------------------
+    # 1) CREATE NEW COURSE
+    # -----------------------------------------------------------
+    with st.sidebar.expander("➕ Create New Course"):
+        new_course_name = st.text_input("Course Name", key="new_course_name_input")
 
-            if lessons:
-                st.success(f"Lessons for {selected_course}")
-                df = pd.DataFrame(lessons)
-                st.table(df)
+        if st.button("Create Course", key="create_course_btn"):
+            if not new_course_name.strip():
+                st.warning("Please enter a course name.")
             else:
-                st.warning("No lessons exist for this course.")
+                rows = execute(
+                    """
+                    INSERT INTO spelling_courses (course_name)
+                    VALUES (:name)
+                    RETURNING course_id;
+                    """,
+                    {"name": new_course_name.strip()},
+                )
 
+                if rows and isinstance(rows, list) and hasattr(rows[0], "_mapping"):
+                    new_id = rows[0]._mapping["course_id"]
+                    st.success(f"Course created! (ID: {new_id})")
+                    st.experimental_rerun()
+                else:
+                    st.error("Could not create course.")
 
-    if st.button("Load Lessons"):
-        lessons = get_lessons_for_course(cid)
+    # -----------------------------------------------------------
+    # 2) SELECT EXISTING COURSE
+    # -----------------------------------------------------------
 
-        if lessons:
-            st.success("Lessons found")
-            st.table(pd.DataFrame(lessons))
-        else:
-            st.warning("No lessons exist for this course.")
+    st.sidebar.markdown("### 📂 Select Course")
+
+    if course_name_map:
+        selected_course_name = st.sidebar.selectbox(
+            "Choose a course",
+            list(course_name_map.keys()),
+            key="course_select_box",
+        )
+        selected_course_id = course_name_map.get(selected_course_name)
+    else:
+        st.sidebar.info("No courses created yet.")
+        selected_course_name = None
+        selected_course_id = None
+
+    # -----------------------------------------------------------
+    # 3) LOAD COURSE DETAILS (BUTTON FIXED: UNIQUE KEY ADDED)
+    # -----------------------------------------------------------
+
+    if selected_course_id:
+        if st.sidebar.button("Load Lessons", key=f"load_lessons_btn_{selected_course_id}"):
+            st.session_state["selected_course_id"] = selected_course_id
+            st.session_state["selected_course_name"] = selected_course_name
+            st.success(f"Loaded course: {selected_course_name}")
+
+    # Save fallback if user didn't click "Load Lessons" this session
+    selected_course_id = st.session_state.get("selected_course_id", selected_course_id)
+    selected_course_name = st.session_state.get("selected_course_name", selected_course_name)
+
+    # Display header on main page
+    if selected_course_id:
+        st.markdown(
+            f"## 📘 Managing Course: **{selected_course_name}** (ID {selected_course_id})"
+        )
 
 
 # =========================================================
