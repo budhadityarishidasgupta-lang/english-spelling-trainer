@@ -34,6 +34,19 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 
 
+def compute_badge(xp_total: int, mastery: float):
+    """Decide a badge based on XP and mastery."""
+    if xp_total >= 2000 and mastery == 100:
+        return "👑 Master"
+    if xp_total >= 1000 or mastery >= 90:
+        return "🥇 Gold"
+    if xp_total >= 500 or mastery >= 70:
+        return "🥈 Silver"
+    if xp_total >= 200 or mastery >= 40:
+        return "🥉 Bronze"
+    return "🔰 Beginner"
+
+
 
 
 ###########################################################
