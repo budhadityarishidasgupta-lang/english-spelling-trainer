@@ -5,6 +5,40 @@ from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
 import pathlib
 
+##################################################################
+# SAFE ROW NORMALIZATION LAYER — fixes tuple/Row/dict inconsistencies
+##################################################################
+
+def safe_row(row):
+    """
+    Normalize any row returned by SQLAlchemy/psycopg2:
+    - Row → dict(row._mapping)
+    - dict → dict
+    - tuple → positional → dict with numeric keys
+    """
+    # SQLAlchemy row
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+
+    # Already a dict
+    if isinstance(row, dict):
+        return row
+
+    # Tuple fallback → map to numeric field names until caller renames keys
+    if isinstance(row, tuple):
+        return {f"col_{i}": row[i] for i in range(len(row))}
+
+    return {}
+
+
+def safe_rows(rows):
+    """Convert list of rows to list of dict rows safely."""
+    if not rows:
+        return []
+    if isinstance(rows, dict):
+        return []
+    return [safe_row(r) for r in rows]
+
 # Force-load the .env from repo root
 ENV_PATH = pathlib.Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(ENV_PATH)
