@@ -1033,6 +1033,13 @@ def main():
             },
         )
 
+        new_mastery = get_lesson_mastery(
+            st.session_state["user_id"],
+            selected_course_id,
+            selected_lesson_id,
+        )
+        st.info(f"Updated Mastery: {new_mastery}%")
+
         if correct:
             st.success("🎉 Correct!")
         else:
