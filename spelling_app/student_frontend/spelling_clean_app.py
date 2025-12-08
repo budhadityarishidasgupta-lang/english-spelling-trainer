@@ -867,21 +867,27 @@ def main():
     selected_course_id = course_map[selected_course_name]
 
     # 2) Load lessons (patterns)
-    lessons = fetch_all(
-        """
-        SELECT lesson_id, lesson_name
-        FROM spelling_lessons
-        WHERE course_id = :cid
-        ORDER BY lesson_name
-        """,
-        {"cid": selected_course_id},
+    lessons = safe_rows(
+        fetch_all(
+            """
+            SELECT lesson_id, lesson_name
+            FROM spelling_lessons
+            WHERE course_id = :cid
+            ORDER BY lesson_name
+            """,
+            {"cid": selected_course_id},
+        )
     )
 
     if not lessons:
         st.sidebar.info("No lessons found.")
         return
 
-    lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
+    lesson_map = {
+        l.get("lesson_name") or l.get("col_1"):
+        l.get("lesson_id") or l.get("col_0")
+        for l in lessons
+    }
     selected_lesson_name = st.sidebar.radio("📘 Lessons (Patterns)", list(lesson_map.keys()))
     selected_lesson_id = lesson_map[selected_lesson_name]
 
