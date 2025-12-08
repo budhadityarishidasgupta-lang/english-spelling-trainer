@@ -927,8 +927,13 @@ def main():
         )
     )
 
-    st.header(f"Practice: {selected_lesson_name}")
-    st.caption(f"{len(words)} words available")
+    mastery = mastery_map[selected_lesson_name]
+    xp_total, streak = get_xp_and_streak(st.session_state["user_id"])
+    badge = compute_badge(xp_total, mastery)
+
+    st.header(f"Practice: {selected_lesson_name}  {badge}")
+    st.progress(mastery / 100)
+    st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
 
     # ---------------------------------------------
     # MODE SELECTION
