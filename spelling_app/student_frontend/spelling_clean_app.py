@@ -880,28 +880,35 @@ def main():
     selected_course_id = course_map[selected_course_name]
 
     # 2) Load lessons (patterns)
-    lessons = safe_rows(
-        fetch_all(
-            """
-            SELECT lesson_id, lesson_name
-            FROM spelling_lessons
-            WHERE course_id = :cid
-            ORDER BY lesson_name
-            """,
-            {"cid": selected_course_id},
-        )
-    )
+    lessons = safe_rows(fetch_all("""
+        SELECT lesson_id, lesson_name
+        FROM spelling_lessons
+        WHERE course_id = :cid
+        ORDER BY lesson_name
+    """, {"cid": selected_course_id}))
 
     if not lessons:
         st.sidebar.info("No lessons found.")
         return
 
-    lesson_map = {
-        l.get("lesson_name") or l.get("col_1"):
-        l.get("lesson_id") or l.get("col_0")
-        for l in lessons
-    }
-    selected_lesson_name = st.sidebar.radio("📘 Lessons (Patterns)", list(lesson_map.keys()))
+    lesson_map = {}
+    mastery_map = {}
+    for l in lessons:
+        lname = l.get("lesson_name") or l.get("col_1")
+        lid = l.get("lesson_id") or l.get("col_0")
+        mastery = get_lesson_mastery(
+            user_id=st.session_state["user_id"],
+            course_id=selected_course_id,
+            lesson_id=lid
+        )
+        lesson_map[lname] = lid
+        mastery_map[lname] = mastery
+
+    # sidebar with mastery
+    st.sidebar.markdown("### 📘 Lessons (Patterns)")
+    for lname in lesson_map.keys():
+        st.sidebar.write(f"**{lname}** — {mastery_map[lname]}%")
+    selected_lesson_name = st.sidebar.radio("Select Pattern", list(lesson_map.keys()))
     selected_lesson_id = lesson_map[selected_lesson_name]
 
     # ---------------------------------------------
