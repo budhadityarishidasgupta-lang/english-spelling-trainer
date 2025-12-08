@@ -894,15 +894,17 @@ def main():
     # ---------------------------------------------
     # FETCH WORDS FOR THIS LESSON
     # ---------------------------------------------
-    words = fetch_all(
-        """
-        SELECT w.word_id, w.word, w.example_sentence
-        FROM spelling_words w
-        JOIN spelling_lesson_items li ON li.word_id = w.word_id
-        WHERE li.lesson_id = :lid
-        ORDER BY w.word
-        """,
-        {"lid": selected_lesson_id},
+    words = safe_rows(
+        fetch_all(
+            """
+            SELECT w.word_id, w.word, w.example_sentence, w.level
+            FROM spelling_words w
+            JOIN spelling_lesson_items li ON li.word_id = w.word_id
+            WHERE li.lesson_id = :lid
+            ORDER BY w.word
+            """,
+            {"lid": selected_lesson_id},
+        )
     )
 
     st.header(f"Practice: {selected_lesson_name}")
