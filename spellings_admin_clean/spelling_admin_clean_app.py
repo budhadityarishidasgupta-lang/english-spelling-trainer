@@ -101,9 +101,11 @@ def render_spelling_csv_upload():
         st.write(f"**Words Added:** {words_added}")
         st.write(f"**Lessons Created:** {lessons_created}")
 
-        if result["patterns"]:
+        # OPTIONAL: Display patterns only if uploader returns them
+        patterns = result.get("patterns")
+        if patterns:
             st.write("**Patterns Found:**")
-            st.write(", ".join(result["patterns"]))
+            st.write(", ".join(patterns))
 
 
 def render_classrooms_page():
