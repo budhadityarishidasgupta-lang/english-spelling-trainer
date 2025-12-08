@@ -125,6 +125,7 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
     inserted_words = 0
     created_lessons = 0
     lesson_cache = {}
+    patterns_set = set()   # NEW — collect unique spelling patterns
 
     for idx, row in df.iterrows():
         try:
@@ -133,7 +134,9 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
                 continue
 
             pattern = str(row["pattern"]).strip() or None
-            lesson_name = pattern  # ALWAYS the lesson grouping
+            if pattern:
+                patterns_set.add(pattern)   # collect patterns
+            lesson_name = pattern  # ALWAYS the lesson grouping (pattern = lesson)
 
             # Parse integers safely
             try:
@@ -188,4 +191,5 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
         "status": "success",
         "inserted_words": inserted_words,
         "created_lessons": created_lessons,
+        "patterns": sorted(patterns_set),   # NEW — return patterns for UI
     }
