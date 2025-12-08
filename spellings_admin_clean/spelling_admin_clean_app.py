@@ -273,11 +273,26 @@ elif menu == "Courses":
         "SELECT course_id, course_name FROM spelling_courses ORDER BY course_id;"
     )
 
-    course_name_map = (
-        {row["course_name"]: row["course_id"] for row in all_courses}
-        if all_courses
-        else {}
-    )
+    def row_to_dict(row):
+        """Convert SQLAlchemy Row / tuple / dict → dict safely."""
+        if hasattr(row, "_mapping"):
+            return dict(row._mapping)
+        if isinstance(row, dict):
+            return row
+        if isinstance(row, tuple):
+            # Fallback assumption: (course_id, course_name)
+            return {
+                "course_id": row[0],
+                "course_name": row[1],
+            }
+        return {}
+
+    course_name_map = {}
+    if all_courses:
+        for row in all_courses:
+            r = row_to_dict(row)
+            if "course_name" in r and "course_id" in r:
+                course_name_map[r["course_name"]] = r["course_id"]
 
     # -----------------------------------------------------------
     # 1) CREATE NEW COURSE
