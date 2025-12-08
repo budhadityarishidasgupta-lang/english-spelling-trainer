@@ -638,25 +638,80 @@ def main():
         return  # stop here when logged out
 
     # LOGGED IN
-    # Sidebar content: user, logout, mode selector, lessons
+    # Sidebar content: user and logout
     st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
 
-    # Mode selector + lesson navigation in sidebar
-    render_mode_selector_sidebar()
-    render_sidebar_navigation()
+    st.sidebar.title("📚 My Spelling Courses")
 
-    # Ensure default mode
-    ensure_default_mode()
+    # 1) Load student’s courses
+    courses = fetch_all(
+        """
+        SELECT c.course_id, c.course_name
+        FROM spelling_courses c
+        JOIN spelling_enrollments e ON e.course_id = c.course_id
+        WHERE e.user_id = :uid
+        ORDER BY c.course_name
+        """,
+        {"uid": st.session_state["user_id"]},
+    )
 
-    page = st.session_state.get("page", "dashboard")
+    if not courses:
+        st.sidebar.warning("No courses assigned.")
+        return
 
-    if page == "dashboard":
-        render_student_dashboard()
-    elif page == "practice":
-        render_practice_page()
+    course_map = {c["course_name"]: c["course_id"] for c in courses}
+    selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
+    selected_course_id = course_map[selected_course_name]
+
+    # 2) Load lessons (patterns) for selected course
+    lessons = fetch_all(
+        """
+        SELECT lesson_id, lesson_name
+        FROM spelling_lessons
+        WHERE course_id = :cid
+        ORDER BY lesson_name
+        """,
+        {"cid": selected_course_id},
+    )
+
+    if not lessons:
+        st.sidebar.info("No lessons yet.")
+        return
+
+    lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
+    selected_lesson_name = st.sidebar.radio("📘 Lessons (Patterns)", list(lesson_map.keys()))
+    selected_lesson_id = lesson_map[selected_lesson_name]
+
+    # Display words for selected pattern
+    words = fetch_all(
+        """
+        SELECT w.word_id, w.word, w.pattern, w.pattern_code, w.example_sentence
+        FROM spelling_words w
+        JOIN spelling_lesson_items li ON li.word_id = w.word_id
+        WHERE li.lesson_id = :lid
+        ORDER BY w.word
+        """,
+        {"lid": selected_lesson_id},
+    )
+
+    st.header(f"Practice: {selected_lesson_name}")
+    st.write(f"Words in this pattern: {len(words)}")
+
+    # Practice mode UI (simple missing-letter logic placeholder)
+    if words:
+        import random
+        word_pick = random.choice(words)
+        st.subheader("Type the spelling:")
+        user_answer = st.text_input("Your answer:", key="student_answer")
+
+        if st.button("Check Answer"):
+            if user_answer.strip().lower() == word_pick["word"].lower():
+                st.success("Correct! 🎉")
+            else:
+                st.error(f"Incorrect. Correct spelling: **{word_pick['word']}**")
 
 
 if __name__ == "__main__":
