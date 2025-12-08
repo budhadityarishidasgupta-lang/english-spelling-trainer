@@ -175,8 +175,11 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             except Exception:
                 pattern_code_int = None
 
-            pattern = row.get("pattern") if "pattern" in row else None
-            example_sentence = row.get("example_sentence") if "example_sentence" in row else None
+            # Fix pattern + example_sentence extraction
+            pattern = row["pattern"] if "pattern" in df.columns else None
+            example_sentence = row["example_sentence"] if "example_sentence" in df.columns else None
+
+            # Level stays the same
             level_val = row.get("level", None)
             try:
                 level_int = int(level_val) if pd.notna(level_val) else None
@@ -185,8 +188,8 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
 
             # --- Decide lesson_name & difficulty based on mode ---
             if mode == "simple":
-                # Use lesson_name from CSV
-                lesson_name = str(row.get("lesson_name", "")).strip() or "Lesson 1"
+                # Use pattern if present, otherwise lesson_name from CSV
+                lesson_name = pattern or str(row.get("lesson_name", "")).strip() or "Lesson 1"
                 pattern_text = None
                 explicit_diff = None
             else:
