@@ -919,7 +919,7 @@ def main():
     # WEAK WORDS MODE
     # ---------------------------------------------
     if mode == "Weak Words":
-        weak_words = fetch_all(
+        weak_words = safe_rows(fetch_all(
             """
             SELECT w.word_id, w.word,
                    SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END) AS wrongs,
@@ -930,14 +930,14 @@ def main():
             GROUP BY w.word_id, w.word
             HAVING SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END) > 0
             ORDER BY (SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END)::decimal / COUNT(*)) DESC
-            LIMIT 20;
+            LIMIT 20
             """,
             {
                 "uid": st.session_state["user_id"],
                 "cid": selected_course_id,
                 "lid": selected_lesson_id,
             },
-        )
+        ))
         if weak_words:
             words = weak_words
         else:
