@@ -46,7 +46,7 @@ from spelling_app.repository.classroom_repo import (
 )
 
 # Upload Manager (fixed)
-from spellings_admin_clean.word_manager_clean import process_uploaded_csv
+from spellings_admin_clean.upload_manager_clean import process_spelling_csv
 
 # Utilities
 
@@ -87,7 +87,8 @@ def render_spelling_csv_upload():
 
     if st.button("Process Upload"):
         with st.spinner("Processing CSV…"):
-            result = process_uploaded_csv(uploaded_file, selected_course_id)
+            df = pd.read_csv(uploaded_file)
+            result = process_spelling_csv(df, selected_course_id)
 
         if result.get("error"):
             st.error(result["error"])
