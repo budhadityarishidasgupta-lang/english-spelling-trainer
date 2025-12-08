@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from shared.db import engine, execute, fetch_all
+from shared.db import engine, execute, fetch_all, safe_rows
 from spelling_app.repository.student_pending_repo import create_pending_registration
 from spelling_app.repository.attempt_repo import record_attempt
 
@@ -842,26 +842,27 @@ def main():
         st.sidebar.metric("🔥 Streak (days)", streak)
 
     # 1) Load student courses
-    courses = fetch_all(
-        """
-        SELECT c.course_id, c.course_name
-        FROM spelling_courses c
-        JOIN spelling_enrollments e ON e.course_id = c.course_id
-        WHERE e.user_id = :uid
-        ORDER BY c.course_name
-        """,
-        {"uid": st.session_state["user_id"]},
+    courses = safe_rows(
+        fetch_all(
+            """
+            SELECT c.course_id, c.course_name
+            FROM spelling_courses c
+            JOIN spelling_enrollments e ON e.course_id = c.course_id
+            WHERE e.user_id = :uid
+            ORDER BY c.course_name
+            """,
+            {"uid": st.session_state["user_id"]},
+        )
     )
 
     if not courses:
         st.sidebar.warning("No courses assigned.")
         return
 
-    course_map = {}
-    for c in courses:
-        row = row_to_dict(c)
-        if "course_name" in row and "course_id" in row:
-            course_map[row["course_name"]] = row["course_id"]
+    course_map = {
+        c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
+        for c in courses
+    }
     selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
     selected_course_id = course_map[selected_course_name]
 
