@@ -625,6 +625,21 @@ def main():
     inject_student_css()
     initialize_session_state(st)
 
+    # ---------- SAFE ROW CONVERSION ----------
+    def row_to_dict(row):
+        """Convert SQLAlchemy Row / Tuple / Dict → Dict safely."""
+        if hasattr(row, "_mapping"):
+            return dict(row._mapping)
+        if isinstance(row, dict):
+            return row
+        if isinstance(row, tuple):
+            # Assumes SELECT course_id, course_name
+            return {
+                "course_id": row[0],
+                "course_name": row[1],
+            }
+        return {}
+
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
         tab_login, tab_register = st.tabs(["Login", "New Registration"])
@@ -662,7 +677,11 @@ def main():
         st.sidebar.warning("No courses assigned.")
         return
 
-    course_map = {c["course_name"]: c["course_id"] for c in courses}
+    course_map = {}
+    for c in courses:
+        row = row_to_dict(c)
+        if "course_name" in row and "course_id" in row:
+            course_map[row["course_name"]] = row["course_id"]
     selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
     selected_course_id = course_map[selected_course_name]
 
