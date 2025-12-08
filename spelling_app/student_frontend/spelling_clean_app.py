@@ -22,6 +22,7 @@ import time
 import os
 import random
 import streamlit as st
+from datetime import datetime, date, timedelta
 from sqlalchemy import text
 
 from dotenv import load_dotenv
@@ -61,6 +62,21 @@ SESSION_KEYS.extend([
     "selected_lesson",
     "selected_lesson_pattern_code",
 ])
+
+
+def row_to_dict(row):
+    """Convert SQLAlchemy Row / Tuple / Dict → Dict safely."""
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+    if isinstance(row, dict):
+        return row
+    if isinstance(row, tuple):
+        # Generic fallback: treat as positional; caller must know order
+        try:
+            return dict(row)
+        except Exception:
+            return {}
+    return {}
 
 
 def inject_student_css():
@@ -617,6 +633,178 @@ def render_practice_page():
 
 
 
+def compute_word_difficulty(word: str, level: int | None) -> int:
+    """
+    Compute a difficulty score (1–5) for a word.
+    Uses length + level (if provided).
+    """
+    word = word or ""
+    length = len(word)
+
+    # base from length
+    if length <= 4:
+        base = 1
+    elif length <= 7:
+        base = 2
+    elif length <= 10:
+        base = 3
+    elif length <= 13:
+        base = 4
+    else:
+        base = 5
+
+    # adjust with level (if we have it)
+    try:
+        lvl = int(level) if level is not None else None
+    except Exception:
+        lvl = None
+
+    if lvl is not None:
+        if lvl >= 6:
+            base = min(5, base + 1)
+        elif lvl <= 3:
+            base = max(1, base - 1)
+
+    return max(1, min(5, base))
+
+
+def get_xp_and_streak(user_id: int):
+    """
+    Compute total XP and current streak (days in a row with at least 1 correct attempt)
+    based on spelling_attempts joined to spelling_words.
+    """
+    rows = fetch_all(
+        """
+        SELECT a.correct,
+               a.attempted_on,
+               w.word,
+               w.level
+        FROM spelling_attempts a
+        JOIN spelling_words w ON w.word_id = a.word_id
+        WHERE a.user_id = :uid
+        ORDER BY a.attempted_on ASC
+        """,
+        {"uid": user_id},
+    )
+
+    if not rows or isinstance(rows, dict):
+        return 0, 0
+
+    # XP calculation
+    xp_total = 0
+    per_day_correct = {}  # date -> had_correct_bool
+
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        correct = bool(m["correct"])
+        attempted_on = m["attempted_on"]
+        word = m.get("word") or ""
+        level = m.get("level")
+
+        # Normalise date
+        if isinstance(attempted_on, datetime):
+            d = attempted_on.date()
+        else:
+            # assume date or string
+            try:
+                d = attempted_on.date()
+            except Exception:
+                try:
+                    d = datetime.fromisoformat(str(attempted_on)).date()
+                except Exception:
+                    continue
+
+        if correct:
+            # base XP + difficulty bonus
+            diff = compute_word_difficulty(word, level)
+            xp_total += 10 + (diff * 2)
+            per_day_correct[d] = True
+
+    # Streak calculation: count consecutive days up to today with at least 1 correct
+    if not per_day_correct:
+        return xp_total, 0
+
+    today = date.today()
+    streak = 0
+    d = today
+
+    # walk backwards while days have correct attempts
+    while d in per_day_correct:
+        streak += 1
+        d = d - timedelta(days=1)
+
+    return xp_total, streak
+
+
+def choose_next_word(words, stats_map=None):
+    """
+    Smart next-word selector.
+    - stats_map: dict[word_id] -> (correct_count, total_count)
+    - Prioritises low-accuracy (weak) words
+    - Falls back to random if no stats
+    """
+    import random
+    if not words:
+        return None
+
+    # build scored list
+    scored = []
+    for w in words:
+        m = getattr(w, "_mapping", w)
+        word_id = m["word_id"]
+        word_text = m.get("word") or ""
+        level = m.get("level")
+        diff = compute_word_difficulty(word_text, level)
+
+        if stats_map and word_id in stats_map:
+            correct, total = stats_map[word_id]
+            if total > 0:
+                acc = correct / total
+            else:
+                acc = 0.0
+        else:
+            # unseen word: treat as moderate accuracy
+            acc = 0.7
+
+        # Lower acc + higher diff => higher priority
+        priority = (1.0 - acc) * 0.7 + (diff / 5.0) * 0.3
+        scored.append((priority, w))
+
+    # Sort highest priority first, then pick among the top few randomly
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_k = [w for _, w in scored[:5]]  # top 5 candidates
+    return random.choice(top_k)
+
+
+def get_lesson_attempt_stats(user_id: int, course_id: int, lesson_id: int):
+    """
+    Return dict[word_id] -> (correct_count, total_count) for a given lesson.
+    """
+    rows = fetch_all(
+        """
+        SELECT word_id,
+               SUM(CASE WHEN correct THEN 1 ELSE 0 END) AS correct_count,
+               COUNT(*) AS total_count
+        FROM spelling_attempts
+        WHERE user_id = :uid
+          AND course_id = :cid
+          AND lesson_id = :lid
+        GROUP BY word_id
+        """,
+        {"uid": user_id, "cid": course_id, "lid": lesson_id},
+    )
+
+    out = {}
+    if not rows or isinstance(rows, dict):
+        return out
+
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        out[m["word_id"]] = (m["correct_count"], m["total_count"])
+
+    return out
+
+
 ###########################################################
 #  MAIN APP CONTROLLER
 ###########################################################
@@ -624,21 +812,6 @@ def render_practice_page():
 def main():
     inject_student_css()
     initialize_session_state(st)
-
-    # ---------- SAFE ROW CONVERSION ----------
-    def row_to_dict(row):
-        """Convert SQLAlchemy Row / Tuple / Dict → Dict safely."""
-        if hasattr(row, "_mapping"):
-            return dict(row._mapping)
-        if isinstance(row, dict):
-            return row
-        if isinstance(row, tuple):
-            # Assumes SELECT course_id, course_name
-            return {
-                "course_id": row[0],
-                "course_name": row[1],
-            }
-        return {}
 
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
@@ -660,6 +833,13 @@ def main():
         st.experimental_rerun()
 
     st.sidebar.title("📚 My Spelling Courses")
+
+    # XP & streak header (computed from attempts)
+    user_id = st.session_state.get("user_id")
+    if user_id:
+        xp_total, streak = get_xp_and_streak(user_id)
+        st.sidebar.metric("⭐ XP", xp_total)
+        st.sidebar.metric("🔥 Streak (days)", streak)
 
     # 1) Load student courses
     courses = fetch_all(
@@ -769,9 +949,20 @@ def main():
         st.warning("No words available to practice.")
         return
 
-    import random
-    word_pick = random.choice(words)
-    target_word = word_pick["word"]
+    # Use attempt stats to pick a smart next word
+    stats_map = get_lesson_attempt_stats(
+        user_id=st.session_state["user_id"],
+        course_id=selected_course_id,
+        lesson_id=selected_lesson_id,
+    )
+
+    word_pick = choose_next_word(words, stats_map)
+    if not word_pick:
+        st.warning("No words available to practise.")
+        return
+
+    m_word = getattr(word_pick, "_mapping", word_pick)
+    target_word = m_word["word"]
 
     # Missing-letter transformation
     def mask(word):
@@ -802,7 +993,7 @@ def main():
                 "uid": st.session_state["user_id"],
                 "cid": selected_course_id,
                 "lid": selected_lesson_id,
-                "wid": word_pick["word_id"],
+                "wid": m_word["word_id"],
                 "correct": correct,
             },
         )
