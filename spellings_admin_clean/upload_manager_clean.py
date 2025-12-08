@@ -100,68 +100,31 @@ def _compute_difficulty(word: str, pattern_code: int | None, explicit: int | Non
 
 def process_spelling_csv(df: pd.DataFrame, course_id: int):
     """
-    Process CSV for uploading words & lessons.
+    FINAL CSV PROCESSOR FOR WORDSPRINT SPELLING APP
+    ------------------------------------------------
+    Supports CSV format:
+        word, pattern, pattern_code, level, lesson_name(optional), example_sentence
 
-    Supported formats:
-
-    1) SIMPLE COURSE (current usage)
-       Columns (required):
-         - word
-         - pattern_code
-         - lesson_name
-
-    2) PATTERN COURSE (future-friendly)
-       Columns (required):
-         - word
-         - pattern_code
-         - pattern_text
-         - difficulty
-
-       In this mode:
-         - lesson_name is derived from pattern_text
-         - difficulty is computed from CSV or rules
+    RULES:
+        • lesson_name = pattern  (pattern becomes the lesson grouping)
+        • All fields must be stored exactly as CSV provides
+        • Lessons auto-created per pattern
+        • Words mapped to lessons
+        • example_sentence stored in DB
     """
 
+    # Normalize headers
     df = _normalize_csv_headers(df)
-    # DEBUG — show what headers pandas actually sees
-    st.warning(f"DEBUG HEADERS → {list(df.columns)}")
+    st.info(f"DEBUG HEADERS → {list(df.columns)}")
 
-    # Validate CSV structure
-    missing = validate_csv_columns(df)
+    required = {"word", "pattern", "pattern_code", "level", "example_sentence"}
+    missing = [c for c in required if c not in df.columns]
     if missing:
-        st.error(f"CSV is missing required columns: {', '.join(missing)}")
-        return
-    else:
-        st.success("CSV successfully validated and ready for upload.")
-
-    simple_cols = {"word", "pattern_code", "lesson_name"}
-    pattern_cols = {"word", "pattern_code", "pattern_text", "difficulty"}
-
-    mode = None
-    if simple_cols.issubset(df.columns):
-        mode = "simple"
-    elif pattern_cols.issubset(df.columns):
-        mode = "pattern"
-    else:
-        return {
-            "error": (
-                "CSV format not recognised. Expected either:\n"
-                "A) word, pattern_code, lesson_name\n"
-                "or\n"
-                "B) word, pattern_code, pattern_text, difficulty"
-            ),
-            "columns_seen": list(df.columns),
-        }
+        return {"error": f"CSV missing required columns: {missing}"}
 
     inserted_words = 0
-    existing_words = 0
     created_lessons = 0
-    linked = 0
-
-    difficulty_buckets = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-
-    # Cache lesson_name -> lesson_id to reduce DB calls
-    lesson_cache: dict[str, int] = {}
+    lesson_cache = {}
 
     for idx, row in df.iterrows():
         try:
@@ -169,58 +132,40 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             if not word:
                 continue
 
-            pattern_code = row.get("pattern_code", None)
+            pattern = str(row["pattern"]).strip() or None
+            lesson_name = pattern  # ALWAYS the lesson grouping
+
+            # Parse integers safely
             try:
-                pattern_code_int = int(pattern_code) if pd.notna(pattern_code) else None
-            except Exception:
-                pattern_code_int = None
+                pattern_code = int(row["pattern_code"])
+            except:
+                pattern_code = None
 
-            # Fix pattern + example_sentence extraction
-            pattern = row["pattern"] if "pattern" in df.columns else None
-            example_sentence = row["example_sentence"] if "example_sentence" in df.columns else None
-
-            # Level stays the same
-            level_val = row.get("level", None)
             try:
-                level_int = int(level_val) if pd.notna(level_val) else None
-            except Exception:
-                level_int = None
+                level = int(row["level"])
+            except:
+                level = None
 
-            # --- Decide lesson_name & difficulty based on mode ---
-            if mode == "simple":
-                # Use pattern if present, otherwise lesson_name from CSV
-                lesson_name = pattern or str(row.get("lesson_name", "")).strip() or "Lesson 1"
-                pattern_text = None
-                explicit_diff = None
-            else:
-                # PATTERN mode: use pattern_text as lesson name
-                pattern_text = str(row.get("pattern_text", "")).strip() or None
-                lesson_name = pattern_text or f"Pattern {pattern_code_int or ''}".strip()
-                explicit_diff = row.get("difficulty", None)
-
-            difficulty = _compute_difficulty(
-                word=word,
-                pattern_code=pattern_code_int,
-                explicit=explicit_diff,
+            example_sentence = (
+                str(row["example_sentence"]).strip()
+                if "example_sentence" in df.columns and pd.notna(row["example_sentence"])
+                else None
             )
-            difficulty_buckets[difficulty] += 1
 
-            # 1) Create or get lesson
+            # --- Create lesson if needed ---
             if lesson_name not in lesson_cache:
-                lesson_row = get_or_create_lesson(lesson_name, course_id)
-                # lesson_row is a dict with lesson_id
-                lesson_id = lesson_row["lesson_id"]
-                lesson_cache[lesson_name] = lesson_id
+                created = get_or_create_lesson(lesson_name, course_id)
+                lesson_cache[lesson_name] = created["lesson_id"]
                 created_lessons += 1
-            else:
-                lesson_id = lesson_cache[lesson_name]
 
-            # 2) Create or get word (DB schema currently: word, pattern_code, course_id, pattern=None)
+            lesson_id = lesson_cache[lesson_name]
+
+            # --- Insert word ---
             word_id = get_or_create_word(
                 word=word,
                 pattern=pattern,
-                pattern_code=pattern_code_int,
-                level=level_int,
+                pattern_code=pattern_code,
+                level=level,
                 lesson_name=lesson_name,
                 example_sentence=example_sentence,
                 course_id=course_id,
@@ -229,23 +174,18 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             if not word_id:
                 continue
 
-            # current get_or_create_word returns an int word_id
-            inserted_words += 1  # we treat them as inserted or re-used; no strict split possible here
+            inserted_words += 1
 
-            # 3) Link word to lesson
+            # --- Link word → lesson ---
             link_word_to_lesson(word_id, lesson_id)
-            linked += 1
 
         except Exception as e:
-            # You can optionally log per-row errors here
-            # For now we just skip bad rows
+            # Optional debug
+            st.warning(f"Row {idx} failed: {e}")
             continue
 
     return {
-        "mode": mode,
-        "created_lessons": created_lessons,
+        "status": "success",
         "inserted_words": inserted_words,
-        "existing_words": existing_words,
-        "linked": linked,
-        "difficulty_distribution": difficulty_buckets,
+        "created_lessons": created_lessons,
     }
