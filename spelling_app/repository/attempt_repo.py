@@ -59,3 +59,19 @@ def get_daily5(user_id: int):
     """, {"uid": user_id})
 
     return [r._mapping["word_id"] for r in rows] if rows else []
+
+
+def get_attempt_stats(user_id: int, course_id: int, lesson_id: int):
+    return fetch_all(
+        """
+        SELECT word_id,
+               SUM(CASE WHEN correct=false THEN 1 ELSE 0 END) AS wrongs,
+               COUNT(*) AS total
+        FROM spelling_attempts
+        WHERE user_id = :uid
+          AND course_id = :cid
+          AND lesson_id = :lid
+        GROUP BY word_id;
+        """,
+        {"uid": user_id, "cid": course_id, "lid": lesson_id},
+    )
