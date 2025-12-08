@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from shared.db import engine, fetch_all
+from shared.db import engine, execute, fetch_all
 from spelling_app.repository.student_pending_repo import create_pending_registration
 from spelling_app.repository.attempt_repo import record_attempt
 
@@ -646,7 +646,7 @@ def main():
 
     st.sidebar.title("📚 My Spelling Courses")
 
-    # 1) Load student’s courses
+    # 1) Load student courses
     courses = fetch_all(
         """
         SELECT c.course_id, c.course_name
@@ -666,7 +666,7 @@ def main():
     selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
     selected_course_id = course_map[selected_course_name]
 
-    # 2) Load lessons (patterns) for selected course
+    # 2) Load lessons (patterns)
     lessons = fetch_all(
         """
         SELECT lesson_id, lesson_name
@@ -678,17 +678,19 @@ def main():
     )
 
     if not lessons:
-        st.sidebar.info("No lessons yet.")
+        st.sidebar.info("No lessons found.")
         return
 
     lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
     selected_lesson_name = st.sidebar.radio("📘 Lessons (Patterns)", list(lesson_map.keys()))
     selected_lesson_id = lesson_map[selected_lesson_name]
 
-    # Display words for selected pattern
+    # ---------------------------------------------
+    # FETCH WORDS FOR THIS LESSON
+    # ---------------------------------------------
     words = fetch_all(
         """
-        SELECT w.word_id, w.word, w.pattern, w.pattern_code, w.example_sentence
+        SELECT w.word_id, w.word, w.example_sentence
         FROM spelling_words w
         JOIN spelling_lesson_items li ON li.word_id = w.word_id
         WHERE li.lesson_id = :lid
@@ -698,20 +700,98 @@ def main():
     )
 
     st.header(f"Practice: {selected_lesson_name}")
-    st.write(f"Words in this pattern: {len(words)}")
+    st.caption(f"{len(words)} words available")
 
-    # Practice mode UI (simple missing-letter logic placeholder)
-    if words:
+    # ---------------------------------------------
+    # MODE SELECTION
+    # ---------------------------------------------
+    mode = st.radio("Select Mode:", ["Practice", "Weak Words", "Daily-5"], horizontal=True)
+
+    # ---------------------------------------------
+    # WEAK WORDS MODE
+    # ---------------------------------------------
+    if mode == "Weak Words":
+        weak_words = fetch_all(
+            """
+            SELECT w.word_id, w.word,
+                   SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END) AS wrongs,
+                   COUNT(*) AS total
+            FROM spelling_attempts a
+            JOIN spelling_words w ON w.word_id = a.word_id
+            WHERE a.user_id = :uid AND w.course_id = :cid AND a.lesson_id = :lid
+            GROUP BY w.word_id, w.word
+            HAVING SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END) > 0
+            ORDER BY (SUM(CASE WHEN a.correct=false THEN 1 ELSE 0 END)::decimal / COUNT(*)) DESC
+            LIMIT 20;
+            """,
+            {
+                "uid": st.session_state["user_id"],
+                "cid": selected_course_id,
+                "lid": selected_lesson_id,
+            },
+        )
+        if weak_words:
+            words = weak_words
+        else:
+            st.info("You have no weak words yet!")
+
+    # ---------------------------------------------
+    # DAILY 5 MODE
+    # ---------------------------------------------
+    if mode == "Daily-5":
         import random
-        word_pick = random.choice(words)
-        st.subheader("Type the spelling:")
-        user_answer = st.text_input("Your answer:", key="student_answer")
+        random.shuffle(words)
+        words = words[:5]
 
-        if st.button("Check Answer"):
-            if user_answer.strip().lower() == word_pick["word"].lower():
-                st.success("Correct! 🎉")
-            else:
-                st.error(f"Incorrect. Correct spelling: **{word_pick['word']}**")
+    # ---------------------------------------------
+    # PICK WORD
+    # ---------------------------------------------
+    if not words:
+        st.warning("No words available to practice.")
+        return
+
+    import random
+    word_pick = random.choice(words)
+    target_word = word_pick["word"]
+
+    # Missing-letter transformation
+    def mask(word):
+        vowels = "aeiou"
+        out = ""
+        for c in word:
+            out += "_" if c.lower() in vowels else c
+        return out
+
+    st.subheader("Spell the word:")
+    st.code(mask(target_word), language="text")
+
+    user_answer = st.text_input("Your answer:", key="student_answer_input")
+
+    # ---------------------------------------------
+    # SUBMIT ANSWER
+    # ---------------------------------------------
+    if st.button("Check Answer"):
+        correct = (user_answer.strip().lower() == target_word.lower())
+
+        # Store attempt
+        execute(
+            """
+            INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
+            VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
+            """,
+            {
+                "uid": st.session_state["user_id"],
+                "cid": selected_course_id,
+                "lid": selected_lesson_id,
+                "wid": word_pick["word_id"],
+                "correct": correct,
+            },
+        )
+
+        if correct:
+            st.success("🎉 Correct!")
+        else:
+            st.error(f"Incorrect. Correct spelling is: **{target_word}**")
 
 
 if __name__ == "__main__":
