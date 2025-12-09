@@ -164,9 +164,11 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
 
             # Normalize lesson_name (remove prefixes like "L6-P20 – ")
             if "–" in lesson_name:
-                lesson_name_clean = lesson_name.split("–", 1)[1].strip()
+                lesson_name = lesson_name.split("–", 1)[1].strip()
             else:
-                lesson_name_clean = lesson_name.strip()
+                lesson_name = lesson_name.strip()
+
+            lesson_name_clean = lesson_name.strip().lower()
 
             # --- Create lesson if needed ---
             if lesson_name_clean not in lesson_cache:
