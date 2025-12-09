@@ -193,12 +193,13 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
                 course_id=course_id,
             )
 
+            # Safe extraction of word_id
             if hasattr(w_result, "_mapping"):
                 word_id = w_result._mapping.get("word_id")
             elif isinstance(w_result, dict):
                 word_id = w_result.get("word_id")
             else:
-                word_id = w_result  # assume integer
+                word_id = w_result  # assume raw integer
 
             if not word_id:
                 continue
