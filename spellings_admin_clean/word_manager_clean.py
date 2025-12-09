@@ -1,5 +1,7 @@
 import pandas as pd
 
+from shared.db import fetch_all, execute
+
 from spelling_app.repository.words_repo import get_word_by_text, insert_word
 
 from spelling_app.repository.spelling_lesson_repo import (
@@ -80,12 +82,25 @@ def get_or_create_lesson(lesson_name: str, course_id: int):
 
 def link_word_to_lesson(word_id: int, lesson_id: int):
     """
-    Maps a word to a lesson. Ignores duplicates.
+    Link a word to a lesson in spelling_lesson_items.
+    Uses columns: lesson_id, word_id, sort_order.
+    sort_order is assigned as (max + 1) per lesson.
     """
-    try:
-        return map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-    except Exception as e:
-        print(f"Link failed for word_id {word_id} / lesson_id {lesson_id}: {e}")
+    execute(
+        """
+        INSERT INTO spelling_lesson_items (lesson_id, word_id, sort_order)
+        VALUES (
+            :lesson_id,
+            :word_id,
+            COALESCE(
+                (SELECT MAX(sort_order) + 1 FROM spelling_lesson_items WHERE lesson_id = :lesson_id),
+                1
+            )
+        )
+        ON CONFLICT DO NOTHING;
+        """,
+        {"lesson_id": lesson_id, "word_id": word_id},
+    )
 
 
 def process_uploaded_csv(uploaded_file, course_id: int):
