@@ -168,13 +168,16 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             else:
                 lesson_name = lesson_name.strip()
 
+            # Normalize CSV lesson_name (use exact name without prefixes)
             lesson_name_clean = lesson_name.strip().lower()
 
             # --- Create lesson if needed ---
             if lesson_name_clean not in lesson_cache:
                 # ALWAYS USE CLEAN CSV LESSON NAME
-                created = get_or_create_lesson(lesson_name.strip(), course_id)
-                lesson_cache[lesson_name_clean] = created["lesson_id"]
+                lesson_id = get_or_create_lesson(lesson_name.strip(), course_id)
+                if isinstance(lesson_id, dict):
+                    lesson_id = lesson_id.get("lesson_id")
+                lesson_cache[lesson_name_clean] = lesson_id
                 created_lessons += 1
 
             lesson_id = lesson_cache[lesson_name_clean]
