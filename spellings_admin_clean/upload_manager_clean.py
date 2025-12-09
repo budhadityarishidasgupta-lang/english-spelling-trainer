@@ -170,7 +170,7 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             lesson_id = lesson_cache[lesson_name_clean]
 
             # --- Insert word ---
-            word_id = get_or_create_word(
+            w_result = get_or_create_word(
                 word=word,
                 pattern=pattern,
                 pattern_code=pattern_code,
@@ -179,6 +179,13 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
                 example_sentence=example_sentence,
                 course_id=course_id,
             )
+
+            if hasattr(w_result, "_mapping"):
+                word_id = w_result._mapping.get("word_id")
+            elif isinstance(w_result, dict):
+                word_id = w_result.get("word_id")
+            else:
+                word_id = w_result  # assume integer
 
             if not word_id:
                 continue
