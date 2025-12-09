@@ -193,7 +193,13 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             inserted_words += 1
 
             # --- Link word → lesson ---
-            link_word_to_lesson(word_id, lesson_id)
+            try:
+                link_word_to_lesson(word_id, lesson_id)
+            except Exception as e:
+                st.warning(
+                    f"Failed to link word {word_id} → lesson {lesson_id}: {e}"
+                )
+                continue
 
         except Exception as e:
             # Optional debug
