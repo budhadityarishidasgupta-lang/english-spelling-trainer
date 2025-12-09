@@ -7,7 +7,6 @@ ROOT_ENV = "/workspaces/english-spelling-trainer/.env"
 load_dotenv(ROOT_ENV)
 print("Loaded DB:", os.getenv("DATABASE_URL"))
 
-
 # --- Fix PYTHONPATH so "shared" and "spelling_app" can be imported ---
 import sys
 import os
@@ -17,9 +16,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 # ---------------------------------------------------------------------
 
-
 import time
-import os
 import random
 import streamlit as st
 from datetime import datetime, date, timedelta
@@ -28,10 +25,13 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 load_dotenv()
 
-
+# ---- CORRECT IMPORTS (FINAL) ----
 from shared.db import engine, execute, fetch_all, safe_rows
 from spelling_app.repository.student_pending_repo import create_pending_registration
 from spelling_app.repository.attempt_repo import record_attempt
+from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
+
+
 
 
 def compute_badge(xp_total: int, mastery: float):
