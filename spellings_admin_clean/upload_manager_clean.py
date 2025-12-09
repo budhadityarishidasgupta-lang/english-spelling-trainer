@@ -136,7 +136,14 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
             pattern = str(row["pattern"]).strip() or None
             if pattern:
                 patterns_set.add(pattern)   # collect patterns
-            lesson_name = pattern  # ALWAYS the lesson grouping (pattern = lesson)
+
+            # Prefer explicit lesson_name column; fall back to pattern if missing
+            lesson_name_raw = (
+                str(row["lesson_name"]).strip()
+                if "lesson_name" in df.columns and pd.notna(row["lesson_name"])
+                else ""
+            )
+            lesson_name = lesson_name_raw or (pattern or "")
 
             # Parse integers safely
             try:
@@ -163,7 +170,8 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
 
             # --- Create lesson if needed ---
             if lesson_name_clean not in lesson_cache:
-                created = get_or_create_lesson(lesson_name, course_id)
+                # ALWAYS USE CLEAN CSV LESSON NAME
+                created = get_or_create_lesson(lesson_name.strip(), course_id)
                 lesson_cache[lesson_name_clean] = created["lesson_id"]
                 created_lessons += 1
 
