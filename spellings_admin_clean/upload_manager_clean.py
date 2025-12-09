@@ -155,13 +155,19 @@ def process_spelling_csv(df: pd.DataFrame, course_id: int):
                 else None
             )
 
+            # Normalize lesson_name (remove prefixes like "L6-P20 – ")
+            if "–" in lesson_name:
+                lesson_name_clean = lesson_name.split("–", 1)[1].strip()
+            else:
+                lesson_name_clean = lesson_name.strip()
+
             # --- Create lesson if needed ---
-            if lesson_name not in lesson_cache:
+            if lesson_name_clean not in lesson_cache:
                 created = get_or_create_lesson(lesson_name, course_id)
-                lesson_cache[lesson_name] = created["lesson_id"]
+                lesson_cache[lesson_name_clean] = created["lesson_id"]
                 created_lessons += 1
 
-            lesson_id = lesson_cache[lesson_name]
+            lesson_id = lesson_cache[lesson_name_clean]
 
             # --- Insert word ---
             word_id = get_or_create_word(
