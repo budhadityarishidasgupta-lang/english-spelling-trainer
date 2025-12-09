@@ -82,7 +82,10 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
     """
     Maps a word to a lesson. Ignores duplicates.
     """
-    return map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+    try:
+        return map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+    except Exception as e:
+        print("Link error:", e)
 
 
 def process_uploaded_csv(uploaded_file, course_id: int):
