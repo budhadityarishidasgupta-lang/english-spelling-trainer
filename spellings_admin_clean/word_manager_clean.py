@@ -53,13 +53,19 @@ def get_or_create_word(
     return new_id
 
 
-def get_or_create_lesson(lesson_name: str, course_id: int):
+def get_or_create_lesson(lesson_name: str | None, course_id: int):
     """
     Always returns a dict: {lesson_id, course_id, lesson_name}
+
+    If lesson_name is None or empty, we fall back to a generic name.
     """
+    # Fallback for missing lesson name
+    if not lesson_name:
+        lesson_name = "General"
+
     existing = get_lesson_by_name_and_course(
         lesson_name=lesson_name,
-        course_id=course_id
+        course_id=course_id,
     )
 
     # Existing lesson found in DB
@@ -104,44 +110,103 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
 
 
 def process_uploaded_csv(uploaded_file, course_id: int):
+    """
+    Process CSV upload and insert words, lessons, and mapping relationships.
+
+    Expected columns in CSV (case-insensitive):
+      - word
+      - pattern
+      - pattern_code
+      - level
+      - lesson_name
+      - example_sentence (optional)
+
+    For each row:
+      1) Ensure lesson exists (or create it)
+      2) Ensure word exists (or create it)
+      3) Link word to lesson in spelling_lesson_items
+    """
     try:
         df = pd.read_csv(uploaded_file)
-    except Exception as exc:  # pragma: no cover - defensive guard for malformed uploads
+    except Exception as exc:  # defensive guard for malformed uploads
         return {"error": f"Could not read CSV: {exc}"}
+
+    # Normalise headers (trim + lower)
+    df.columns = [str(c).strip().lower() for c in df.columns]
 
     words_added = 0
     lessons_set: set[str | None] = set()
     patterns_set: set[str] = set()
+    lesson_cache: dict[str, int | None] = {}
 
     for _, row in df.iterrows():
-        word = str(row.get("word", "")).strip()
+        # ----- WORD -----
+        word_raw = row.get("word", "")
+        word = str(word_raw).strip()
         if not word:
+            # Skip blank rows
             continue
 
+        # ----- PATTERN -----
         pattern_raw = row.get("pattern")
         pattern = str(pattern_raw).strip() if pattern_raw is not None else None
         pattern = pattern or None
+
+        # ----- PATTERN CODE & LEVEL -----
         pattern_code = _safe_int(row.get("pattern_code"))
         level = _safe_int(row.get("level"))
+
+        # ----- LESSON NAME -----
         lesson_name_raw = row.get("lesson_name")
         lesson_name = str(lesson_name_raw).strip() if lesson_name_raw is not None else None
-        lesson_name = lesson_name or None
-        example_sentence = row.get("example_sentence", None)
+        if not lesson_name:
+            # Fallback if CSV does not specify lesson_name
+            lesson_name = pattern or "General"
 
-        repo_get_or_create_lesson(course_id=course_id, lesson_name=lesson_name)
+        # ----- EXAMPLE SENTENCE -----
+        example_sentence_raw = row.get("example_sentence")
+        example_sentence = (
+            str(example_sentence_raw).strip()
+            if example_sentence_raw is not None
+            else None
+        )
 
-        insert_word(
+        # 1) Ensure lesson exists (use cache to reduce DB hits)
+        cache_key = lesson_name
+        if cache_key not in lesson_cache:
+            lesson_info = get_or_create_lesson(lesson_name=lesson_name, course_id=course_id)
+            lesson_id = lesson_info.get("lesson_id")
+            lesson_cache[cache_key] = lesson_id
+            lessons_set.add(lesson_name)
+        else:
+            lesson_id = lesson_cache[cache_key]
+
+        if not lesson_id:
+            # If lesson creation somehow failed, skip linking but continue
+            continue
+
+        # 2) Ensure word exists
+        word_id = get_or_create_word(
             word=word,
-            course_id=course_id,
             pattern=pattern,
             pattern_code=pattern_code,
             level=level,
             lesson_name=lesson_name,
             example_sentence=example_sentence,
+            course_id=course_id,
         )
 
+        if not word_id:
+            # If word creation failed, skip linking
+            continue
+
+        # 3) Link word → lesson
+        link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+        # Optional debug print (visible in logs)
+        print(f"[CSV LINK] word='{word}' (id={word_id}) → lesson='{lesson_name}' (id={lesson_id})")
+
         words_added += 1
-        lessons_set.add(lesson_name)
+
         if pattern is not None:
             patterns_set.add(pattern)
 
@@ -150,6 +215,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         "lessons_created": len(lessons_set),
         "patterns": sorted(patterns_set),
     }
+
 
 # ---------------------------------------------------------
 # FETCH LESSONS FOR COURSE
@@ -199,4 +265,3 @@ def get_lesson_words(course_id: int, lesson_id: int):
         elif isinstance(row, dict):
             words.append(row)
     return words
-
