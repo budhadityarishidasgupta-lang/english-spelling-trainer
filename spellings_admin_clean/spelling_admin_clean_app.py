@@ -1,370 +1,167 @@
-import os
-import sys
 import streamlit as st
-import pandas as pd
-from dotenv import load_dotenv
-from passlib.hash import bcrypt as passlib_bcrypt
 
-# =========================================================
-#                PYTHONPATH FIX
-# =========================================================
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-load_dotenv()
-
-st.set_page_config(page_title="Spelling Admin Console", layout="wide")
-st.title("🛠️ Spelling Admin Console")
-
-# =========================================================
-#                IMPORTS (CLEAN & CORRECTED)
-# =========================================================
-
-# Courses
-from spelling_app.repository.course_repo import (
-    get_all_spelling_courses,
-)
-from spellings_admin_clean.utils_clean import fetch_all_simple
-
-# Students
-from spelling_app.repository.student_repo import (
-    approve_spelling_student,
-    assign_courses_to_student,
-    remove_courses_from_student,
-    update_student_profile,
-    get_pending_spelling_students,
-    list_registered_spelling_students,
-)
-
-# Classroom
-from spelling_app.repository.classroom_repo import (
-    assign_students_to_class,
-    create_classroom,
-    get_students_in_class,
-    list_classrooms,
-)
-
-# Upload Manager (fixed)
+from shared.db import fetch_all, execute
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
 
-# Utilities
 
-from shared.db import execute, fetch_all
+# -----------------------------
+# Helpers for courses
+# -----------------------------
 
+def _rows_to_dicts(rows):
+    if not rows:
+        return []
+    result = []
+    for r in rows:
+        if hasattr(r, "_mapping"):
+            result.append(dict(r._mapping))
+        elif isinstance(r, dict):
+            result.append(r)
+    return result
+
+
+def get_all_courses():
+    rows = fetch_all(
+        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_id"
+    )
+    return _rows_to_dicts(rows)
+
+
+def create_course(course_name: str):
+    if not course_name.strip():
+        return None
+    rows = fetch_all(
+        """
+        INSERT INTO spelling_courses (course_name)
+        VALUES (:name)
+        RETURNING course_id;
+        """,
+        {"name": course_name.strip()},
+    )
+    rows = _rows_to_dicts(rows)
+    return rows[0]["course_id"] if rows else None
+
+
+# -----------------------------
+# Main page: CSV Upload + Courses
+# -----------------------------
 
 def render_spelling_csv_upload():
-    st.header("📤 Upload Spelling Word CSV")
+    st.header("Spelling Admin – Pattern Word Import")
 
-    # --- Load course dropdown ---
-    courses = fetch_all_simple(
-        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
+    st.markdown(
+        "Use this tool to create **courses, lessons, and words** from a structured CSV."
     )
-    if not courses:
-        st.error("No courses available. Create a course first.")
-        return
 
-    course_name_to_id = {c["course_name"]: c["course_id"] for c in courses}
-    selected_course = st.selectbox("Select Course", list(course_name_to_id.keys()))
-    selected_course_id = course_name_to_id[selected_course]
+    # --- Course section ---
+    st.subheader("1. Select or Create Course")
 
-    st.info(f"Words will be uploaded into: **{selected_course}**")
+    courses = get_all_courses()
+    course_map = {c["course_name"]: c["course_id"] for c in courses} if courses else {}
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        if course_map:
+            course_name = st.selectbox(
+                "Existing Courses",
+                options=list(course_map.keys()),
+                index=0,
+            )
+            selected_course_id = course_map[course_name]
+        else:
+            st.info("No courses found yet. Please create one on the right.")
+            selected_course_id = None
+
+    with col2:
+        with st.form("create_course_form", clear_on_submit=True):
+            new_course_name = st.text_input("New Course Name")
+            submitted = st.form_submit_button("Create Course")
+            if submitted and new_course_name.strip():
+                cid = create_course(new_course_name)
+                if cid:
+                    st.success(f"Course '{new_course_name}' created with id {cid}.")
+                else:
+                    st.error("Failed to create course. Check logs/DB.")
+
+    st.markdown("---")
+
+    # --- CSV upload section ---
+    st.subheader("2. Upload Spelling CSV")
 
     uploaded_file = st.file_uploader(
-        "Upload CSV (columns: word, pattern, pattern_code, level, lesson_name)",
+        "Upload CSV file with columns: word, pattern, pattern_code, level, lesson_name, example_sentence",
         type=["csv"],
     )
 
-    if uploaded_file is None:
+    if uploaded_file is not None and selected_course_id is None:
+        st.warning("Please select a course before uploading.")
         return
 
-    st.info("CSV Loaded Successfully")
+    if uploaded_file is not None and selected_course_id is not None:
+        if st.button("Process CSV Upload"):
+            result = process_spelling_csv(uploaded_file, selected_course_id)
 
-    if st.button("Process Upload"):
-        with st.spinner("Processing CSV…"):
-            df = pd.read_csv(uploaded_file)
-            result = process_spelling_csv(df, selected_course_id)
+            if not isinstance(result, dict):
+                st.error("Unexpected result from CSV processor.")
+                return
 
-        if result.get("error"):
-            st.error(result["error"])
-            return
+            if result.get("status") == "error":
+                st.error(result.get("error", "Unknown error during CSV upload."))
+                return
 
-        # SUCCESS OUTPUT
-        st.success(f"Words uploaded to **{selected_course}**!")
+            st.success("Words uploaded to Pattern Words!")
 
-        st.subheader("Upload Summary")
+            st.markdown("### Upload Summary")
+            st.write(f"**Words Added:** {result.get('words_added', 0)}")
+            st.write(f"**Lessons Created:** {result.get('lessons_created', 0)}")
 
-        # Use keys returned by process_spelling_csv()
-        words_added = result.get("inserted_words", 0)
-        lessons_created = result.get("created_lessons", 0)
+            patterns = result.get("patterns") or []
+            if patterns:
+                st.write("**Patterns Detected:**")
+                st.write(", ".join(patterns))
 
-        st.write(f"**Words Added:** {words_added}")
-        st.write(f"**Lessons Created:** {lessons_created}")
+    # --- Debug DB status ---
+    with st.expander("Debug DB Status"):
+        words_count = fetch_all("SELECT COUNT(*) AS c FROM spelling_words")
+        lessons_count = fetch_all("SELECT COUNT(*) AS c FROM spelling_lessons")
+        mappings_count = fetch_all("SELECT COUNT(*) AS c FROM spelling_lesson_items")
 
-        # OPTIONAL: Display patterns only if uploader returns them
-        patterns = result.get("patterns")
-        if patterns:
-            st.write("**Patterns Found:**")
-            st.write(", ".join(patterns))
+        words_count = _rows_to_dicts(words_count)
+        lessons_count = _rows_to_dicts(lessons_count)
+        mappings_count = _rows_to_dicts(mappings_count)
 
+        st.write("Words:", words_count[0]["c"] if words_count else 0)
+        st.write("Lessons:", lessons_count[0]["c"] if lessons_count else 0)
+        st.write("Lesson–Word Mappings:", mappings_count[0]["c"] if mappings_count else 0)
 
-def render_classrooms_page():
-    st.subheader("🏫 Classroom Manager")
-
-    st.write("### Create New Classroom")
-    cname = st.text_input("Classroom Name")
-
-    if st.button("Create Classroom"):
-        create_classroom(cname)
-        st.success(f"Created classroom: {cname}")
-
-    st.write("### Existing Classrooms")
-    classes = list_classrooms()
-    st.table(pd.DataFrame(classes))
-
-    from spellings_admin_clean.utils_clean import fetch_all_simple
-
-    classes = fetch_all_simple("SELECT class_id, class_name FROM classes ORDER BY class_name")
-    class_map = {c["class_name"]: c["class_id"] for c in classes} if classes else {}
-
-    st.write("### Assign Student to Classroom")
-    if class_map:
-        selected_class = st.selectbox("Select Classroom", list(class_map.keys()))
-        class_id = class_map[selected_class]
-    else:
-        st.warning("No classrooms found.")
-        class_id = None
-
-    students = fetch_all_simple("SELECT user_id, name FROM users WHERE role='student' ORDER BY name")
-    student_map = {s["name"]: s["user_id"] for s in students} if students else {}
-
-    if student_map:
-        selected_student = st.selectbox("Select Student", list(student_map.keys()))
-        student_id = student_map[selected_student]
-    else:
-        st.warning("No students found.")
-        student_id = None
-
-    if st.button("Assign Student"):
-        if class_id is None:
-            st.error("Please create a classroom before assigning students.")
-        elif student_id is None:
-            st.error("Please select a student to assign.")
-        else:
-            assign_students_to_class(class_id, [student_id])
-            st.success("Student assigned.")
-
-    st.write("### View Students in a Class")
-    if class_map:
-        view_class = st.selectbox(
-            "Select Classroom to View", list(class_map.keys()), key="view_class_select"
+        sample_mappings = fetch_all(
+            """
+            SELECT sli.lesson_id, sl.lesson_name, sli.word_id, sw.word
+            FROM spelling_lesson_items sli
+            JOIN spelling_lessons sl ON sl.lesson_id = sli.lesson_id
+            JOIN spelling_words sw ON sw.word_id = sli.word_id
+            ORDER BY sli.lesson_id, sli.sort_order
+            LIMIT 20;
+            """
         )
-        cid = class_map[view_class]
-    else:
-        cid = st.number_input("Class ID to view", min_value=1, step=1)
-
-    if st.button("Load Class"):
-        students = get_students_in_class(cid)
-        st.table(pd.DataFrame(students))
-
-# =========================================================
-#                SIDEBAR NAVIGATION
-# =========================================================
-
-menu = st.sidebar.radio(
-    "Navigation",
-    [
-        "Dashboard",
-        "Upload Words CSV",
-        "Students",
-        "Courses",
-        "Classrooms",
-    ]
-)
-
-# =========================================================
-#                PAGE: DASHBOARD
-# =========================================================
-
-if menu == "Dashboard":
-    st.subheader("📊 Overview")
-
-    st.info("Use the sidebar to upload CSVs, manage students, courses, or classes.")
-
-    st.write("### Existing Courses")
-    courses = get_all_spelling_courses()
-    if courses:
-        st.table(pd.DataFrame(courses))
-    else:
-        st.write("No courses found.")
+        st.write("Sample mappings:")
+        st.write(_rows_to_dicts(sample_mappings))
 
 
-# =========================================================
-#                PAGE: UPLOAD WORD CSV
-# =========================================================
+def main():
+    st.set_page_config("WordSprint Spelling Admin", layout="wide")
 
-elif menu == "Upload Words CSV":
-    render_spelling_csv_upload()
-
-
-# =========================================================
-#                PAGE: STUDENTS
-# =========================================================
-
-elif menu == "Students":
-    st.subheader("👨‍🎓 Student Management")
-
-    tabs = st.tabs(["Pending Approvals", "Registered Students"])
-
-    # -------- Pending Students --------
-    with tabs[0]:
-        st.write("### Pending Students")
-        pending = get_pending_spelling_students()
-        if pending:
-            df = pd.DataFrame(pending)
-            st.dataframe(df)
-
-            row = st.selectbox("Select a student to approve:", df.index)
-
-            if st.button("Approve Student"):
-                student = df.loc[row]
-                approve_spelling_student(student["email"])
-                st.success(f"Approved {student['email']}")
-                st.experimental_rerun()
-
-        else:
-            st.info("No pending students.")
-
-    # -------- Registered Students --------
-    with tabs[1]:
-        st.write("### Registered")
-        students = list_registered_spelling_students()
-        if students:
-            df = pd.DataFrame(students)
-            st.dataframe(df)
-
-            st.write("### Update Courses for Student")
-            student_id = st.number_input("Student ID", min_value=1, step=1)
-
-            add_course_id = st.number_input("Add Course ID", min_value=1, step=1)
-            if st.button("Assign Course"):
-                assign_courses_to_student(student_id, [add_course_id])
-                st.success("Course assigned.")
-
-            remove_course_id = st.number_input("Remove Course ID", min_value=1, step=1)
-            if st.button("Remove Course"):
-                remove_courses_from_student(student_id, [remove_course_id])
-                st.success("Course removed.")
-
-        else:
-            st.info("No registered students.")
-
-
-# =========================================================
-#                PAGE: COURSES
-# =========================================================
-
-elif menu == "Courses":
-    # =====================================================================
-    #   COURSES PANEL — CREATE / SELECT / MANAGE COURSES
-    # =====================================================================
-
-    st.sidebar.markdown("### 📘 Courses")
-
-    # Fetch all existing courses
-    all_courses = fetch_all(
-        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_id;"
+    st.sidebar.title("Admin Navigation")
+    section = st.sidebar.radio(
+        "Section",
+        ["Spelling CSV Upload"],
+        index=0,
     )
 
-    def row_to_dict(row):
-        """Convert SQLAlchemy Row / tuple / dict → dict safely."""
-        if hasattr(row, "_mapping"):
-            return dict(row._mapping)
-        if isinstance(row, dict):
-            return row
-        if isinstance(row, tuple):
-            # Fallback assumption: (course_id, course_name)
-            return {
-                "course_id": row[0],
-                "course_name": row[1],
-            }
-        return {}
-
-    course_name_map = {}
-    if all_courses:
-        for row in all_courses:
-            r = row_to_dict(row)
-            if "course_name" in r and "course_id" in r:
-                course_name_map[r["course_name"]] = r["course_id"]
-
-    # -----------------------------------------------------------
-    # 1) CREATE NEW COURSE
-    # -----------------------------------------------------------
-    with st.sidebar.expander("➕ Create New Course"):
-        new_course_name = st.text_input("Course Name", key="new_course_name_input")
-
-        if st.button("Create Course", key="create_course_btn"):
-            if not new_course_name.strip():
-                st.warning("Please enter a course name.")
-            else:
-                rows = execute(
-                    """
-                    INSERT INTO spelling_courses (course_name)
-                    VALUES (:name)
-                    RETURNING course_id;
-                    """,
-                    {"name": new_course_name.strip()},
-                )
-
-                if rows and isinstance(rows, list) and hasattr(rows[0], "_mapping"):
-                    new_id = rows[0]._mapping["course_id"]
-                    st.success(f"Course created! (ID: {new_id})")
-                    st.experimental_rerun()
-                else:
-                    st.error("Could not create course.")
-
-    # -----------------------------------------------------------
-    # 2) SELECT EXISTING COURSE
-    # -----------------------------------------------------------
-
-    st.sidebar.markdown("### 📂 Select Course")
-
-    if course_name_map:
-        selected_course_name = st.sidebar.selectbox(
-            "Choose a course",
-            list(course_name_map.keys()),
-            key="course_select_box",
-        )
-        selected_course_id = course_name_map.get(selected_course_name)
-    else:
-        st.sidebar.info("No courses created yet.")
-        selected_course_name = None
-        selected_course_id = None
-
-    # -----------------------------------------------------------
-    # 3) LOAD COURSE DETAILS (BUTTON FIXED: UNIQUE KEY ADDED)
-    # -----------------------------------------------------------
-
-    if selected_course_id:
-        if st.sidebar.button("Load Lessons", key=f"load_lessons_btn_{selected_course_id}"):
-            st.session_state["selected_course_id"] = selected_course_id
-            st.session_state["selected_course_name"] = selected_course_name
-            st.success(f"Loaded course: {selected_course_name}")
-
-    # Save fallback if user didn't click "Load Lessons" this session
-    selected_course_id = st.session_state.get("selected_course_id", selected_course_id)
-    selected_course_name = st.session_state.get("selected_course_name", selected_course_name)
-
-    # Display header on main page
-    if selected_course_id:
-        st.markdown(
-            f"## 📘 Managing Course: **{selected_course_name}** (ID {selected_course_id})"
-        )
+    if section == "Spelling CSV Upload":
+        render_spelling_csv_upload()
 
 
-# =========================================================
-#                PAGE: CLASSROOMS
-# =========================================================
-
-elif menu == "Classrooms":
-    render_classrooms_page()
+if __name__ == "__main__":
+    main()
