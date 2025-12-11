@@ -1,3 +1,16 @@
+#!/usr/bin/env python3
+
+# ----------------------------
+# FIX PYTHONPATH FOR RENDER
+# ----------------------------
+import os
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+
 import streamlit as st
 
 from shared.db import fetch_all, execute
