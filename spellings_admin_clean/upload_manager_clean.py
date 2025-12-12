@@ -1,82 +1,80 @@
-import sys
+#!/usr/bin/env python3
+# -------------------------------------------------
+# Upload Manager (FINAL, CLEAN)
+# -------------------------------------------------
 
+import sys
+import io
+import pandas as pd
+
+# ---- Force project root for Render ----
 PROJECT_ROOT = "/opt/render/project/src"
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-import io
-import pandas as pd
-
 from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
 
-REQUIRED_COLUMNS = ["word", "pattern", "pattern_code", "level", "lesson_name"]
+REQUIRED_COLUMNS = [
+    "word",
+    "pattern",
+    "pattern_code",
+    "level",
+    "lesson_name",
+]
 
 
 def _normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Trim whitespace/BOM and lowercase column headers.
-    """
-    df.columns = [str(c).strip().replace("\ufeff", "").lower() for c in df.columns]
+    df.columns = [
+        str(c).strip().replace("\ufeff", "").lower()
+        for c in df.columns
+    ]
     return df
 
 
 def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
-    """
-    Lightweight header validation for the spelling CSV.
-
-    Returns (is_valid, error_message).
-    """
     try:
-        # Read only the header row for speed
         df_head = pd.read_csv(uploaded_file, nrows=0)
     except Exception as exc:
-        return False, f"Could not read CSV header: {exc}"
+        return False, f"Could not read CSV: {exc}"
 
     df_head = _normalize_headers(df_head)
     cols = list(df_head.columns)
 
-    missing = [col for col in REQUIRED_COLUMNS if col not in cols]
+    missing = [c for c in REQUIRED_COLUMNS if c not in cols]
     if missing:
-        return False, f"CSV is missing required columns: {', '.join(missing)}"
+        return False, f"CSV missing required columns: {', '.join(missing)}"
 
     return True, None
 
 
 def process_spelling_csv(uploaded_file, course_id: int) -> dict:
     """
-    Validate headers then delegate to word_manager_clean.process_uploaded_csv.
-
-    This is the single entrypoint used by the admin UI.
-    Returns a result dict with at least:
-      - words_added (int)
-      - lessons_created (int)
-      - patterns (list[str])
-      - status (str)
-      - error (optional str)
+    SINGLE ENTRYPOINT for admin CSV uploads.
     """
-    # We must be able to read the file twice (once for header, once for processing),
-    # so grab the raw bytes and construct two independent buffers.
+
     raw_bytes = uploaded_file.getvalue()
 
-    # 1) Header validation
-    is_valid, err = validate_csv_columns(io.BytesIO(raw_bytes))
-    if not is_valid:
+    # 1. Validate headers
+    ok, err = validate_csv_columns(io.BytesIO(raw_bytes))
+    if not ok:
         return {"status": "error", "error": err}
 
-    # 2) Delegate to the main CSV processor
-    result = process_uploaded_csv(io.BytesIO(raw_bytes), course_id)
+    # 2. Delegate to the real importer
+    result = process_uploaded_csv(
+        io.BytesIO(raw_bytes),
+        course_id
+    )
 
-    # Normalise result structure
     if not isinstance(result, dict):
         return {
             "status": "error",
-            "error": "Unexpected CSV processor return type.",
+            "error": "CSV processor returned invalid result",
         }
 
     result.setdefault("status", "success")
-    result.setdefault("words_added", result.get("words_added", 0))
-    result.setdefault("lessons_created", result.get("lessons_created", 0))
-    result.setdefault("patterns", result.get("patterns", []))
+    result.setdefault("words_added", 0)
+    result.setdefault("lessons_created", 0)
+    result.setdefault("patterns", [])
 
     return result
