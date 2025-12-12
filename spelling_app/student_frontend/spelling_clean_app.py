@@ -1174,43 +1174,102 @@ def main():
             out += "_" if c.lower() in vowels else c
         return out
 
-    st.subheader("Spell the word:")
-    st.code(mask(target_word), language="text")
+# ---------------------------------------------
+# MULTI-BOX SPELLING PRACTICE (FINAL)
+# ---------------------------------------------
+st.subheader("Spell the word:")
 
-    user_answer = st.text_input("Your answer:", key="student_answer_input")
+masked_word, blank_indices = generate_question(
+    target_word,
+    selected_lesson_name
+)
+st.code(masked_word, language="text")
 
-    # ---------------------------------------------
-    # SUBMIT ANSWER
-    # ---------------------------------------------
-    if st.button("Check Answer"):
-        correct = (user_answer.strip().lower() == target_word.lower())
+key_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{wid}"
 
-        # Store attempt
-        execute(
-            """
-            INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
-            VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
-            """,
-            {
-                "uid": st.session_state["user_id"],
-                "cid": selected_course_id,
-                "lid": selected_lesson_id,
-                "wid": wid,
-                "correct": correct,
-            },
-        )
+# Reset per-word state when word changes
+if st.session_state.get("active_word_id") != wid:
+    prev = st.session_state.get("active_word_id")
+    if prev is not None:
+        prev_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{prev}"
+        for k in list(st.session_state.keys()):
+            if isinstance(k, str) and k.startswith(prev_prefix):
+                st.session_state.pop(k, None)
 
-        new_mastery = get_lesson_mastery(
-            st.session_state["user_id"],
-            selected_course_id,
-            selected_lesson_id,
-        )
-        st.info(f"Updated Mastery: {new_mastery}%")
+    for k in list(st.session_state.keys()):
+        if isinstance(k, str) and k.startswith(key_prefix):
+            st.session_state.pop(k, None)
 
-        if correct:
-            st.success("🎉 Correct!")
-        else:
-            st.error(f"Incorrect. Correct spelling is: **{target_word}**")
+    st.session_state["active_word_id"] = wid
+
+# Render per-letter inputs
+user_answer, is_complete = render_masked_word_input(
+    masked_word=masked_word,
+    correct_word=target_word,
+    key_prefix=key_prefix,
+    auto_submit=True,
+)
+
+ready = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
+submitted_key = f"{key_prefix}_submitted"
+checked_key = f"{key_prefix}_checked"
+correct_key = f"{key_prefix}_correct"
+
+# ---------------------------------------------
+# AUTO-SUBMIT WHEN LAST BOX IS FILLED
+# ---------------------------------------------
+if ready and not st.session_state.get(submitted_key, False):
+
+    wrong_letters = sum(
+        1 for i in blank_indices
+        if user_answer[i:i+1].lower() != target_word[i:i+1].lower()
+    )
+
+    is_correct = (wrong_letters == 0)
+
+    execute(
+        """
+        INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
+        VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
+        """,
+        {
+            "uid": st.session_state["user_id"],
+            "cid": selected_course_id,
+            "lid": selected_lesson_id,
+            "wid": wid,
+            "correct": is_correct,
+        },
+    )
+
+    st.session_state[submitted_key] = True
+    st.session_state[checked_key] = True
+    st.session_state[correct_key] = is_correct
+
+    st.experimental_rerun()
+
+# ---------------------------------------------
+# FEEDBACK + NEXT WORD
+# ---------------------------------------------
+if st.session_state.get(checked_key, False):
+
+    new_mastery = get_lesson_mastery(
+        st.session_state["user_id"],
+        selected_course_id,
+        selected_lesson_id,
+    )
+    st.info(f"Updated Mastery: {new_mastery}%")
+
+    if st.session_state.get(correct_key, False):
+        st.success("🎉 Correct!")
+    else:
+        st.error(f"Incorrect. Correct spelling is: **{target_word}**")
+
+    if st.button("Next Word →", key=f"{key_prefix}_next"):
+        for k in list(st.session_state.keys()):
+            if isinstance(k, str) and k.startswith(key_prefix):
+                st.session_state.pop(k, None)
+        st.session_state["active_word_id"] = None
+        st.experimental_rerun()
 
 
 if __name__ == "__main__":
