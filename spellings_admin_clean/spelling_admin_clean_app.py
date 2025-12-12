@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 
-# ----------------------------
-# FIX PYTHONPATH FOR RENDER
-# ----------------------------
+# -------------------------------------------------
+# FORCE PYTHONPATH (Render-safe)
+# -------------------------------------------------
 import os
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+PROJECT_ROOT = "/opt/render/project/src"
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-
+# -------------------------------------------------
+# Imports AFTER path fix
+# -------------------------------------------------
 import streamlit as st
-
 from shared.db import fetch_all, execute
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+
 
 
 # -----------------------------
