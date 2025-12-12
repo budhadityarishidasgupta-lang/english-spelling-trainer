@@ -323,6 +323,160 @@ def generate_missing_letter_question(word: str, base_blanks: int = 2, max_blanks
 
 
 ###########################################################
+#  MASKED WORD INPUT RENDERER
+###########################################################
+
+
+def render_masked_word_input(
+    masked_word: str,
+    correct_word: str,
+    key_prefix: str,
+    auto_submit: bool = True,
+):
+    """
+    Renders letter-by-letter inputs for masked spelling words.
+    Returns (user_answer, is_complete).
+    """
+
+    # lightweight CSS for boxes + incorrect highlighting
+    if not st.session_state.get("_masked_input_css_loaded"):
+        st.markdown(
+            """
+            <style>
+            .letter-box {
+                padding: 10px 6px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                text-align: center;
+                font-weight: 600;
+                font-size: 18px;
+                background: #fafafa;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .letter-box.wrong {
+                background: #ffdede;
+                border-color: #f28b82;
+            }
+            .fixed-letter {
+                padding: 10px 6px;
+                font-size: 18px;
+                text-align: center;
+                font-weight: 700;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.session_state["_masked_input_css_loaded"] = True
+
+    chars = list(masked_word or "")
+    correct_word = correct_word or ""
+
+    # ensure focus index exists for backspace navigation
+    focus_key = f"{key_prefix}_focus_index"
+    if focus_key not in st.session_state:
+        # default focus to the first blank
+        try:
+            first_blank = chars.index("_")
+        except ValueError:
+            first_blank = 0
+        st.session_state[focus_key] = first_blank
+
+    submitted_flag = st.session_state.get(f"{key_prefix}_submitted", False)
+
+    cols = st.columns(len(chars)) if chars else []
+    blank_labels = []
+
+    # gather values in order to reconstruct the answer
+    user_chars: list[str] = []
+    blank_inputs: list[tuple[int, str]] = []  # (position, value)
+
+    def _on_change(idx: int, input_key: str):
+        val = st.session_state.get(input_key, "") or ""
+        # keep only the last typed character
+        if len(val) > 1:
+            st.session_state[input_key] = val[-1]
+            val = st.session_state[input_key]
+
+        # backspace navigation (best-effort):
+        if val == "":
+            st.session_state[focus_key] = max(0, idx - 1)
+        else:
+            st.session_state[focus_key] = min(len(chars) - 1, idx + 1)
+
+    for idx, ch in enumerate(chars):
+        if ch != "_":
+            cols[idx].markdown(f"<div class='fixed-letter'>{ch}</div>", unsafe_allow_html=True)
+            user_chars.append(ch)
+            continue
+
+        input_key = f"{key_prefix}_slot_{idx}"
+        label = f"Letter {idx + 1}"
+        blank_labels.append(label)
+
+        if submitted_flag:
+            typed_val = st.session_state.get(input_key, "") or ""
+            is_correct = typed_val.lower() == (correct_word[idx: idx + 1] or "").lower()
+            style_class = "" if is_correct else " wrong"
+            display_letter = typed_val if typed_val else "&nbsp;"
+            cols[idx].markdown(
+                f"<div class='letter-box{style_class}'>{display_letter}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.text_input(
+                label,
+                key=input_key,
+                max_chars=1,
+                label_visibility="collapsed",
+                on_change=_on_change,
+                args=(idx, input_key),
+            )
+
+        current_val = st.session_state.get(input_key, "") or ""
+        user_chars.append(current_val)
+        blank_inputs.append((idx, current_val))
+
+    # focus handling script (best-effort)
+    if not submitted_flag and blank_labels:
+        focus_idx = min(len(blank_labels) - 1, max(0, st.session_state.get(focus_key, 0)))
+        # map focus idx to the absolute column index of the blank
+        blank_positions = [i for i, ch in enumerate(chars) if ch == "_"]
+        if 0 <= focus_idx < len(blank_positions):
+            abs_idx = blank_positions[focus_idx]
+            focus_label = f"Letter {abs_idx + 1}"
+            st.markdown(
+                f"""
+                <script>
+                const inputs = Array.from(document.querySelectorAll('input[aria-label="{focus_label}"]'));
+                if (inputs.length) {{
+                    const target = inputs[0];
+                    if (document.activeElement !== target) {{
+                        target.focus();
+                        const len = target.value.length;
+                        target.setSelectionRange(len, len);
+                    }}
+                }}
+                </script>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    user_answer = "".join(user_chars)
+    is_complete = all((val or "").strip() for _, val in blank_inputs)
+
+    # auto-submit marker to avoid repeated submissions
+    auto_key = f"{key_prefix}_auto_triggered"
+    if auto_submit and is_complete and not st.session_state.get(auto_key, False):
+        st.session_state[auto_key] = True
+        st.session_state[f"{key_prefix}_ready_to_submit"] = True
+
+    return user_answer, is_complete
+
+
+
+###########################################################
 #  LOGIN PAGE
 ###########################################################
 
@@ -567,41 +721,49 @@ def render_practice_page():
     st.markdown("**Fill in the missing letters:**")
     st.markdown(f"### {masked}")
 
-    # ---------------- FORM ----------------
-    blanks_inputs = []
-    with st.form("practice_form"):
-        for i, pos in enumerate(blank_indices):
-            correct_letter = current_word[pos]
-            key = f"blank_{index}_{i}"
-            user_letter = st.text_input(
-                f"Letter for blank #{i + 1}",
-                max_chars=1,
-                key=key,
-            )
-            blanks_inputs.append((pos, correct_letter, user_letter))
+    key_prefix = f"word_{word_id}"
 
-        submitted = st.form_submit_button("Check")
-    # --------------------------------------
+    # reset per-word state when switching to a new word
+    if st.session_state.get("active_word_id") != word_id:
+        previous_word_id = st.session_state.get("active_word_id")
+        if previous_word_id is not None:
+            prev_prefix = f"word_{previous_word_id}"
+            for state_key in list(st.session_state.keys()):
+                if isinstance(state_key, str) and state_key.startswith(f"{prev_prefix}_"):
+                    st.session_state.pop(state_key, None)
 
-    # ---------------- PROCESS CHECK ----------------
-    if submitted:
-        st.session_state["checked"] = True
+        for state_key in list(st.session_state.keys()):
+            if isinstance(state_key, str) and state_key.startswith(f"{key_prefix}_"):
+                st.session_state.pop(state_key, None)
+        st.session_state["active_word_id"] = word_id
 
+    user_answer, is_complete = render_masked_word_input(
+        masked_word=masked,
+        correct_word=current_word,
+        key_prefix=key_prefix,
+    )
+
+    submitted_key = f"{key_prefix}_submitted"
+    checked_key = f"{key_prefix}_checked"
+    correct_key = f"{key_prefix}_correct"
+
+    ready_to_submit = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
+
+    # auto-submit once all blanks are filled
+    if ready_to_submit and not st.session_state.get(submitted_key):
         wrong_letters = 0
-        all_correct = True
-
-        for _, correct_letter, user_letter in blanks_inputs:
-            user_val = (user_letter or "").strip().lower()
-            correct_val = (correct_letter or "").strip().lower()
-
-            if user_val != correct_val:
-                all_correct = False
+        for pos in blank_indices:
+            typed_letter = (user_answer[pos: pos + 1] or "").lower()
+            correct_letter = (current_word[pos: pos + 1] or "").lower()
+            if typed_letter != correct_letter:
                 wrong_letters += 1
 
+        all_correct = wrong_letters == 0
 
-        st.session_state["correct"] = all_correct
+        st.session_state[submitted_key] = True
+        st.session_state[checked_key] = True
+        st.session_state[correct_key] = all_correct
 
-        # ---- record attempt ----
         time_taken = int(time.time() - st.session_state.start_time)
         record_attempt(
             user_id=st.session_state.user_id,
@@ -612,10 +774,13 @@ def render_practice_page():
             wrong_letters_count=wrong_letters,
         )
 
-    # ---------------- FEEDBACK + NEXT ----------------
-    if st.session_state.get("checked", False):
+        # rerun to immediately show highlighting feedback
+        st.experimental_rerun()
 
-        if st.session_state.get("correct", False):
+    # ---------------- FEEDBACK + NEXT ----------------
+    if st.session_state.get(checked_key, False):
+
+        if st.session_state.get(correct_key, False):
             st.success("✅ All letters correct! 🎉")
         else:
             st.error(f"❌ Incorrect. The word is **{current_word}**")
@@ -624,16 +789,18 @@ def render_practice_page():
             # Move to next word
             st.session_state.practice_index += 1
 
-            # Reset state flags
-            st.session_state["checked"] = False
-            st.session_state["correct"] = False
-
             # Reset timer
             st.session_state.start_time = time.time()
 
-            # Clean inputs
-            for i in range(len(blank_indices)):
-                st.session_state.pop(f"blank_{index}_{i}", None)
+            # Clean inputs + per-word flags
+            for state_key in list(st.session_state.keys()):
+                if isinstance(state_key, str) and state_key.startswith(f"{key_prefix}_"):
+                    st.session_state.pop(state_key, None)
+
+            st.session_state[checked_key] = False
+            st.session_state[correct_key] = False
+            st.session_state[submitted_key] = False
+            st.session_state["active_word_id"] = None
 
             st.experimental_rerun()
 
