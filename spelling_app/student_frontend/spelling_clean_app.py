@@ -34,6 +34,41 @@ from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQU
 
 
 
+
+def render_masked_word_input(masked_word, correct_word, key_prefix):
+    chars = list(masked_word)
+    user_letters = []
+    all_filled = True
+
+    cols = st.columns(len(chars))
+
+    for i, ch in enumerate(chars):
+        with cols[i]:
+            if ch == "_":
+                key = f"{key_prefix}_{i}"
+                val = st.text_input(
+                    "",
+                    max_chars=1,
+                    key=key,
+                    label_visibility="collapsed",
+                )
+                if not val:
+                    all_filled = False
+                user_letters.append(val.lower() if val else "")
+            else:
+                st.markdown(
+                    f"<div style='padding-top:6px;font-size:20px;font-weight:600'>{ch}</div>",
+                    unsafe_allow_html=True,
+                )
+                user_letters.append(ch)
+
+    user_answer = "".join(user_letters)
+
+    if all_filled:
+        st.session_state[f"{key_prefix}_ready_to_submit"] = True
+
+    return user_answer, all_filled
+
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
     if xp_total >= 2000 and mastery == 100:
@@ -319,160 +354,6 @@ def generate_missing_letter_question(word: str, base_blanks: int = 2, max_blanks
 
     masked_display = "".join(chars)  # VERY IMPORTANT (no spaces)
     return masked_display, indices
-
-
-
-###########################################################
-#  MASKED WORD INPUT RENDERER
-###########################################################
-
-
-def render_masked_word_input(
-    masked_word: str,
-    correct_word: str,
-    key_prefix: str,
-    auto_submit: bool = True,
-):
-    """
-    Renders letter-by-letter inputs for masked spelling words.
-    Returns (user_answer, is_complete).
-    """
-
-    # lightweight CSS for boxes + incorrect highlighting
-    if not st.session_state.get("_masked_input_css_loaded"):
-        st.markdown(
-            """
-            <style>
-            .letter-box {
-                padding: 10px 6px;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-                text-align: center;
-                font-weight: 600;
-                font-size: 18px;
-                background: #fafafa;
-                width: 100%;
-                box-sizing: border-box;
-            }
-            .letter-box.wrong {
-                background: #ffdede;
-                border-color: #f28b82;
-            }
-            .fixed-letter {
-                padding: 10px 6px;
-                font-size: 18px;
-                text-align: center;
-                font-weight: 700;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.session_state["_masked_input_css_loaded"] = True
-
-    chars = list(masked_word or "")
-    correct_word = correct_word or ""
-
-    # ensure focus index exists for backspace navigation
-    focus_key = f"{key_prefix}_focus_index"
-    if focus_key not in st.session_state:
-        # default focus to the first blank
-        try:
-            first_blank = chars.index("_")
-        except ValueError:
-            first_blank = 0
-        st.session_state[focus_key] = first_blank
-
-    submitted_flag = st.session_state.get(f"{key_prefix}_submitted", False)
-
-    cols = st.columns(len(chars)) if chars else []
-    blank_labels = []
-
-    # gather values in order to reconstruct the answer
-    user_chars: list[str] = []
-    blank_inputs: list[tuple[int, str]] = []  # (position, value)
-
-    def _on_change(idx: int, input_key: str):
-        val = st.session_state.get(input_key, "") or ""
-        # keep only the last typed character
-        if len(val) > 1:
-            st.session_state[input_key] = val[-1]
-            val = st.session_state[input_key]
-
-        # backspace navigation (best-effort):
-        if val == "":
-            st.session_state[focus_key] = max(0, idx - 1)
-        else:
-            st.session_state[focus_key] = min(len(chars) - 1, idx + 1)
-
-    for idx, ch in enumerate(chars):
-        if ch != "_":
-            cols[idx].markdown(f"<div class='fixed-letter'>{ch}</div>", unsafe_allow_html=True)
-            user_chars.append(ch)
-            continue
-
-        input_key = f"{key_prefix}_slot_{idx}"
-        label = f"Letter {idx + 1}"
-        blank_labels.append(label)
-
-        if submitted_flag:
-            typed_val = st.session_state.get(input_key, "") or ""
-            is_correct = typed_val.lower() == (correct_word[idx: idx + 1] or "").lower()
-            style_class = "" if is_correct else " wrong"
-            display_letter = typed_val if typed_val else "&nbsp;"
-            cols[idx].markdown(
-                f"<div class='letter-box{style_class}'>{display_letter}</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.text_input(
-                label,
-                key=input_key,
-                max_chars=1,
-                label_visibility="collapsed",
-                on_change=_on_change,
-                args=(idx, input_key),
-            )
-
-        current_val = st.session_state.get(input_key, "") or ""
-        user_chars.append(current_val)
-        blank_inputs.append((idx, current_val))
-
-    # focus handling script (best-effort)
-    if not submitted_flag and blank_labels:
-        focus_idx = min(len(blank_labels) - 1, max(0, st.session_state.get(focus_key, 0)))
-        # map focus idx to the absolute column index of the blank
-        blank_positions = [i for i, ch in enumerate(chars) if ch == "_"]
-        if 0 <= focus_idx < len(blank_positions):
-            abs_idx = blank_positions[focus_idx]
-            focus_label = f"Letter {abs_idx + 1}"
-            st.markdown(
-                f"""
-                <script>
-                const inputs = Array.from(document.querySelectorAll('input[aria-label="{focus_label}"]'));
-                if (inputs.length) {{
-                    const target = inputs[0];
-                    if (document.activeElement !== target) {{
-                        target.focus();
-                        const len = target.value.length;
-                        target.setSelectionRange(len, len);
-                    }}
-                }}
-                </script>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    user_answer = "".join(user_chars)
-    is_complete = all((val or "").strip() for _, val in blank_inputs)
-
-    # auto-submit marker to avoid repeated submissions
-    auto_key = f"{key_prefix}_auto_triggered"
-    if auto_submit and is_complete and not st.session_state.get(auto_key, False):
-        st.session_state[auto_key] = True
-        st.session_state[f"{key_prefix}_ready_to_submit"] = True
-
-    return user_answer, is_complete
 
 
 
@@ -1166,110 +1047,93 @@ def main():
     wid = m_word.get("word_id") or m_word.get("col_0")
     target_word = m_word["word"]
 
-    # Missing-letter transformation
-    def mask(word):
-        vowels = "aeiou"
-        out = ""
-        for c in word:
-            out += "_" if c.lower() in vowels else c
-        return out
 
-# ---------------------------------------------
-# MULTI-BOX SPELLING PRACTICE (FINAL)
-# ---------------------------------------------
-st.subheader("Spell the word:")
+    st.subheader("Spell the word:")
 
-masked_word, blank_indices = generate_question(
-    target_word,
-    selected_lesson_name
-)
-st.code(masked_word, language="text")
+    masked_word, blank_indices = generate_question(
+        target_word,
+        selected_lesson_name
+    )
+    st.code(masked_word, language="text")
 
-key_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{wid}"
+    key_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{wid}"
 
-# Reset per-word state when word changes
-if st.session_state.get("active_word_id") != wid:
-    prev = st.session_state.get("active_word_id")
-    if prev is not None:
-        prev_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{prev}"
+    # Reset state when word changes
+    if st.session_state.get("active_word_id") != wid:
         for k in list(st.session_state.keys()):
-            if isinstance(k, str) and k.startswith(prev_prefix):
+            if isinstance(k, str) and k.startswith("practice_"):
                 st.session_state.pop(k, None)
+        st.session_state["active_word_id"] = wid
 
-    for k in list(st.session_state.keys()):
-        if isinstance(k, str) and k.startswith(key_prefix):
-            st.session_state.pop(k, None)
-
-    st.session_state["active_word_id"] = wid
-
-# Render per-letter inputs
-user_answer, is_complete = render_masked_word_input(
-    masked_word=masked_word,
-    correct_word=target_word,
-    key_prefix=key_prefix,
-    auto_submit=True,
-)
-
-ready = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
-submitted_key = f"{key_prefix}_submitted"
-checked_key = f"{key_prefix}_checked"
-correct_key = f"{key_prefix}_correct"
-
-# ---------------------------------------------
-# AUTO-SUBMIT WHEN LAST BOX IS FILLED
-# ---------------------------------------------
-if ready and not st.session_state.get(submitted_key, False):
-
-    wrong_letters = sum(
-        1 for i in blank_indices
-        if user_answer[i:i+1].lower() != target_word[i:i+1].lower()
+    user_answer, is_complete = render_masked_word_input(
+        masked_word,
+        target_word,
+        key_prefix
     )
 
-    is_correct = (wrong_letters == 0)
+    ready = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
+    submitted_key = f"{key_prefix}_submitted"
+    checked_key = f"{key_prefix}_checked"
+    correct_key = f"{key_prefix}_correct"
 
-    execute(
-        """
-        INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
-        VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
-        """,
-        {
-            "uid": st.session_state["user_id"],
-            "cid": selected_course_id,
-            "lid": selected_lesson_id,
-            "wid": wid,
-            "correct": is_correct,
-        },
-    )
+    if ready and not st.session_state.get(submitted_key, False):
 
-    st.session_state[submitted_key] = True
-    st.session_state[checked_key] = True
-    st.session_state[correct_key] = is_correct
+        wrong_letters = sum(
+            1 for i in blank_indices
+            if user_answer[i:i+1] != target_word[i:i+1]
+        )
+        is_correct = (wrong_letters == 0)
 
-    st.experimental_rerun()
+        execute(
+            """
+            INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
+            VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
+            """,
+            {
+                "uid": st.session_state["user_id"],
+                "cid": selected_course_id,
+                "lid": selected_lesson_id,
+                "wid": wid,
+                "correct": is_correct,
+            },
+        )
 
-# ---------------------------------------------
-# FEEDBACK + NEXT WORD
-# ---------------------------------------------
-if st.session_state.get(checked_key, False):
+        st.session_state[submitted_key] = True
+        st.session_state[checked_key] = True
+        st.session_state[correct_key] = is_correct
 
-    new_mastery = get_lesson_mastery(
-        st.session_state["user_id"],
-        selected_course_id,
-        selected_lesson_id,
-    )
-    st.info(f"Updated Mastery: {new_mastery}%")
-
-    if st.session_state.get(correct_key, False):
-        st.success("🎉 Correct!")
-    else:
-        st.error(f"Incorrect. Correct spelling is: **{target_word}**")
-
-    if st.button("Next Word →", key=f"{key_prefix}_next"):
-        for k in list(st.session_state.keys()):
-            if isinstance(k, str) and k.startswith(key_prefix):
-                st.session_state.pop(k, None)
-        st.session_state["active_word_id"] = None
         st.experimental_rerun()
+
+    if st.session_state.get(checked_key, False):
+
+        new_mastery = get_lesson_mastery(
+            st.session_state["user_id"],
+            selected_course_id,
+            selected_lesson_id,
+        )
+        st.info(f"Updated Mastery: {new_mastery}%")
+
+        feedback_letters = []
+        for idx, ch in enumerate(target_word):
+            typed = user_answer[idx:idx+1]
+            display = typed or ch
+            if idx in blank_indices and (typed or "").lower() != (ch or "").lower():
+                feedback_letters.append(f"<span style='color:red;font-weight:700'>{display}</span>")
+            else:
+                feedback_letters.append(f"<span style='font-weight:700'>{display}</span>")
+        st.markdown(" ".join(feedback_letters), unsafe_allow_html=True)
+
+        if st.session_state.get(correct_key):
+            st.success("🎉 Correct!")
+        else:
+            st.error(f"Incorrect. Correct spelling is: **{target_word}**")
+
+        if st.button("Next Word →", key=f"{key_prefix}_next"):
+            for k in list(st.session_state.keys()):
+                if isinstance(k, str) and k.startswith(key_prefix):
+                    st.session_state.pop(k, None)
+            st.session_state["active_word_id"] = None
+            st.experimental_rerun()
 
 
 if __name__ == "__main__":
