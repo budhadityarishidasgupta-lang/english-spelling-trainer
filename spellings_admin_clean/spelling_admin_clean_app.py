@@ -4,7 +4,6 @@
 # -------------------------------------------------
 
 import sys
-import os
 import streamlit as st
 
 # ---- Force project root for Render ----
@@ -14,6 +13,11 @@ if PROJECT_ROOT not in sys.path:
 
 from shared.db import fetch_all
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+from spelling_app.repository.student_pending_repo import (
+    approve_pending_registration,
+    delete_pending_registration,
+    list_pending_registrations,
+)
 
 
 # -------------------------------------------------
@@ -55,57 +59,158 @@ def create_course(course_name: str):
     return rows[0]["course_id"] if rows else None
 
 
+def rename_course(course_id: int, new_name: str):
+    if not course_id or not new_name.strip():
+        return False
+
+    rows = fetch_all(
+        """
+        UPDATE spelling_courses
+        SET course_name = :name
+        WHERE course_id = :cid
+        RETURNING course_id;
+        """,
+        {"name": new_name.strip(), "cid": course_id},
+    )
+    rows = rows_to_dicts(rows)
+    return bool(rows)
+
+
+def delete_course(course_id: int):
+    if not course_id:
+        return False
+
+    fetch_all(
+        """
+        DELETE FROM spelling_courses
+        WHERE course_id = :cid;
+        """,
+        {"cid": course_id},
+    )
+    return True
+
+
+def fetch_active_students():
+    rows = fetch_all(
+        """
+        SELECT user_id, name, email
+        FROM users
+        WHERE role = 'student'
+        AND is_active = true
+        ORDER BY name;
+        """
+    )
+    return rows_to_dicts(rows)
+
+
+def fetch_student_course_map():
+    rows = fetch_all(
+        """
+        SELECT
+            u.user_id,
+            COALESCE(string_agg(c.course_name, ', ' ORDER BY c.course_name), '') AS assigned_courses
+        FROM users u
+        LEFT JOIN spelling_enrollments e ON e.user_id = u.user_id
+        LEFT JOIN spelling_courses c ON c.course_id = e.course_id
+        WHERE u.role = 'student' AND u.is_active = true
+        GROUP BY u.user_id;
+        """
+    )
+    return {r["user_id"]: r.get("assigned_courses", "") for r in rows_to_dicts(rows)}
+
+
+def assign_course_to_student(user_id: int, course_id: int):
+    if not user_id or not course_id:
+        return False
+
+    fetch_all(
+        """
+        INSERT INTO spelling_enrollments (user_id, course_id)
+        VALUES (:uid, :cid)
+        ON CONFLICT DO NOTHING;
+        """,
+        {"uid": user_id, "cid": course_id},
+    )
+    return True
+
+
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
 
-def render_csv_upload():
-    st.header("Spelling Admin – CSV Upload")
-
-    st.subheader("1️⃣ Select or Create Course")
+def render_course_management():
+    st.header("Course Management")
 
     courses = get_all_courses()
     course_map = {c["course_name"]: c["course_id"] for c in courses}
 
-    col1, col2 = st.columns([2, 1])
+    selected_course_name = None
+    selected_course_id = None
+    if course_map:
+        selected_course_name = st.selectbox(
+            "Existing Courses",
+            list(course_map.keys()),
+        )
+        selected_course_id = course_map.get(selected_course_name)
+    else:
+        st.info("No courses yet.")
 
-    with col1:
-        if course_map:
-            course_name = st.selectbox(
-                "Existing Courses",
-                list(course_map.keys()),
-            )
-            course_id = course_map[course_name]
-        else:
-            st.info("No courses yet.")
-            course_id = None
+    new_course_name = st.text_input("New Course Name")
 
-    with col2:
-        with st.form("create_course", clear_on_submit=True):
-            new_course = st.text_input("New Course Name")
-            submitted = st.form_submit_button("Create")
-            if submitted and new_course.strip():
-                cid = create_course(new_course)
+    action_cols = st.columns(3)
+    with action_cols[0]:
+        if st.button("Create"):
+            if not new_course_name.strip():
+                st.error("Please enter a course name to create.")
+            else:
+                cid = create_course(new_course_name)
                 if cid:
-                    st.success(f"Course '{new_course}' created.")
+                    st.success(f"Course '{new_course_name}' created.")
+                    st.experimental_rerun()
                 else:
                     st.error("Failed to create course.")
 
-    st.divider()
-    st.subheader("2️⃣ Upload Spelling CSV")
+    with action_cols[1]:
+        if st.button("Rename"):
+            if not selected_course_id:
+                st.error("Select a course to rename.")
+            elif not new_course_name.strip():
+                st.error("Enter a new course name.")
+            else:
+                if rename_course(selected_course_id, new_course_name):
+                    st.success(f"Course renamed to '{new_course_name}'.")
+                    st.experimental_rerun()
+                else:
+                    st.error("Course rename failed.")
+
+    with action_cols[2]:
+        confirm_delete = st.checkbox("Confirm delete")
+        if st.button("Delete"):
+            if not selected_course_id:
+                st.error("Select a course to delete.")
+            elif not confirm_delete:
+                st.warning("Please confirm deletion before proceeding.")
+            else:
+                if delete_course(selected_course_id):
+                    st.success(f"Course '{selected_course_name}' deleted.")
+                    st.experimental_rerun()
+                else:
+                    st.error("Could not delete course.")
+
+    st.markdown("## Upload Spelling CSV")
 
     uploaded_file = st.file_uploader(
         "Upload CSV (word, pattern, pattern_code, level, lesson_name, example_sentence)",
         type=["csv"],
     )
 
-    if uploaded_file and not course_id:
+    if uploaded_file and not selected_course_id:
         st.warning("Please select or create a course first.")
         return
 
-    if uploaded_file and course_id:
+    if uploaded_file and selected_course_id:
         if st.button("Process CSV"):
-            result = process_spelling_csv(uploaded_file, course_id)
+            result = process_spelling_csv(uploaded_file, selected_course_id)
 
             if result.get("status") == "error":
                 st.error(result.get("error"))
@@ -120,9 +225,6 @@ def render_csv_upload():
             if result["patterns"]:
                 st.write("Patterns:", ", ".join(result["patterns"]))
 
-    # -------------------------------------------------
-    # Debug panel (IMPORTANT)
-    # -------------------------------------------------
     with st.expander("Debug DB Status"):
         words = fetch_all("SELECT COUNT(*) AS c FROM spelling_words")
         lessons = fetch_all("SELECT COUNT(*) AS c FROM spelling_lessons")
@@ -150,17 +252,96 @@ def render_csv_upload():
         st.write(rows_to_dicts(sample))
 
 
+def render_student_management():
+    st.header("Students")
+
+    st.subheader("Active Students")
+    students = fetch_active_students()
+    course_lookup = get_all_courses()
+    course_options = {c["course_name"]: c["course_id"] for c in course_lookup}
+    assigned_map = fetch_student_course_map()
+
+    if not students:
+        st.info("No active students found.")
+    else:
+        for student in students:
+            cols = st.columns([2, 3, 3, 3])
+            cols[0].write(student.get("name"))
+            cols[1].write(student.get("email"))
+            cols[2].write(assigned_map.get(student.get("user_id"), ""))
+
+            with cols[3]:
+                selected_course = st.selectbox(
+                    "Assign Course",
+                    list(course_options.keys()) if course_options else ["No courses"],
+                    key=f"assign_select_{student.get('user_id')}",
+                )
+                if st.button(
+                    "Assign",
+                    key=f"assign_btn_{student.get('user_id')}",
+                    disabled=not course_options,
+                ):
+                    course_id = course_options.get(selected_course)
+                    if course_id:
+                        assign_course_to_student(student.get("user_id"), course_id)
+                        st.success("Course assigned.")
+
+    st.subheader("Pending Registrations")
+    pending_rows = list_pending_registrations()
+
+    if not pending_rows:
+        st.info("No pending registrations.")
+    else:
+        for pending in pending_rows:
+            cols = st.columns([2, 3, 2, 2, 2])
+            cols[0].write(pending.get("student_name"))
+            cols[1].write(pending.get("email"))
+            cols[2].write(pending.get("requested_at"))
+
+            with cols[3]:
+                if st.button(
+                    "Approve",
+                    key=f"approve_{pending.get('id')}",
+                ):
+                    result = approve_pending_registration(pending.get("id"))
+                    if result.get("error"):
+                        st.error(result["error"])
+                    else:
+                        st.success("Registration approved and student created.")
+                        st.experimental_rerun()
+
+            with cols[4]:
+                confirm_reject = st.checkbox(
+                    "Confirm", key=f"reject_confirm_{pending.get('id')}"
+                )
+                if st.button(
+                    "Reject",
+                    key=f"reject_{pending.get('id')}",
+                ):
+                    if not confirm_reject:
+                        st.warning("Confirm rejection before proceeding.")
+                    else:
+                        delete_pending_registration(pending.get("id"))
+                        st.success("Pending registration rejected.")
+                        st.experimental_rerun()
+
+
 def main():
     st.set_page_config(
         page_title="WordSprint – Spelling Admin",
         layout="wide",
     )
 
-    st.sidebar.title("Admin")
-    section = st.sidebar.radio("Section", ["CSV Upload"])
+    admin_section = st.sidebar.radio(
+        "Admin Sections",
+        ["Course Management", "Students"],
+        index=0,
+    )
 
-    if section == "CSV Upload":
-        render_csv_upload()
+    if admin_section == "Course Management":
+        render_course_management()
+    elif admin_section == "Students":
+        render_student_management()
 
 
 if __name__ == "__main__":
