@@ -35,38 +35,79 @@ from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQU
 
 
 
-def render_masked_word_input(masked_word, correct_word, key_prefix):
+def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indices):
     chars = list(masked_word)
-    user_letters = []
-    all_filled = True
+    input_state_key = f"{key_prefix}_letters"
+    active_index_key = f"{key_prefix}_active_index"
 
+    if input_state_key not in st.session_state:
+        initial_letters = []
+        for idx, ch in enumerate(chars):
+            if ch == "_":
+                initial_letters.append("")
+            else:
+                initial_letters.append(ch)
+        st.session_state[input_state_key] = initial_letters
+
+    if active_index_key not in st.session_state:
+        st.session_state[active_index_key] = min(blank_indices) if blank_indices else 0
+
+    def set_active_index(new_index: int):
+        st.session_state[active_index_key] = new_index
+
+    def update_ready_flag(letters_snapshot):
+        if all((letters_snapshot[i] or "") for i in blank_indices):
+            st.session_state[f"{key_prefix}_ready_to_submit"] = True
+
+    def on_letter_change(idx: int):
+        field_key = f"{key_prefix}_{idx}"
+        letters = list(st.session_state.get(input_state_key, []))
+        prev_val = letters[idx]
+        new_val = (st.session_state.get(field_key) or "").strip()[:1]
+        letters[idx] = new_val
+        st.session_state[input_state_key] = letters
+
+        if prev_val and not new_val:
+            previous_blanks = [b for b in blank_indices if b < idx]
+            if previous_blanks:
+                set_active_index(max(previous_blanks))
+        elif new_val:
+            next_blanks = [b for b in blank_indices if b > idx]
+            if next_blanks:
+                set_active_index(min(next_blanks))
+        update_ready_flag(letters)
+
+    letters = st.session_state.get(input_state_key, list(chars))
     cols = st.columns(len(chars))
 
     for i, ch in enumerate(chars):
         with cols[i]:
             if ch == "_":
-                key = f"{key_prefix}_{i}"
+                field_key = f"{key_prefix}_{i}"
+                if field_key not in st.session_state:
+                    st.session_state[field_key] = letters[i]
                 val = st.text_input(
                     "",
                     max_chars=1,
-                    key=key,
+                    key=field_key,
                     label_visibility="collapsed",
+                    autofocus=st.session_state.get(active_index_key) == i,
+                    on_change=on_letter_change,
+                    args=(i,),
                 )
-                if not val:
-                    all_filled = False
-                user_letters.append(val.lower() if val else "")
+                letters[i] = val.lower() if val else ""
             else:
                 st.markdown(
                     f"<div style='padding-top:6px;font-size:20px;font-weight:600'>{ch}</div>",
                     unsafe_allow_html=True,
                 )
-                user_letters.append(ch)
+                letters[i] = ch
 
-    user_answer = "".join(user_letters)
+    st.session_state[input_state_key] = letters
+    user_answer = "".join(letters)
+    update_ready_flag(letters)
 
-    if all_filled:
-        st.session_state[f"{key_prefix}_ready_to_submit"] = True
-
+    all_filled = all((letters[i] or "") for i in blank_indices)
     return user_answer, all_filled
 
 def compute_badge(xp_total: int, mastery: float):
@@ -622,6 +663,7 @@ def render_practice_page():
         masked_word=masked,
         correct_word=current_word,
         key_prefix=key_prefix,
+        blank_indices=blank_indices,
     )
 
     submitted_key = f"{key_prefix}_submitted"
@@ -655,16 +697,105 @@ def render_practice_page():
             wrong_letters_count=wrong_letters,
         )
 
+        if not all_correct:
+            execute(
+                """
+                INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
+                VALUES(:uid, :cid, :lid, :wid, now())
+                ON CONFLICT DO NOTHING;
+                """,
+                {
+                    "uid": st.session_state["user_id"],
+                    "cid": cid,
+                    "lid": st.session_state.get("selected_lesson_id", 0) or 0,
+                    "wid": word_id,
+                },
+            )
+
         # rerun to immediately show highlighting feedback
         st.experimental_rerun()
 
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.get(checked_key, False):
 
+        new_mastery = get_lesson_mastery(
+            st.session_state["user_id"],
+            cid,
+            st.session_state.get("selected_lesson_id", 0) or 0,
+        )
+
+        encouragements = [
+            "🎉 Amazing work! You spelled it correctly!<br>Keep the streak going 💪🔥",
+            "🌟 Stellar! Every letter was perfect!<br>You’re on fire 🔥",
+            "👏 Nailed it! That spelling was spot on!<br>Keep climbing 🚀",
+        ]
+
         if st.session_state.get(correct_key, False):
-            st.success("✅ All letters correct! 🎉")
+            success_message = random.choice(encouragements)
+            st.markdown(
+                f"""
+                <div style='
+                    background-color: #28a745;
+                    color: white;
+                    font-size: 18px;
+                    font-weight: 700;
+                    padding: 14px 12px;
+                    border-radius: 10px;
+                    text-align: center;
+                '>
+                    {success_message}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption(f"Mastery now at {new_mastery}%")
         else:
-            st.error(f"❌ Incorrect. The word is **{current_word}**")
+            st.markdown(
+                f"""
+                <div style='
+                    background-color: #dc3545;
+                    color: white;
+                    font-size: 18px;
+                    font-weight: 700;
+                    padding: 14px 12px;
+                    border-radius: 10px;
+                    text-align: center;
+                '>
+                    ❌ Not quite right<br>
+                    The correct spelling is <strong>{current_word}</strong><br>
+                    This word has been added to your Weak Words list for practice 🧠
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption(f"Mastery now at {new_mastery}%")
+
+        feedback_letters = []
+        for idx, ch in enumerate(current_word):
+            typed = user_answer[idx:idx+1]
+            is_blank = idx in blank_indices
+            if is_blank and typed:
+                if typed.lower() == (ch or "").lower():
+                    feedback_letters.append(
+                        f"<span style='background:#28a745;color:white;padding:6px 8px;border-radius:6px;font-weight:700'>{typed}</span>"
+                    )
+                else:
+                    feedback_letters.append(
+                        f"<span style='background:#dc3545;color:white;padding:6px 8px;border-radius:6px;font-weight:700'>{typed}</span>"
+                    )
+            elif is_blank:
+                feedback_letters.append(
+                    f"<span style='padding:6px 8px;border-radius:6px;border:1px solid #ccc;font-weight:700'>{ch}</span>"
+                )
+            else:
+                feedback_letters.append(
+                    f"<span style='padding:6px 8px;border-radius:6px;font-weight:700'>{ch}</span>"
+                )
+
+        st.markdown(
+            f"<div style='margin:12px 0;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap'>{''.join(feedback_letters)}</div>",
+            unsafe_allow_html=True,
+        )
 
         if st.button("Next →"):
             # Move to next word
@@ -1068,7 +1199,8 @@ def main():
     user_answer, is_complete = render_masked_word_input(
         masked_word,
         target_word,
-        key_prefix
+        key_prefix,
+        blank_indices,
     )
 
     ready = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
@@ -1114,24 +1246,28 @@ def main():
 
         # CORRECT ANSWER
         if st.session_state.get(correct_key, False):
+            encouragements = [
+                "🎉 Amazing work! You spelled it correctly!<br>Keep the streak going 💪🔥",
+                "🌟 Stellar! Every letter was perfect!<br>You’re on fire 🔥",
+                "👏 Nailed it! That spelling was spot on!<br>Keep climbing 🚀",
+            ]
             st.markdown(
-                """
+                f"""
                 <div style='
                     background-color: #28a745;
                     color: white;
                     font-size: 18px;
-                    font-weight: bold;
-                    padding: 12px;
-                    border-radius: 8px;
+                    font-weight: 700;
+                    padding: 14px 12px;
+                    border-radius: 10px;
                     text-align: center;
                 '>
-                    🎉 **Great job!** That’s exactly right!  
-                    Keep it going! 💪
+                    {random.choice(encouragements)}
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.info(f"Updated Mastery: {new_mastery}%")
+            st.caption(f"Mastery now at {new_mastery}%")
 
         # INCORRECT ANSWER
         else:
@@ -1156,29 +1292,46 @@ def main():
                     background-color: #dc3545;
                     color: white;
                     font-size: 18px;
-                    font-weight: bold;
-                    padding: 12px;
-                    border-radius: 8px;
+                    font-weight: 700;
+                    padding: 14px 12px;
+                    border-radius: 10px;
                     text-align: center;
                 '>
-                    ❌ **Oops!** The correct spelling is: **{target_word}**  
-                    This word will be added to your **Weak Words** list for extra practice 🧠
+                    ❌ Not quite right<br>
+                    The correct spelling is <strong>{target_word}</strong><br>
+                    This word has been added to your Weak Words list for practice 🧠
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            st.info(f"Updated Mastery: {new_mastery}%")
+            st.caption(f"Mastery now at {new_mastery}%")
 
         feedback_letters = []
         for idx, ch in enumerate(target_word):
             typed = user_answer[idx:idx+1]
             display = typed or ch
-            if idx in blank_indices and (typed or "").lower() != (ch or "").lower():
-                feedback_letters.append(f"<span style='color:red;font-weight:700'>{display}</span>")
+            if idx in blank_indices and typed:
+                if (typed or "").lower() == (ch or "").lower():
+                    feedback_letters.append(
+                        f"<span style='background:#28a745;color:white;padding:6px 8px;border-radius:6px;font-weight:700'>{display}</span>"
+                    )
+                else:
+                    feedback_letters.append(
+                        f"<span style='background:#dc3545;color:white;padding:6px 8px;border-radius:6px;font-weight:700'>{display}</span>"
+                    )
+            elif idx in blank_indices:
+                feedback_letters.append(
+                    f"<span style='padding:6px 8px;border-radius:6px;border:1px solid #ccc;font-weight:700'>{display}</span>"
+                )
             else:
-                feedback_letters.append(f"<span style='font-weight:700'>{display}</span>")
-        st.markdown(" ".join(feedback_letters), unsafe_allow_html=True)
+                feedback_letters.append(
+                    f"<span style='padding:6px 8px;border-radius:6px;font-weight:700'>{display}</span>"
+                )
+        st.markdown(
+            f"<div style='margin:12px 0;text-align:center;display:flex;gap:8px;justify-content:center;flex-wrap:wrap'>{''.join(feedback_letters)}</div>",
+            unsafe_allow_html=True,
+        )
 
         if st.button("Next Word →", key=f"{key_prefix}_next"):
             for k in list(st.session_state.keys()):
