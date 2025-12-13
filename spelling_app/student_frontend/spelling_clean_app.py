@@ -92,7 +92,6 @@ def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indice
                     max_chars=1,
                     key=field_key,
                     label_visibility="collapsed",
-                    autofocus=st.session_state.get(active_index_key) == i,
                     on_change=on_letter_change,
                     args=(i,),
                 )
@@ -486,6 +485,27 @@ def render_mode_selector_sidebar():
         # When changing mode, send user back to dashboard for a clean flow.
         st.session_state.page = "dashboard"
         st.experimental_rerun()
+
+
+def render_mode_cards():
+    st.markdown("### 🎯 What would you like to do today?")
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        if st.button("✏️ Practice", use_container_width=True):
+            st.session_state.mode = "Practice"
+
+    with c2:
+        if st.button("🧠 Weak Words", use_container_width=True):
+            st.session_state.mode = "Weak Words"
+
+    with c3:
+        if st.button("📆 Daily-5", use_container_width=True):
+            st.session_state.mode = "Daily-5"
+
+    with c4:
+        if st.button("📊 Dashboard", use_container_width=True):
+            st.session_state.mode = "Dashboard"
 
 
 ###########################################################
@@ -1188,6 +1208,7 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
             st.markdown("#### 🪨 Weak Words Summary")
             st.metric("Weak Words", len(weak_word_ids))
             if st.button("Practice Weak Words"):
+                st.session_state.mode = "Weak Words"
                 st.session_state.practice_mode = "Weak Words"
                 st.session_state.page = "dashboard"
                 st.experimental_rerun()
@@ -1205,168 +1226,18 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-###########################################################
-#  MAIN APP CONTROLLER
-###########################################################
-
-def main():
-    inject_student_css()
-    initialize_session_state(st)
-
-    # NOT LOGGED IN → show Login + Registration tabs
-    if not st.session_state.is_logged_in:
-        tab_login, tab_register = st.tabs(["Login", "New Registration"])
-
-        with tab_login:
-            render_login_page()
-
-        with tab_register:
-            render_registration_page()
-
-        return  # stop here when logged out
-
-    # LOGGED IN
-    # Sidebar content: user and logout
-    st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
-    if st.sidebar.button("Logout"):
-        logout(st)
-        st.experimental_rerun()
-
-    st.sidebar.title("📚 My Spelling Courses")
-
-    # XP & streak header (computed from attempts)
-    user_id = st.session_state.get("user_id")
-    if user_id:
-        xp_total, streak = get_xp_and_streak(user_id)
-        st.sidebar.metric("⭐ XP", xp_total)
-        st.sidebar.metric("🔥 Streak (days)", streak)
-
-    # 1) Load student courses
-    courses = safe_rows(
-        fetch_all(
-            """
-            SELECT c.course_id, c.course_name
-            FROM spelling_courses c
-            JOIN spelling_enrollments e ON e.course_id = c.course_id
-            WHERE e.user_id = :uid
-            ORDER BY c.course_name
-            """,
-            {"uid": st.session_state["user_id"]},
-        )
-    )
-
-    if not courses:
-        st.sidebar.warning("No courses assigned.")
-        return
-
-    course_map = {
-        c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
-        for c in courses
-    }
-    selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
-    selected_course_id = course_map[selected_course_name]
-
-    # 2) Load lessons (patterns)
-    lessons = safe_rows(fetch_all("""
-        SELECT lesson_id, lesson_name
-        FROM spelling_lessons
-        WHERE course_id = :cid
-        ORDER BY lesson_name
-    """, {"cid": selected_course_id}))
-
-    if not lessons:
-        st.sidebar.info("No lessons found.")
-        return
-
-    lesson_map = {}
-    mastery_map = {}
-    for l in lessons:
-        lname = l.get("lesson_name") or l.get("col_1")
-        lid = l.get("lesson_id") or l.get("col_0")
-        mastery = get_lesson_mastery(
-            user_id=st.session_state["user_id"],
-            course_id=selected_course_id,
-            lesson_id=lid
-        )
-        lesson_map[lname] = lid
-        mastery_map[lname] = mastery
-
-    # sidebar with mastery
-    st.sidebar.markdown("### 📘 Lessons (Patterns)")
-    for lname in lesson_map.keys():
-        st.sidebar.write(f"**{lname}** — {mastery_map[lname]}%")
-    selected_lesson_name = st.sidebar.radio("Select Pattern", list(lesson_map.keys()))
-    selected_lesson_id = lesson_map[selected_lesson_name]
-
-    # ---------------------------------------------
-    # FETCH WORDS FOR THIS LESSON
-    # ---------------------------------------------
-    words = safe_rows(
-        fetch_all(
-            """
-            SELECT w.word_id, w.word, w.example_sentence, w.level
-            FROM spelling_words w
-            JOIN spelling_lesson_items li ON li.word_id = w.word_id
-            WHERE li.lesson_id = :lid
-            ORDER BY w.word
-            """,
-            {"lid": selected_lesson_id},
-        )
-    )
-
-    signals_map = get_cached_word_signals(
-        user_id=st.session_state["user_id"],
-        course_id=selected_course_id,
-        lesson_id=selected_lesson_id,
-    )
-    difficulty_map = build_difficulty_map(words, signals_map)
-    weak_word_ids = get_weak_word_ids(difficulty_map, signals_map)
-
-    mastery = mastery_map[selected_lesson_name]
-    xp_total, streak = get_xp_and_streak(st.session_state["user_id"])
-    badge = compute_badge(xp_total, mastery)
-
-    st.header(f"Practice: {selected_lesson_name}  {badge}")
-    st.progress(mastery / 100)
-    st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
-
-    render_learning_dashboard(
-        user_id=st.session_state["user_id"],
-        course_id=selected_course_id,
-        xp_total=xp_total,
-        streak=streak,
-        mastery_map=mastery_map,
-        difficulty_map=difficulty_map,
-        weak_word_ids=weak_word_ids,
-    )
-
-    # ---------------------------------------------
-    # MODE SELECTION
-    # ---------------------------------------------
-    mode_options = ["Practice", "Weak Words", "Daily-5"]
-    current_mode = st.session_state.get("practice_mode", "Practice")
-    mode_index = mode_options.index(current_mode) if current_mode in mode_options else 0
-    mode = st.radio("Select Mode:", mode_options, horizontal=True, index=mode_index)
-    st.session_state.practice_mode = mode
-
-    # ---------------------------------------------
-    # WEAK WORDS MODE
-    # ---------------------------------------------
+def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_map: dict,
+                         weak_word_ids: set, selected_course_id: int, selected_lesson_id: int,
+                         selected_lesson_name: str):
     if mode == "Weak Words":
         filtered = [w for w in words if _word_id(w) in weak_word_ids]
         words = filtered
         if not filtered:
             st.info("You have no weak words yet!")
 
-    # ---------------------------------------------
-    # DAILY 5 MODE
-    # ---------------------------------------------
     if mode == "Daily-5":
         words = select_daily_five(words, difficulty_map, signals_map, weak_word_ids)
 
-    # ---------------------------------------------
-    # PICK WORD
-    # ---------------------------------------------
     if not words:
         st.warning("No words available to practice.")
         return
@@ -1388,7 +1259,6 @@ def main():
     wid = m_word.get("word_id") or m_word.get("col_0")
     target_word = m_word["word"]
     st.session_state["last_word_id"] = wid
-
 
     st.subheader("Spell the word:")
 
@@ -1550,6 +1420,191 @@ def main():
                     st.session_state.pop(k, None)
             st.session_state["active_word_id"] = None
             st.experimental_rerun()
+
+
+###########################################################
+#  MAIN APP CONTROLLER
+###########################################################
+
+def main():
+    inject_student_css()
+    initialize_session_state(st)
+
+    if "mode" not in st.session_state:
+        st.session_state.mode = "Practice"
+
+    # NOT LOGGED IN → show Login + Registration tabs
+    if not st.session_state.is_logged_in:
+        tab_login, tab_register = st.tabs(["Login", "New Registration"])
+
+        with tab_login:
+            render_login_page()
+
+        with tab_register:
+            render_registration_page()
+
+        return  # stop here when logged out
+
+    # LOGGED IN
+    # Sidebar content: user and logout
+    st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
+    if st.sidebar.button("Logout"):
+        logout(st)
+        st.experimental_rerun()
+
+    st.sidebar.title("📚 My Spelling Courses")
+
+    # XP & streak header (computed from attempts)
+    user_id = st.session_state.get("user_id")
+    if user_id:
+        xp_total, streak = get_xp_and_streak(user_id)
+        st.sidebar.metric("⭐ XP", xp_total)
+        st.sidebar.metric("🔥 Streak (days)", streak)
+
+    # 1) Load student courses
+    courses = safe_rows(
+        fetch_all(
+            """
+            SELECT c.course_id, c.course_name
+            FROM spelling_courses c
+            JOIN spelling_enrollments e ON e.course_id = c.course_id
+            WHERE e.user_id = :uid
+            ORDER BY c.course_name
+            """,
+            {"uid": st.session_state["user_id"]},
+        )
+    )
+
+    if not courses:
+        st.sidebar.warning("No courses assigned.")
+        return
+
+    course_map = {
+        c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
+        for c in courses
+    }
+    selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
+    selected_course_id = course_map[selected_course_name]
+
+    # 2) Load lessons (patterns)
+    lessons = safe_rows(fetch_all("""
+        SELECT lesson_id, lesson_name
+        FROM spelling_lessons
+        WHERE course_id = :cid
+        ORDER BY lesson_name
+    """, {"cid": selected_course_id}))
+
+    if not lessons:
+        st.sidebar.info("No lessons found.")
+        return
+
+    lesson_map = {}
+    mastery_map = {}
+    for l in lessons:
+        lname = l.get("lesson_name") or l.get("col_1")
+        lid = l.get("lesson_id") or l.get("col_0")
+        mastery = get_lesson_mastery(
+            user_id=st.session_state["user_id"],
+            course_id=selected_course_id,
+            lesson_id=lid
+        )
+        lesson_map[lname] = lid
+        mastery_map[lname] = mastery
+
+    # sidebar with mastery
+    st.sidebar.markdown("### 📘 Lessons (Patterns)")
+    for lname in lesson_map.keys():
+        st.sidebar.write(f"**{lname}** — {mastery_map[lname]}%")
+    selected_lesson_name = st.sidebar.radio("Select Pattern", list(lesson_map.keys()))
+    selected_lesson_id = lesson_map[selected_lesson_name]
+
+    # ---------------------------------------------
+    # FETCH WORDS FOR THIS LESSON
+    # ---------------------------------------------
+    words = safe_rows(
+        fetch_all(
+            """
+            SELECT w.word_id, w.word, w.example_sentence, w.level
+            FROM spelling_words w
+            JOIN spelling_lesson_items li ON li.word_id = w.word_id
+            WHERE li.lesson_id = :lid
+            ORDER BY w.word
+            """,
+            {"lid": selected_lesson_id},
+        )
+    )
+
+    signals_map = get_cached_word_signals(
+        user_id=st.session_state["user_id"],
+        course_id=selected_course_id,
+        lesson_id=selected_lesson_id,
+    )
+    difficulty_map = build_difficulty_map(words, signals_map)
+    weak_word_ids = get_weak_word_ids(difficulty_map, signals_map)
+
+    mastery = mastery_map[selected_lesson_name]
+    xp_total, streak = get_xp_and_streak(st.session_state["user_id"])
+    badge = compute_badge(xp_total, mastery)
+
+    st.header(f"{selected_lesson_name}  {badge}")
+    st.progress(mastery / 100)
+    st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
+
+    render_mode_cards()
+
+    if st.session_state.mode == "Dashboard":
+        render_learning_dashboard(
+            user_id=st.session_state["user_id"],
+            course_id=selected_course_id,
+            xp_total=xp_total,
+            streak=streak,
+            mastery_map=mastery_map,
+            difficulty_map=difficulty_map,
+            weak_word_ids=weak_word_ids,
+        )
+        return
+
+    elif st.session_state.mode == "Practice":
+        st.session_state.practice_mode = "Practice"
+        render_practice_mode(
+            mode="Practice",
+            words=words,
+            difficulty_map=difficulty_map,
+            signals_map=signals_map,
+            weak_word_ids=weak_word_ids,
+            selected_course_id=selected_course_id,
+            selected_lesson_id=selected_lesson_id,
+            selected_lesson_name=selected_lesson_name,
+        )
+        return
+
+    elif st.session_state.mode == "Weak Words":
+        st.session_state.practice_mode = "Weak Words"
+        render_practice_mode(
+            mode="Weak Words",
+            words=words,
+            difficulty_map=difficulty_map,
+            signals_map=signals_map,
+            weak_word_ids=weak_word_ids,
+            selected_course_id=selected_course_id,
+            selected_lesson_id=selected_lesson_id,
+            selected_lesson_name=selected_lesson_name,
+        )
+        return
+
+    elif st.session_state.mode == "Daily-5":
+        st.session_state.practice_mode = "Daily-5"
+        render_practice_mode(
+            mode="Daily-5",
+            words=words,
+            difficulty_map=difficulty_map,
+            signals_map=signals_map,
+            weak_word_ids=weak_word_ids,
+            selected_course_id=selected_course_id,
+            selected_lesson_id=selected_lesson_id,
+            selected_lesson_name=selected_lesson_name,
+        )
+        return
 
 
 if __name__ == "__main__":
