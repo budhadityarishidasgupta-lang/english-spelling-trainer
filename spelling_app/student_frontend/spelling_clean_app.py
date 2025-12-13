@@ -707,72 +707,54 @@ def render_practice_page():
     checked_key = f"{key_prefix}_checked"
     correct_key = f"{key_prefix}_correct"
 
-    ready_to_submit = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
+    if submitted_key not in st.session_state:
+        st.session_state[submitted_key] = False
 
-    # auto-submit once all blanks are filled
-    if ready_to_submit and not st.session_state.get(submitted_key):
-        wrong_letters = 0
-        for pos in blank_indices:
-            typed_letter = (user_answer[pos: pos + 1] or "").lower()
-            correct_letter = (current_word[pos: pos + 1] or "").lower()
-            if typed_letter != correct_letter:
-                wrong_letters += 1
-
-        all_correct = wrong_letters == 0
-
-        st.session_state[submitted_key] = True
-        st.session_state[checked_key] = True
-        st.session_state[correct_key] = all_correct
-
-        time_taken = int(time.time() - st.session_state.start_time)
-        record_attempt(
-            user_id=st.session_state.user_id,
-            word_id=word_id,
-            correct=all_correct,
-            time_taken=time_taken,
-            blanks_count=len(blank_indices),
-            wrong_letters_count=wrong_letters,
-        )
-
-        if not all_correct:
-            execute(
-                """
-                INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
-                VALUES(:uid, :cid, :lid, :wid, now())
-                ON CONFLICT DO NOTHING;
-                """,
-                {
-                    "uid": st.session_state["user_id"],
-                    "cid": cid,
-                    "lid": st.session_state.get("selected_lesson_id", 0) or 0,
-                    "wid": word_id,
-                },
+    if not st.session_state[submitted_key]:
+        if st.button("✅ Submit", key=f"{key_prefix}_submit"):
+            wrong_letters = sum(
+                1 for i in blank_indices
+                if user_answer[i:i+1].lower() != current_word[i:i+1].lower()
             )
 
-        # rerun to immediately show highlighting feedback
-        st.experimental_rerun()
+            is_correct = (wrong_letters == 0)
+
+            record_attempt(
+                user_id=st.session_state.user_id,
+                word_id=word_id,
+                correct=is_correct,
+                time_taken=int(time.time() - st.session_state.start_time),
+                blanks_count=len(blank_indices),
+                wrong_letters_count=wrong_letters,
+            )
+
+            if not is_correct:
+                execute(
+                    """
+                    INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
+                    VALUES(:uid, :cid, :lid, :wid, now())
+                    ON CONFLICT DO NOTHING;
+                    """,
+                    {
+                        "uid": st.session_state["user_id"],
+                        "cid": cid,
+                        "lid": st.session_state.get("selected_lesson_id", 0) or 0,
+                        "wid": word_id,
+                    },
+                )
+
+            st.session_state[submitted_key] = True
+            st.session_state[checked_key] = True
+            st.session_state[correct_key] = is_correct
+
+            st.experimental_rerun()
 
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.get(checked_key, False):
 
-        new_mastery = get_lesson_mastery(
-            st.session_state["user_id"],
-            cid,
-            st.session_state.get("selected_lesson_id", 0) or 0,
-        )
-        points_earned = POINTS_PER_CORRECT if st.session_state.get(correct_key, False) else 0
-        badge_name = (
-            st.session_state.get("badge")
-            or st.session_state.get("current_badge")
-            or st.session_state.get("badge_name")
-        )
-        badge_line = f"🏅 {badge_name} progress updated" if badge_name else "🏅 Badge Progress Updated"
-
         if st.session_state.get(correct_key, False):
-            message = random.choice(SUCCESS_MESSAGES)
-
             st.markdown(
-                f"""
+                """
                 <div style="
                     background: linear-gradient(135deg, #16a34a, #22c55e);
                     color: white;
@@ -782,19 +764,14 @@ def render_practice_page():
                     font-size: 18px;
                     font-weight: 700;
                     margin-top: 12px;
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
                 ">
-                    {message}<br><br>
-                    ⭐ <strong>+{points_earned} XP</strong><br>
-                    {badge_line}
+                    🎉 Fantastic! You got it right!<br><br>
+                    ⭐ +10 XP & 🏅 Badge progress updated
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption(f"Mastery now at {new_mastery}%")
         else:
-            message = random.choice(ENCOURAGEMENT_MESSAGES)
-
             st.markdown(
                 f"""
                 <div style="
@@ -806,18 +783,14 @@ def render_practice_page():
                     font-size: 17px;
                     font-weight: 600;
                     margin-top: 12px;
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
                 ">
                     ❌ Not quite right — and that’s okay!<br><br>
-                    {message}<br><br>
-                    📌 This word has been added to <strong>Weak Words</strong><br>
-                    ⭐ <strong>0 XP this time — keep trying!</strong><br>
-                    {badge_line}
+                    The correct spelling is <strong>{current_word}</strong><br>
+                    📌 Added to Weak Words for practice
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption(f"Mastery now at {new_mastery}%")
 
         feedback_letters = []
         for idx, ch in enumerate(current_word):
@@ -846,23 +819,15 @@ def render_practice_page():
             unsafe_allow_html=True,
         )
 
-        if st.button("Next →"):
-            # Move to next word
+        if st.button("➡️ Next", key=f"{key_prefix}_next"):
             st.session_state.practice_index += 1
-
-            # Reset timer
             st.session_state.start_time = time.time()
 
-            # Clean inputs + per-word flags
-            for state_key in list(st.session_state.keys()):
-                if isinstance(state_key, str) and state_key.startswith(f"{key_prefix}_"):
-                    st.session_state.pop(state_key, None)
+            for k in list(st.session_state.keys()):
+                if isinstance(k, str) and k.startswith(key_prefix):
+                    st.session_state.pop(k, None)
 
-            st.session_state[checked_key] = False
-            st.session_state[correct_key] = False
-            st.session_state[submitted_key] = False
             st.session_state["active_word_id"] = None
-
             st.experimental_rerun()
 
     # Sidebar navigation
@@ -1312,60 +1277,61 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
         blank_indices,
     )
 
-    ready = st.session_state.pop(f"{key_prefix}_ready_to_submit", False)
     submitted_key = f"{key_prefix}_submitted"
     checked_key = f"{key_prefix}_checked"
     correct_key = f"{key_prefix}_correct"
 
-    if ready and not st.session_state.get(submitted_key, False):
+    if submitted_key not in st.session_state:
+        st.session_state[submitted_key] = False
 
-        wrong_letters = sum(
-            1 for i in blank_indices
-            if user_answer[i:i+1] != target_word[i:i+1]
-        )
-        is_correct = (wrong_letters == 0)
+    if not st.session_state[submitted_key]:
+        if st.button("✅ Submit", key=f"{key_prefix}_submit"):
+            wrong_letters = sum(
+                1 for i in blank_indices
+                if user_answer[i:i+1].lower() != target_word[i:i+1].lower()
+            )
+            is_correct = (wrong_letters == 0)
 
-        execute(
-            """
-            INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
-            VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
-            """,
-            {
-                "uid": st.session_state["user_id"],
-                "cid": selected_course_id,
-                "lid": selected_lesson_id,
-                "wid": wid,
-                "correct": is_correct,
-            },
-        )
+            execute(
+                """
+                INSERT INTO spelling_attempts(user_id, course_id, lesson_id, word_id, correct, attempted_on)
+                VALUES (:uid, :cid, :lid, :wid, :correct, NOW());
+                """,
+                {
+                    "uid": st.session_state["user_id"],
+                    "cid": selected_course_id,
+                    "lid": selected_lesson_id,
+                    "wid": wid,
+                    "correct": is_correct,
+                },
+            )
 
-        st.session_state[submitted_key] = True
-        st.session_state[checked_key] = True
-        st.session_state[correct_key] = is_correct
+            if not is_correct:
+                execute(
+                    """
+                    INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
+                    VALUES(:uid, :cid, :lid, :wid, now())
+                    ON CONFLICT DO NOTHING;
+                    """,
+                    {
+                        "uid": st.session_state["user_id"],
+                        "cid": selected_course_id,
+                        "lid": selected_lesson_id,
+                        "wid": wid,
+                    },
+                )
 
-        st.experimental_rerun()
+            st.session_state[submitted_key] = True
+            st.session_state[checked_key] = True
+            st.session_state[correct_key] = is_correct
+
+            st.experimental_rerun()
 
     if st.session_state.get(checked_key, False):
 
-        new_mastery = get_lesson_mastery(
-            st.session_state["user_id"],
-            selected_course_id,
-            selected_lesson_id,
-        )
-
-        points_earned = POINTS_PER_CORRECT if st.session_state.get(correct_key, False) else 0
-        badge_name = (
-            st.session_state.get("badge")
-            or st.session_state.get("current_badge")
-            or st.session_state.get("badge_name")
-        )
-        badge_line = f"🏅 {badge_name} progress updated" if badge_name else "🏅 Badge Progress Updated"
-
-        # CORRECT ANSWER
         if st.session_state.get(correct_key, False):
-            message = random.choice(SUCCESS_MESSAGES)
             st.markdown(
-                f"""
+                """
                 <div style="
                     background: linear-gradient(135deg, #16a34a, #22c55e);
                     color: white;
@@ -1375,36 +1341,16 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
                     font-size: 18px;
                     font-weight: 700;
                     margin-top: 12px;
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
                 ">
-                    {message}<br><br>
-                    ⭐ <strong>+{points_earned} XP</strong><br>
-                    {badge_line}
+                    🎉 Fantastic! You got it right!<br><br>
+                    ⭐ +10 XP & 🏅 Badge progress updated
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption(f"Mastery now at {new_mastery}%")
 
         # INCORRECT ANSWER
         else:
-            # add to weak words table
-            execute(
-                """
-                INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
-                VALUES(:uid, :cid, :lid, :wid, now())
-                ON CONFLICT DO NOTHING;
-                """,
-                {
-                    "uid": st.session_state["user_id"],
-                    "cid": selected_course_id,
-                    "lid": selected_lesson_id,
-                    "wid": wid,
-                },
-            )
-
-            message = random.choice(ENCOURAGEMENT_MESSAGES)
-
             st.markdown(
                 f"""
                 <div style="
@@ -1416,19 +1362,14 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
                     font-size: 17px;
                     font-weight: 600;
                     margin-top: 12px;
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
                 ">
                     ❌ Not quite right — and that’s okay!<br><br>
-                    {message}<br><br>
-                    📌 This word has been added to <strong>Weak Words</strong><br>
-                    ⭐ <strong>0 XP this time — keep trying!</strong><br>
-                    {badge_line}
+                    The correct spelling is <strong>{target_word}</strong><br>
+                    📌 Added to Weak Words for practice
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-
-            st.caption(f"Mastery now at {new_mastery}%")
 
         feedback_letters = []
         for idx, ch in enumerate(target_word):
@@ -1456,7 +1397,7 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
             unsafe_allow_html=True,
         )
 
-        if st.button("Next Word →", key=f"{key_prefix}_next"):
+        if st.button("➡️ Next", key=f"{key_prefix}_next"):
             for k in list(st.session_state.keys()):
                 if isinstance(k, str) and k.startswith(key_prefix):
                     st.session_state.pop(k, None)
