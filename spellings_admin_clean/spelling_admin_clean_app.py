@@ -38,7 +38,7 @@ def rows_to_dicts(rows):
 
 def get_all_courses():
     rows = fetch_all(
-        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_id"
+        "SELECT course_id, course_name FROM spelling_courses ORDER BY course_name"
     )
     return rows_to_dicts(rows)
 
@@ -93,11 +93,18 @@ def delete_course(course_id: int):
 def fetch_active_students():
     rows = fetch_all(
         """
-        SELECT user_id, name, email
-        FROM users
-        WHERE role = 'student'
-        AND is_active = true
-        ORDER BY name;
+        SELECT DISTINCT
+            u.user_id,
+            u.name,
+            u.email
+        FROM users u
+        JOIN spelling_enrollments e
+            ON e.user_id = u.user_id
+        JOIN spelling_courses c
+            ON c.course_id = e.course_id
+        WHERE u.role = 'student'
+          AND u.is_active = true
+        ORDER BY u.name;
         """
     )
     return rows_to_dicts(rows)
@@ -107,13 +114,12 @@ def fetch_student_course_map():
     rows = fetch_all(
         """
         SELECT
-            u.user_id,
-            COALESCE(string_agg(c.course_name, ', ' ORDER BY c.course_name), '') AS assigned_courses
-        FROM users u
-        LEFT JOIN spelling_enrollments e ON e.user_id = u.user_id
-        LEFT JOIN spelling_courses c ON c.course_id = e.course_id
-        WHERE u.role = 'student' AND u.is_active = true
-        GROUP BY u.user_id;
+            e.user_id,
+            STRING_AGG(c.course_name, ', ' ORDER BY c.course_name) AS assigned_courses
+        FROM spelling_enrollments e
+        JOIN spelling_courses c
+          ON c.course_id = e.course_id
+        GROUP BY e.user_id;
         """
     )
     return {r["user_id"]: r.get("assigned_courses", "") for r in rows_to_dicts(rows)}
@@ -253,38 +259,54 @@ def render_course_management():
 
 
 def render_student_management():
-    st.header("Students")
+    st.markdown("## 👩‍🎓 Students (Spelling App)")
 
-    st.subheader("Active Students")
     students = fetch_active_students()
-    course_lookup = get_all_courses()
-    course_options = {c["course_name"]: c["course_id"] for c in course_lookup}
+    courses_lookup = get_all_courses()
+    courses = {course["course_name"]: course["course_id"] for course in courses_lookup}
     assigned_map = fetch_student_course_map()
 
     if not students:
         st.info("No active students found.")
     else:
-        for student in students:
-            cols = st.columns([2, 3, 3, 3])
-            cols[0].write(student.get("name"))
-            cols[1].write(student.get("email"))
-            cols[2].write(assigned_map.get(student.get("user_id"), ""))
+        header_cols = st.columns([3, 4, 4, 2])
+        header_cols[0].markdown("**Name**")
+        header_cols[1].markdown("**Email**")
+        header_cols[2].markdown("**Assigned Courses**")
+        header_cols[3].markdown("**Assign Course**")
 
-            with cols[3]:
+        for student in students:
+            c1, c2, c3, c4 = st.columns([3, 4, 4, 2])
+
+            with c1:
+                st.write(student["name"])
+
+            with c2:
+                st.write(student["email"])
+
+            with c3:
+                st.write(
+                    assigned_map.get(student["user_id"], "—")
+                )
+
+            with c4:
                 selected_course = st.selectbox(
                     "Assign Course",
-                    list(course_options.keys()) if course_options else ["No courses"],
-                    key=f"assign_select_{student.get('user_id')}",
+                    options=list(courses.keys()),
+                    key=f"assign_course_{student['user_id']}",
+                    label_visibility="collapsed",
                 )
+
                 if st.button(
                     "Assign",
-                    key=f"assign_btn_{student.get('user_id')}",
-                    disabled=not course_options,
+                    key=f"assign_btn_{student['user_id']}",
                 ):
-                    course_id = course_options.get(selected_course)
-                    if course_id:
-                        assign_course_to_student(student.get("user_id"), course_id)
-                        st.success("Course assigned.")
+                    assign_course_to_student(
+                        user_id=student["user_id"],
+                        course_id=courses[selected_course],
+                    )
+                    st.success("Course assigned")
+                    st.experimental_rerun()
 
     st.subheader("Pending Registrations")
     pending_rows = list_pending_registrations()
