@@ -33,6 +33,43 @@ def get_last_attempts(user_id: int, word_id: int, limit: int = 3):
     return [r._mapping["correct"] for r in rows] if rows else []
 
 
+def get_word_difficulty_signals(user_id: int, course_id: int, lesson_id: int):
+    """
+    Fetch per-word difficulty signals for a user within a lesson.
+    Returns rows containing:
+      - word_id
+      - accuracy (0-1)
+      - avg_time
+      - avg_wrong_letters
+      - recent_failures (count in last 5 attempts)
+      - total_attempts
+    """
+    return fetch_all(
+        """
+        WITH ranked AS (
+            SELECT word_id,
+                   correct,
+                   time_taken,
+                   wrong_letters_count,
+                   ROW_NUMBER() OVER(PARTITION BY word_id ORDER BY created_at DESC) AS rn
+            FROM spelling_attempts
+            WHERE user_id = :uid
+              AND course_id = :cid
+              AND lesson_id = :lid
+        )
+        SELECT word_id,
+               AVG(CASE WHEN correct THEN 1 ELSE 0 END) AS accuracy,
+               AVG(time_taken) AS avg_time,
+               AVG(wrong_letters_count) AS avg_wrong_letters,
+               SUM(CASE WHEN rn <= 5 AND correct = false THEN 1 ELSE 0 END) AS recent_failures,
+               COUNT(*) AS total_attempts
+        FROM ranked
+        GROUP BY word_id;
+        """,
+        {"uid": user_id, "cid": course_id, "lid": lesson_id},
+    )
+
+
 def get_weak_words(user_id: int, threshold: float = 0.7):
     rows = fetch_all("""
         SELECT word_id,
