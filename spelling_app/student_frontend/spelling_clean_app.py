@@ -1111,7 +1111,64 @@ def main():
             selected_course_id,
             selected_lesson_id,
         )
-        st.info(f"Updated Mastery: {new_mastery}%")
+
+        # CORRECT ANSWER
+        if st.session_state.get(correct_key, False):
+            st.markdown(
+                """
+                <div style='
+                    background-color: #28a745;
+                    color: white;
+                    font-size: 18px;
+                    font-weight: bold;
+                    padding: 12px;
+                    border-radius: 8px;
+                    text-align: center;
+                '>
+                    🎉 **Great job!** That’s exactly right!  
+                    Keep it going! 💪
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.info(f"Updated Mastery: {new_mastery}%")
+
+        # INCORRECT ANSWER
+        else:
+            # add to weak words table
+            execute(
+                """
+                INSERT INTO spelling_weak_words(user_id, course_id, lesson_id, word_id, added_on)
+                VALUES(:uid, :cid, :lid, :wid, now())
+                ON CONFLICT DO NOTHING;
+                """,
+                {
+                    "uid": st.session_state["user_id"],
+                    "cid": selected_course_id,
+                    "lid": selected_lesson_id,
+                    "wid": wid,
+                },
+            )
+
+            st.markdown(
+                f"""
+                <div style='
+                    background-color: #dc3545;
+                    color: white;
+                    font-size: 18px;
+                    font-weight: bold;
+                    padding: 12px;
+                    border-radius: 8px;
+                    text-align: center;
+                '>
+                    ❌ **Oops!** The correct spelling is: **{target_word}**  
+                    This word will be added to your **Weak Words** list for extra practice 🧠
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.info(f"Updated Mastery: {new_mastery}%")
 
         feedback_letters = []
         for idx, ch in enumerate(target_word):
@@ -1122,11 +1179,6 @@ def main():
             else:
                 feedback_letters.append(f"<span style='font-weight:700'>{display}</span>")
         st.markdown(" ".join(feedback_letters), unsafe_allow_html=True)
-
-        if st.session_state.get(correct_key):
-            st.success("🎉 Correct!")
-        else:
-            st.error(f"Incorrect. Correct spelling is: **{target_word}**")
 
         if st.button("Next Word →", key=f"{key_prefix}_next"):
             for k in list(st.session_state.keys()):
