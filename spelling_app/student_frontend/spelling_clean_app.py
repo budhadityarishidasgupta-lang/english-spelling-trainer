@@ -123,6 +123,22 @@ def compute_badge(xp_total: int, mastery: float):
     return "🔰 Beginner"
 
 
+SUCCESS_MESSAGES = [
+    "🎉 Fantastic! You got it right!",
+    "🌟 Brilliant spelling! Keep going!",
+    "👏 Nailed it! Your accuracy is improving!",
+    "🚀 Great job! Another word mastered!",
+    "🏆 Excellent! You’re on a roll!",
+]
+
+ENCOURAGEMENT_MESSAGES = [
+    "💪 Almost there! Don’t worry, you’re learning.",
+    "🌱 Good try! This word will get easier with practice.",
+    "😊 Keep going! Mistakes help your brain grow.",
+    "🧠 Nice attempt! You’ll get this one soon.",
+]
+
+POINTS_PER_CORRECT = 10
 
 
 ###########################################################
@@ -744,47 +760,59 @@ def render_practice_page():
             cid,
             st.session_state.get("selected_lesson_id", 0) or 0,
         )
-
-        encouragements = [
-            "🎉 Amazing work! You spelled it correctly!<br>Keep the streak going 💪🔥",
-            "🌟 Stellar! Every letter was perfect!<br>You’re on fire 🔥",
-            "👏 Nailed it! That spelling was spot on!<br>Keep climbing 🚀",
-        ]
+        points_earned = POINTS_PER_CORRECT if st.session_state.get(correct_key, False) else 0
+        badge_name = (
+            st.session_state.get("badge")
+            or st.session_state.get("current_badge")
+            or st.session_state.get("badge_name")
+        )
+        badge_line = f"🏅 {badge_name} progress updated" if badge_name else "🏅 Badge Progress Updated"
 
         if st.session_state.get(correct_key, False):
-            success_message = random.choice(encouragements)
+            message = random.choice(SUCCESS_MESSAGES)
+
             st.markdown(
                 f"""
-                <div style='
-                    background-color: #28a745;
+                <div style="
+                    background: linear-gradient(135deg, #16a34a, #22c55e);
                     color: white;
+                    padding: 16px;
+                    border-radius: 14px;
+                    text-align: center;
                     font-size: 18px;
                     font-weight: 700;
-                    padding: 14px 12px;
-                    border-radius: 10px;
-                    text-align: center;
-                '>
-                    {success_message}
+                    margin-top: 12px;
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+                ">
+                    {message}<br><br>
+                    ⭐ <strong>+{points_earned} XP</strong><br>
+                    {badge_line}
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
             st.caption(f"Mastery now at {new_mastery}%")
         else:
+            message = random.choice(ENCOURAGEMENT_MESSAGES)
+
             st.markdown(
                 f"""
-                <div style='
-                    background-color: #dc3545;
+                <div style="
+                    background: linear-gradient(135deg, #b91c1c, #ef4444);
                     color: white;
-                    font-size: 18px;
-                    font-weight: 700;
-                    padding: 14px 12px;
-                    border-radius: 10px;
+                    padding: 16px;
+                    border-radius: 14px;
                     text-align: center;
-                '>
-                    ❌ Not quite right<br>
-                    The correct spelling is <strong>{current_word}</strong><br>
-                    This word has been added to your Weak Words list for practice 🧠
+                    font-size: 17px;
+                    font-weight: 600;
+                    margin-top: 12px;
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+                ">
+                    ❌ Not quite right — and that’s okay!<br><br>
+                    {message}<br><br>
+                    📌 This word has been added to <strong>Weak Words</strong><br>
+                    ⭐ <strong>0 XP this time — keep trying!</strong><br>
+                    {badge_line}
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1325,25 +1353,33 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
             selected_lesson_id,
         )
 
+        points_earned = POINTS_PER_CORRECT if st.session_state.get(correct_key, False) else 0
+        badge_name = (
+            st.session_state.get("badge")
+            or st.session_state.get("current_badge")
+            or st.session_state.get("badge_name")
+        )
+        badge_line = f"🏅 {badge_name} progress updated" if badge_name else "🏅 Badge Progress Updated"
+
         # CORRECT ANSWER
         if st.session_state.get(correct_key, False):
-            encouragements = [
-                "🎉 Amazing work! You spelled it correctly!<br>Keep the streak going 💪🔥",
-                "🌟 Stellar! Every letter was perfect!<br>You’re on fire 🔥",
-                "👏 Nailed it! That spelling was spot on!<br>Keep climbing 🚀",
-            ]
+            message = random.choice(SUCCESS_MESSAGES)
             st.markdown(
                 f"""
-                <div style='
-                    background-color: #28a745;
+                <div style="
+                    background: linear-gradient(135deg, #16a34a, #22c55e);
                     color: white;
+                    padding: 16px;
+                    border-radius: 14px;
+                    text-align: center;
                     font-size: 18px;
                     font-weight: 700;
-                    padding: 14px 12px;
-                    border-radius: 10px;
-                    text-align: center;
-                '>
-                    {random.choice(encouragements)}
+                    margin-top: 12px;
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+                ">
+                    {message}<br><br>
+                    ⭐ <strong>+{points_earned} XP</strong><br>
+                    {badge_line}
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1367,20 +1403,26 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
                 },
             )
 
+            message = random.choice(ENCOURAGEMENT_MESSAGES)
+
             st.markdown(
                 f"""
-                <div style='
-                    background-color: #dc3545;
+                <div style="
+                    background: linear-gradient(135deg, #b91c1c, #ef4444);
                     color: white;
-                    font-size: 18px;
-                    font-weight: 700;
-                    padding: 14px 12px;
-                    border-radius: 10px;
+                    padding: 16px;
+                    border-radius: 14px;
                     text-align: center;
-                '>
-                    ❌ Not quite right<br>
-                    The correct spelling is <strong>{target_word}</strong><br>
-                    This word has been added to your Weak Words list for practice 🧠
+                    font-size: 17px;
+                    font-weight: 600;
+                    margin-top: 12px;
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+                ">
+                    ❌ Not quite right — and that’s okay!<br><br>
+                    {message}<br><br>
+                    📌 This word has been added to <strong>Weak Words</strong><br>
+                    ⭐ <strong>0 XP this time — keep trying!</strong><br>
+                    {badge_line}
                 </div>
                 """,
                 unsafe_allow_html=True,
