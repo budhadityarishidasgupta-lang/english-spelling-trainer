@@ -15,24 +15,14 @@ def _word_id(word_row: Any) -> Optional[int]:
     return getattr(word_row, "word_id", None) or getattr(word_row, "id", None)
 
 
-def mask_word(word: str) -> str:
-    clean = word.strip()
-    if len(clean) <= 3:
-        if len(clean) == 3:
-            return clean[0] + "_" + clean[2]
-        if len(clean) == 2:
-            return clean[0] + "_"
-        return "_"
+def generate_missing_letter_question(word: str, base_blanks: int = 2):
+    if len(word) <= base_blanks:
+        indices = list(range(len(word)))
+    else:
+        indices = random.sample(range(len(word)), base_blanks)
 
-    letters = list(clean)
-    inner_indices = list(range(1, len(letters) - 1))
-    blanks = min(3, max(1, len(inner_indices) // 3))
-
-    rnd = random.Random(hash(clean))
-    for idx in rnd.sample(inner_indices, blanks):
-        letters[idx] = "_"
-
-    return "".join(letters)
+    masked = "".join("_" if i in indices else ch for i, ch in enumerate(word))
+    return masked, indices
 
 
 def choose_next_word(
@@ -129,13 +119,8 @@ def render_practice_mode(
 
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
-
-    if "checked" not in st.session_state:
         st.session_state.checked = False
-
-    if "correct" not in st.session_state:
         st.session_state.correct = False
-
     if "start_time" not in st.session_state:
         st.session_state.start_time = time.time()
 
@@ -184,7 +169,7 @@ def render_practice_mode(
     if st.session_state.get("active_word_id") != wid:
         st.session_state["active_word_id"] = wid
 
-    masked_word = mask_word(target_word)
+    masked, _ = generate_missing_letter_question(target_word)
 
     st.markdown(
         f"""
@@ -196,8 +181,9 @@ def render_practice_mode(
             padding:16px 20px;
             border-radius:14px;
             margin-bottom:18px;
+            text-align:center;
         ">
-            {masked_word}
+            {masked}
         </div>
         """,
         unsafe_allow_html=True,
@@ -206,21 +192,19 @@ def render_practice_mode(
     user_answer = st.text_input(
         "Type the complete word",
         key=f"answer_{wid}",
-        disabled=st.session_state.checked,
+        disabled=st.session_state.get("checked", False),
     )
 
     if not st.session_state.submitted:
         if st.button("✅ Submit"):
-            time_taken = int(time.time() - st.session_state.start_time)
-
             is_correct = user_answer.strip().lower() == target_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=wid,
                 correct=is_correct,
-                time_taken=time_taken,
-                blanks_count=masked_word.count("_"),
+                time_taken=int(time.time() - st.session_state.start_time),
+                blanks_count=masked.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
 
@@ -233,23 +217,18 @@ def render_practice_mode(
             st.success("🎉 Correct! Great job!")
             st.info("⭐ You earned 10 XP")
         else:
-            st.error("😅 Not quite right — keep going!")
+            st.error("😅 Not quite right — keep trying!")
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
-            # mark last word ONLY when user chooses to advance
             st.session_state[last_wid_key] = wid
-
-            # unlock next word so a new pick happens
             st.session_state[current_wid_key] = None
 
-            # reset state
             st.session_state.submitted = False
             st.session_state.checked = False
             st.session_state.correct = False
             st.session_state.start_time = time.time()
 
-            # clear input
             del st.session_state[f"answer_{wid}"]
 
             st.experimental_rerun()
