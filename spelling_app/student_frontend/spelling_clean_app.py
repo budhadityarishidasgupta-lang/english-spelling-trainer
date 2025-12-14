@@ -32,28 +32,6 @@ from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
 
-
-
-
-
-def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indices):
-    user_answer = ""
-
-    for i, char in enumerate(masked_word):
-        if char == "_":
-            val = st.text_input(
-                "",
-                max_chars=1,
-                key=f"{key_prefix}_char_{i}",
-                label_visibility="collapsed",
-            )
-            user_answer += val or ""
-        else:
-            st.markdown(f"<div class='fixed-char'>{char}</div>", unsafe_allow_html=True)
-            user_answer += char
-
-    return user_answer
-
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
     if xp_total >= 2000 and mastery == 100:
@@ -310,51 +288,20 @@ def sort_words(words):
 
 
 def generate_question(word: str, pattern: str):
-    # simple rule-based version
-    p = (pattern or "").lower()
-    if "gh" in p or "ph" in p:
-        return generate_missing_letter_question(word, max_blanks=2)
-    if "tion" in p or "sion" in p or "ssion" in p:
-        return generate_missing_letter_question(word, max_blanks=3)
-    if "dge" in p:
-        return generate_missing_letter_question(word, max_blanks=1)
-    # default
     return generate_missing_letter_question(word)
 
 
-def generate_missing_letter_question(word: str, base_blanks: int = 2, max_blanks: int | None = None):
-    """
-    Returns masked_word, blank_indices.
-    Example:
-        word = chemist
-        masked = ch_m_st
-        blank_indices = [2, 4]
-    """
+import random
 
-    if not word:
-        return word, []
 
-    word = word.strip()
-    length = len(word)
+def generate_missing_letter_question(word: str, base_blanks: int = 2):
+    if len(word) <= base_blanks:
+        indices = list(range(len(word)))
+    else:
+        indices = random.sample(range(len(word)), base_blanks)
 
-    # default blanks from word length
-    blanks = base_blanks
-    clamp_max = max_blanks if max_blanks is not None else 3
-    blanks = max(1, min(blanks, clamp_max))  # clamp 1–max
-
-    # pick stable random indices using a seed based on the word
-    rng = random.Random(hash(word) % (2**32))
-    indices = rng.sample(range(length), blanks)
-
-    chars = []
-    for i, ch in enumerate(word):
-        if i in indices:
-            chars.append("_")
-        else:
-            chars.append(ch)
-
-    masked_display = "".join(chars)  # VERY IMPORTANT (no spaces)
-    return masked_display, indices
+    masked = "".join("_" if i in indices else ch for i, ch in enumerate(word))
+    return masked, indices
 
 
 
@@ -619,46 +566,47 @@ def render_practice_page():
         st.caption(" • ".join(info_bits))
 
 
-    masked, blank_indices = generate_question(current_word, pattern)
+    masked, _ = generate_missing_letter_question(current_word)
 
-    st.markdown("**Fill in the missing letters:**")
-    st.markdown(f"### {masked}")
-
-    key_prefix = f"word_{word_id}"
-
-    # reset per-word state when switching to a new word
-    if st.session_state.get("active_word_id") != word_id:
-        previous_word_id = st.session_state.get("active_word_id")
-        if previous_word_id is not None:
-            prev_prefix = f"word_{previous_word_id}"
-            for state_key in list(st.session_state.keys()):
-                if isinstance(state_key, str) and state_key.startswith(f"{prev_prefix}_"):
-                    st.session_state.pop(state_key, None)
-
-        for state_key in list(st.session_state.keys()):
-            if isinstance(state_key, str) and state_key.startswith(f"{key_prefix}_"):
-                st.session_state.pop(state_key, None)
-        st.session_state["active_word_id"] = word_id
-
-    user_answer = render_masked_word_input(
-        masked_word=masked,
-        correct_word=current_word,
-        key_prefix=key_prefix,
-        blank_indices=blank_indices,
+    st.markdown(
+        f"""
+        <div style="
+            font-size:26px;
+            font-weight:700;
+            letter-spacing:6px;
+            background:#111827;
+            padding:16px 20px;
+            border-radius:14px;
+            margin-bottom:18px;
+            text-align:center;
+        ">
+            {masked}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    submitted_key = f"{key_prefix}_submitted"
-    checked_key = f"{key_prefix}_checked"
-    correct_key = f"{key_prefix}_correct"
+    if st.session_state.get("current_wid") != word_id:
+        st.session_state.current_wid = word_id
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+        st.session_state.pop(f"answer_{word_id}", None)
 
-    if submitted_key not in st.session_state:
-        st.session_state[submitted_key] = False
-        st.session_state[checked_key] = False
-        st.session_state[correct_key] = None
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
 
-    if not st.session_state[submitted_key]:
+    user_answer = st.text_input(
+        "Type the complete word",
+        key=f"answer_{word_id}",
+        disabled=st.session_state.get("checked", False),
+    )
+
+    if not st.session_state.submitted:
         if st.button("✅ Submit"):
-            is_correct = user_answer.lower() == current_word.lower()
+            is_correct = user_answer.strip().lower() == current_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
@@ -669,27 +617,28 @@ def render_practice_page():
                 wrong_letters_count=0 if is_correct else 1,
             )
 
-            st.session_state[submitted_key] = True
-            st.session_state[checked_key] = True
-            st.session_state[correct_key] = is_correct
-
-            st.experimental_rerun()
+            st.session_state.submitted = True
+            st.session_state.checked = True
+            st.session_state.correct = is_correct
 
     # ---------------- FEEDBACK + NEXT ----------------
-    if st.session_state.get(checked_key, False):
-        if st.session_state.get(correct_key, False):
-            st.success("🎉 Brilliant! You spelled it correctly! ⭐ +10 XP")
+    if st.session_state.checked:
+        if st.session_state.correct:
+            st.success("🎉 Correct! Great job!")
+            st.info("⭐ You earned 10 XP")
         else:
-            st.error(f"❌ Not quite right — the correct spelling is **{current_word}** 💪")
+            st.error("😅 Not quite right — keep trying!")
 
-    if st.session_state.get(checked_key, False):
+    if st.session_state.checked:
         if st.button("➡️ Next"):
             st.session_state.practice_index += 1
+            st.session_state.submitted = False
+            st.session_state.checked = False
+            st.session_state.correct = False
             st.session_state.start_time = time.time()
 
-            for k in list(st.session_state.keys()):
-                if k.startswith(key_prefix):
-                    del st.session_state[k]
+            del st.session_state[f"answer_{word_id}"]
+            st.session_state.current_wid = None
 
             st.experimental_rerun()
 
@@ -1118,40 +1067,49 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
 
     st.subheader("Spell the word:")
 
-    masked_word, blank_indices = generate_question(
-        target_word,
-        selected_lesson_name
-    )
-    st.code(masked_word, language="text")
-
-    key_prefix = f"practice_{selected_course_id}_{selected_lesson_id}_{wid}"
-
-    # Reset state when word changes
-    if st.session_state.get("active_word_id") != wid:
-        for k in list(st.session_state.keys()):
-            if isinstance(k, str) and k.startswith("practice_"):
-                st.session_state.pop(k, None)
-        st.session_state["active_word_id"] = wid
-
-    user_answer = render_masked_word_input(
-        masked_word,
-        target_word,
-        key_prefix,
-        blank_indices,
+    masked_word, _ = generate_missing_letter_question(
+        target_word
     )
 
-    submitted_key = f"{key_prefix}_submitted"
-    checked_key = f"{key_prefix}_checked"
-    correct_key = f"{key_prefix}_correct"
+    st.markdown(
+        f"""
+        <div style="
+            font-size:26px;
+            font-weight:700;
+            letter-spacing:6px;
+            background:#111827;
+            padding:16px 20px;
+            border-radius:14px;
+            margin-bottom:18px;
+            text-align:center;
+        ">
+            {masked_word}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    if submitted_key not in st.session_state:
-        st.session_state[submitted_key] = False
-        st.session_state[checked_key] = False
-        st.session_state[correct_key] = None
+    if st.session_state.get("current_wid") != wid:
+        st.session_state.current_wid = wid
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+        st.session_state.pop(f"answer_{wid}", None)
 
-    if not st.session_state[submitted_key]:
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+
+    user_answer = st.text_input(
+        "Type the complete word",
+        key=f"answer_{wid}",
+        disabled=st.session_state.get("checked", False),
+    )
+
+    if not st.session_state.submitted:
         if st.button("✅ Submit"):
-            is_correct = user_answer.lower() == target_word.lower()
+            is_correct = user_answer.strip().lower() == target_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
@@ -1162,26 +1120,27 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
                 wrong_letters_count=0 if is_correct else 1,
             )
 
-            st.session_state[submitted_key] = True
-            st.session_state[checked_key] = True
-            st.session_state[correct_key] = is_correct
+            st.session_state.submitted = True
+            st.session_state.checked = True
+            st.session_state.correct = is_correct
 
-            st.experimental_rerun()
-
-    if st.session_state.get(checked_key, False):
-        if st.session_state.get(correct_key, False):
-            st.success("🎉 Brilliant! You spelled it correctly! ⭐ +10 XP")
+    if st.session_state.checked:
+        if st.session_state.correct:
+            st.success("🎉 Correct! Great job!")
+            st.info("⭐ You earned 10 XP")
         else:
-            st.error(f"❌ Not quite right — the correct spelling is **{target_word}** 💪")
+            st.error("😅 Not quite right — keep trying!")
 
-    if st.session_state.get(checked_key, False):
+    if st.session_state.checked:
         if st.button("➡️ Next"):
             st.session_state.practice_index = st.session_state.get("practice_index", 0) + 1
+            st.session_state.submitted = False
+            st.session_state.checked = False
+            st.session_state.correct = False
             st.session_state.start_time = time.time()
 
-            for k in list(st.session_state.keys()):
-                if k.startswith(key_prefix):
-                    del st.session_state[k]
+            del st.session_state[f"answer_{wid}"]
+            st.session_state.current_wid = None
 
             st.experimental_rerun()
 
