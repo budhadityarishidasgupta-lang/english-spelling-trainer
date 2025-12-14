@@ -83,6 +83,16 @@ def _generate_mask(word: str) -> str:
     return "".join(letters)
 
 
+def get_spelling_hint(word: str):
+    if "ie" in word:
+        return "💡 Remember: 'i before e except after c'."
+    if word.endswith("ly"):
+        return "💡 Words ending in '-ly' often come from adjectives."
+    if "ough" in word:
+        return "💡 'ough' can sound different in different words."
+    return "💡 Say the word slowly and listen to each sound."
+
+
 def _weak_words_for_user(user_id: int, lesson_id: int):
     return fetch_all(
         """
@@ -246,6 +256,7 @@ def _reset_session(
     st.session_state["current_streak"] = 0
     st.session_state["correct_count"] = 0
     st.session_state["wrong_count"] = 0
+    st.session_state["hint_level"] = 0
 
 
 def _current_word():
@@ -423,6 +434,9 @@ def _render_active_session(lesson_id: int, user_id: int):
     mode = st.session_state.get("spelling_mode", "normal")
     scope = st.session_state.get("spelling_scope", "lesson")
 
+    if "hint_level" not in st.session_state:
+        st.session_state.hint_level = 0
+
     if not word:
         st.info("No words to practice right now.")
         return
@@ -432,6 +446,7 @@ def _render_active_session(lesson_id: int, user_id: int):
     st.caption(f"Word {idx + 1} of {total}")
 
     display_mask = word.get("missing_letter_mask") or _generate_mask(str(word.get("word", "")))
+    masked_word = display_mask if mode == "missing" else str(word.get("word", ""))
     if mode == "missing":
         st.markdown(f"<div class='masked-word' style='font-size:28px;font-weight:700;'>{display_mask}</div>", unsafe_allow_html=True)
         st.caption("Fill in the missing letters to spell the full word.")
@@ -443,6 +458,32 @@ def _render_active_session(lesson_id: int, user_id: int):
         key="spelling_input",
         placeholder="Type the spelling here...",
     )
+
+    if not st.session_state.get("spelling_last_submitted"):
+        if st.button("💡 Hint"):
+            st.session_state.hint_level += 1
+
+    if st.session_state.hint_level >= 1:
+        st.info(get_spelling_hint(str(word.get("word", ""))))
+
+    if st.session_state.hint_level >= 2:
+        revealed_index = next(
+            (i for i, ch in enumerate(masked_word) if ch == "_"),
+            None
+        )
+
+        if revealed_index is not None:
+            hint_word = list(masked_word)
+            word_text = str(word.get("word", ""))
+            if revealed_index < len(word_text):
+                hint_word[revealed_index] = word_text[revealed_index]
+
+                st.markdown(
+                    f"🔍 One letter revealed: **{''.join(hint_word)}**"
+                )
+
+    if st.session_state.hint_level >= 3:
+        st.warning("👍 Give it another try — you’re close!")
 
     submitted = st.button("Submit", type="primary")
     if submitted:
@@ -481,6 +522,7 @@ def _render_active_session(lesson_id: int, user_id: int):
                 st.session_state["current_index"] = st.session_state.get("current_index", 0) + 1
                 st.session_state["spelling_input"] = ""
                 st.session_state["spelling_last_submitted"] = False
+                st.session_state["hint_level"] = 0
                 st.rerun()
         else:
             st.session_state["spelling_done"] = True
