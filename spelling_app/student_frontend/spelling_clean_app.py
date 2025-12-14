@@ -117,33 +117,6 @@ def record_attempt(
         )
 
 
-def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indices):
-    """
-    Render the masked word in ONE horizontal row (Udemy-style).
-    """
-    cols = st.columns(len(masked_word))
-    user_chars = []
-
-    for i, ch in enumerate(masked_word):
-        with cols[i]:
-            if ch == "_":
-                val = st.text_input(
-                    "",
-                    max_chars=1,
-                    key=f"{key_prefix}_char_{i}",
-                    label_visibility="collapsed",
-                )
-                user_chars.append(val or "")
-            else:
-                st.markdown(
-                    f"<div style='font-size:22px;font-weight:800;text-align:center;'>{ch}</div>",
-                    unsafe_allow_html=True,
-                )
-                user_chars.append(ch)
-
-    return "".join(user_chars)
-
-
 def render_practice_mode(
     *,
     mode: str,
@@ -209,21 +182,41 @@ def render_practice_mode(
         if key not in st.session_state:
             st.session_state[key] = False
 
-    masked = mask_word(target_word)
-    key_prefix = f"practice_{wid}"
-    blank_indices = [idx for idx, ch in enumerate(masked) if ch == "_"]
-    user_answer = render_masked_word_input(masked, target_word, key_prefix, blank_indices)
+    masked_word = mask_word(target_word)
+
+    st.markdown(
+        f"""
+        <div style="
+            font-size:24px;
+            font-weight:700;
+            letter-spacing:4px;
+            background:#111827;
+            padding:14px 18px;
+            border-radius:12px;
+            margin-bottom:20px;
+        ">
+            {masked_word}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    user_answer = st.text_input(
+        "Type the complete word",
+        key=f"answer_{wid}",
+        disabled=st.session_state.get(checked_key, False),
+    )
 
     if not st.session_state[submitted_key]:
         if st.button("✅ Submit"):
-            is_correct = user_answer.lower() == target_word.lower()
+            is_correct = user_answer.strip().lower() == target_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=wid,
                 correct=is_correct,
                 time_taken=int(time.time() - st.session_state.start_time),
-                blanks_count=masked.count("_"),
+                blanks_count=masked_word.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
 
@@ -238,7 +231,7 @@ def render_practice_mode(
             st.success("🎉 Correct! Great job!")
             st.info("⭐ You earned 10 XP")
         else:
-            st.error("😅 Not quite right — keep going!")
+            st.error("😅 Not quite right — try the next one!")
 
     if st.session_state[checked_key]:
         if st.button("➡️ Next"):
@@ -253,7 +246,7 @@ def render_practice_mode(
 
             # clear ONLY the current word's input state
             for key in list(st.session_state.keys()):
-                if isinstance(key, str) and key.startswith(key_prefix):
-                    st.session_state.pop(key, None)
+                if key.startswith("answer_") or str(wid) in str(key):
+                    del st.session_state[key]
 
             st.experimental_rerun()
