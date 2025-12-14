@@ -117,10 +117,14 @@ def record_attempt(
         )
 
 
-def render_masked_word_inline(masked_word: str, key_prefix: str):
-    cols = st.columns(len(masked_word))
-    user_chars = []
+def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indices):
+    """
+    Udemy-style: render masked word in ONE horizontal row.
+    Returns the full user_answer string (fixed letters + typed blanks).
+    """
+    user_chars = [""] * len(masked_word)
 
+    cols = st.columns(len(masked_word))
     for i, ch in enumerate(masked_word):
         with cols[i]:
             if ch == "_":
@@ -130,13 +134,13 @@ def render_masked_word_inline(masked_word: str, key_prefix: str):
                     key=f"{key_prefix}_char_{i}",
                     label_visibility="collapsed",
                 )
-                user_chars.append(val or "")
+                user_chars[i] = (val or "")
             else:
                 st.markdown(
-                    f"<div style='font-size:22px;font-weight:700;text-align:center;'>{ch}</div>",
+                    f"<div style='font-size:22px;font-weight:800;text-align:center;line-height:36px;'>{ch}</div>",
                     unsafe_allow_html=True,
                 )
-                user_chars.append(ch)
+                user_chars[i] = ch
 
     return "".join(user_chars)
 
@@ -153,42 +157,63 @@ def render_practice_mode(
     if "start_time" not in st.session_state:
         st.session_state.start_time = time.time()
 
+    # ---------------------------------------------------------
+    # LOCK CURRENT WORD PER (mode, course, lesson)
+    # Streamlit reruns on every keystroke, so we must NOT re-pick.
+    # ---------------------------------------------------------
     ctx = f"{mode}_{selected_course_id}_{selected_lesson_id}"
-    current_word_key = f"{ctx}_current_word_id"
-    last_word_key = f"{ctx}_last_word_id"
+    current_wid_key = f"{ctx}_current_wid"
+    last_wid_key = f"{ctx}_last_wid"
 
-    if current_word_key not in st.session_state:
-        st.session_state[current_word_key] = None
+    if current_wid_key not in st.session_state:
+        st.session_state[current_wid_key] = None
 
-    if st.session_state[current_word_key] is None:
+    # Pick a word ONCE when there is no locked word
+    if st.session_state[current_wid_key] is None:
+        last_word_id = st.session_state.get(last_wid_key)
+        current_level = difficulty_map.get(last_word_id, "MEDIUM") if last_word_id else "MEDIUM"
+
         word_pick = choose_next_word(
-            words=words,
-            difficulty_map=difficulty_map,
-            current_level="MEDIUM",
+            words,
+            difficulty_map,
+            current_level=current_level,
             weak_word_ids=weak_word_ids,
-            last_word_id=st.session_state.get(last_word_key),
+            last_word_id=last_word_id,
         )
         if not word_pick:
-            st.warning("No words available.")
+            st.warning("No words available to practise.")
             return
 
-        mapping = getattr(word_pick, "_mapping", word_pick)
-        st.session_state[current_word_key] = mapping["word_id"]
+        m_word = getattr(word_pick, "_mapping", word_pick)
+        wid = m_word.get("word_id") or m_word.get("col_0")
+        st.session_state[current_wid_key] = wid
 
-    wid = st.session_state[current_word_key]
-    word_row = next(w for w in words if _word_id(w) == wid)
-    target_word = getattr(word_row, "_mapping", word_row)["word"]
+    # Resolve locked word from list
+    wid = st.session_state[current_wid_key]
+    row = next((w for w in words if _word_id(w) == wid), None)
+    if not row:
+        # If the list changed, unlock and try again
+        st.session_state[current_wid_key] = None
+        st.experimental_rerun()
+
+    m_word = getattr(row, "_mapping", row)
+    target_word = m_word["word"]
 
     submitted_key = f"{wid}_submitted"
     checked_key = f"{wid}_checked"
     correct_key = f"{wid}_correct"
+
+    if st.session_state.get("active_word_id") != wid:
+        st.session_state["active_word_id"] = wid
 
     for key in [submitted_key, checked_key, correct_key]:
         if key not in st.session_state:
             st.session_state[key] = False
 
     masked = mask_word(target_word)
-    user_answer = render_masked_word_inline(masked, key_prefix=f"practice_{wid}")
+    key_prefix = f"practice_{wid}"
+    blank_indices = [idx for idx, ch in enumerate(masked) if ch == "_"]
+    user_answer = render_masked_word_input(masked, target_word, key_prefix, blank_indices)
 
     if not st.session_state[submitted_key]:
         if st.button("✅ Submit"):
@@ -218,12 +243,18 @@ def render_practice_mode(
 
     if st.session_state[checked_key]:
         if st.button("➡️ Next"):
-            st.session_state[last_word_key] = wid
-            st.session_state[current_word_key] = None
+            # mark last word ONLY when user chooses to advance
+            st.session_state[last_wid_key] = wid
+
+            # unlock next word so a new pick happens
+            st.session_state[current_wid_key] = None
+
+            # reset timer
             st.session_state.start_time = time.time()
 
+            # clear ONLY the current word's input state
             for key in list(st.session_state.keys()):
-                if str(key).startswith("practice_") or str(key).startswith(str(wid)):
-                    del st.session_state[key]
+                if isinstance(key, str) and key.startswith(key_prefix):
+                    st.session_state.pop(key, None)
 
             st.experimental_rerun()
