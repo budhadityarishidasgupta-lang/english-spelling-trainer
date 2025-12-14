@@ -218,19 +218,67 @@ def render_practice_page():
             st.experimental_rerun()
         return
 
-# Ensure practice index always exists and is integer
+    total_questions = len(words)
+
+    if "question_course_id" not in st.session_state or st.session_state.question_course_id != course_id:
+        st.session_state.question_course_id = course_id
+        st.session_state.question_index = 0
+        st.session_state.practice_index = 0
+
+    if "question_index" not in st.session_state:
+        st.session_state.question_index = 0
+
+    # Ensure practice index always exists and is integer
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
+    st.session_state.practice_index = int(st.session_state.question_index)
     index = int(st.session_state.practice_index)
 
-    if index >= len(words):
-        st.success("🎉 You finished all words!")
+    if st.session_state.question_index >= total_questions:
+        st.success("🏆 Lesson completed! Great job!")
         if st.button("Back to Courses"):
             st.session_state.practice_index = 0
+            st.session_state.question_index = 0
             st.session_state.page = "dashboard"
             st.experimental_rerun()
-        return
+        st.stop()
+
+    q_num = st.session_state.question_index + 1
+    q_total = total_questions
+    progress = q_num / q_total
+
+    st.markdown(
+        f"""
+        <div style="
+            background: #0f172a;
+            padding: 14px 18px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            color: white;
+        ">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong>Q {q_num} / {q_total}</strong>
+                <span>{int(progress * 100)}%</span>
+            </div>
+            <div style="margin-top:8px;">
+                <div style="
+                    background:#1e293b;
+                    border-radius:10px;
+                    height:8px;
+                ">
+                    <div style="
+                        width:{int(progress * 100)}%;
+                        background:linear-gradient(90deg,#38bdf8,#22c55e);
+                        height:8px;
+                        border-radius:10px;
+                    "></div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     current_word = words[index]["word"]
 
@@ -242,12 +290,62 @@ def render_practice_page():
 
     if submitted:
         if answer.strip().lower() == current_word.lower():
-            st.success("Correct! 🎉")
+            st.markdown(
+                """
+                <div style="
+                    background:#ecfdf5;
+                    color:#065f46;
+                    padding:16px;
+                    border-radius:14px;
+                    font-size:18px;
+                    font-weight:700;
+                    margin-top:12px;
+                ">
+                    🎉 Correct!
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                """
+                <div style="
+                    background:#14532d;
+                    color:#dcfce7;
+                    padding:14px;
+                    border-radius:14px;
+                    margin-top:10px;
+                    font-size:16px;
+                    font-weight:600;
+                ">
+                    ⭐ You earned 10 XP!
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
+            st.markdown(
+                """
+                <div style="
+                    background:#fee2e2;
+                    color:#991b1b;
+                    padding:16px;
+                    border-radius:14px;
+                    font-size:18px;
+                    font-weight:700;
+                    margin-top:12px;
+                ">
+                    😅 Try again!
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             st.error(f"Incorrect ❌ — Correct word: **{current_word}**")
 
-        if st.button("Next"):
+        if st.button("Next ▶"):
             st.session_state.practice_index += 1
+            st.session_state.question_index += 1
             st.experimental_rerun()
 
     if st.sidebar.button("Back to Courses"):
