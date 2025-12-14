@@ -119,12 +119,11 @@ def record_attempt(
 
 def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indices):
     """
-    Udemy-style: render masked word in ONE horizontal row.
-    Returns the full user_answer string (fixed letters + typed blanks).
+    Render the masked word in ONE horizontal row (Udemy-style).
     """
-    user_chars = [""] * len(masked_word)
-
     cols = st.columns(len(masked_word))
+    user_chars = []
+
     for i, ch in enumerate(masked_word):
         with cols[i]:
             if ch == "_":
@@ -134,13 +133,13 @@ def render_masked_word_input(masked_word, correct_word, key_prefix, blank_indice
                     key=f"{key_prefix}_char_{i}",
                     label_visibility="collapsed",
                 )
-                user_chars[i] = (val or "")
+                user_chars.append(val or "")
             else:
                 st.markdown(
-                    f"<div style='font-size:22px;font-weight:800;text-align:center;line-height:36px;'>{ch}</div>",
+                    f"<div style='font-size:22px;font-weight:800;text-align:center;'>{ch}</div>",
                     unsafe_allow_html=True,
                 )
-                user_chars[i] = ch
+                user_chars.append(ch)
 
     return "".join(user_chars)
 

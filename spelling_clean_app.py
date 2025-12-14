@@ -366,6 +366,10 @@ def main():
         render_login_page()
         return
 
+    if st.session_state.page == "practice":
+        render_practice_page()
+        return
+
     st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
     if st.sidebar.button("Logout"):
         logout(st)
