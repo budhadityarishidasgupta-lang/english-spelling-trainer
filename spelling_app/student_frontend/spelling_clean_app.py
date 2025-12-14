@@ -1,5 +1,4 @@
 import random
-import time
 from typing import Any, Iterable, Mapping, Optional
 
 import streamlit as st
@@ -126,6 +125,17 @@ def render_practice_mode(
     selected_course_id: int,
     selected_lesson_id: int,
 ):
+    import time
+
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+
+    if "checked" not in st.session_state:
+        st.session_state.checked = False
+
+    if "correct" not in st.session_state:
+        st.session_state.correct = False
+
     if "start_time" not in st.session_state:
         st.session_state.start_time = time.time()
 
@@ -166,34 +176,26 @@ def render_practice_mode(
     if not row:
         # If the list changed, unlock and try again
         st.session_state[current_wid_key] = None
-        st.experimental_rerun()
+        return
 
     m_word = getattr(row, "_mapping", row)
     target_word = m_word["word"]
 
-    submitted_key = f"{wid}_submitted"
-    checked_key = f"{wid}_checked"
-    correct_key = f"{wid}_correct"
-
     if st.session_state.get("active_word_id") != wid:
         st.session_state["active_word_id"] = wid
-
-    for key in [submitted_key, checked_key, correct_key]:
-        if key not in st.session_state:
-            st.session_state[key] = False
 
     masked_word = mask_word(target_word)
 
     st.markdown(
         f"""
         <div style="
-            font-size:24px;
+            font-size:26px;
             font-weight:700;
-            letter-spacing:4px;
+            letter-spacing:6px;
             background:#111827;
-            padding:14px 18px;
-            border-radius:12px;
-            margin-bottom:20px;
+            padding:16px 20px;
+            border-radius:14px;
+            margin-bottom:18px;
         ">
             {masked_word}
         </div>
@@ -204,36 +206,36 @@ def render_practice_mode(
     user_answer = st.text_input(
         "Type the complete word",
         key=f"answer_{wid}",
-        disabled=st.session_state.get(checked_key, False),
+        disabled=st.session_state.checked,
     )
 
-    if not st.session_state[submitted_key]:
+    if not st.session_state.submitted:
         if st.button("✅ Submit"):
+            time_taken = int(time.time() - st.session_state.start_time)
+
             is_correct = user_answer.strip().lower() == target_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=wid,
                 correct=is_correct,
-                time_taken=int(time.time() - st.session_state.start_time),
+                time_taken=time_taken,
                 blanks_count=masked_word.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
 
-            st.session_state[submitted_key] = True
-            st.session_state[checked_key] = True
-            st.session_state[correct_key] = is_correct
+            st.session_state.submitted = True
+            st.session_state.checked = True
+            st.session_state.correct = is_correct
 
-            st.experimental_rerun()
-
-    if st.session_state[checked_key]:
-        if st.session_state[correct_key]:
+    if st.session_state.checked:
+        if st.session_state.correct:
             st.success("🎉 Correct! Great job!")
             st.info("⭐ You earned 10 XP")
         else:
-            st.error("😅 Not quite right — try the next one!")
+            st.error("😅 Not quite right — keep going!")
 
-    if st.session_state[checked_key]:
+    if st.session_state.checked:
         if st.button("➡️ Next"):
             # mark last word ONLY when user chooses to advance
             st.session_state[last_wid_key] = wid
@@ -241,12 +243,13 @@ def render_practice_mode(
             # unlock next word so a new pick happens
             st.session_state[current_wid_key] = None
 
-            # reset timer
+            # reset state
+            st.session_state.submitted = False
+            st.session_state.checked = False
+            st.session_state.correct = False
             st.session_state.start_time = time.time()
 
-            # clear ONLY the current word's input state
-            for key in list(st.session_state.keys()):
-                if key.startswith("answer_") or str(wid) in str(key):
-                    del st.session_state[key]
+            # clear input
+            del st.session_state[f"answer_{wid}"]
 
             st.experimental_rerun()
