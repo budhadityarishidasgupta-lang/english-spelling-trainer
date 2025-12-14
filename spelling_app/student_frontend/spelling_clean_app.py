@@ -60,6 +60,14 @@ ENCOURAGEMENT_MESSAGES = [
     "🧠 Nice attempt! You’ll get this one soon.",
 ]
 
+CELEBRATION_MESSAGES = [
+    "🎉 Brilliant! You nailed it!",
+    "⭐ Awesome spelling!",
+    "🔥 You're on fire!",
+    "👏 Great job — keep going!",
+    "🏆 Fantastic work!",
+]
+
 POINTS_PER_CORRECT = 10
 
 
@@ -540,6 +548,16 @@ def render_practice_page():
         st.session_state.practice_index = 0
 
     index = int(st.session_state.practice_index)
+    total_words = len(words)
+    current_index = min(index, total_words - 1)
+    progress = (current_index + 1) / total_words if total_words else 0
+
+    if progress < 0.3:
+        bar_color = "#ef4444"
+    elif progress < 0.7:
+        bar_color = "#f59e0b"
+    else:
+        bar_color = "#22c55e"
 
     # Completed all words
     if index >= len(words):
@@ -565,6 +583,42 @@ def render_practice_page():
     if info_bits:
         st.caption(" • ".join(info_bits))
 
+
+    st.markdown(
+        f"""
+        <div style="font-size:14px; opacity:0.8; margin-bottom:6px;">
+            Q {current_index + 1} / {total_words}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            width:100%;
+            background:#1f2937;
+            border-radius:8px;
+            height:10px;
+            margin-bottom:18px;
+        ">
+            <div style="
+                width:{int(progress * 100)}%;
+                background:{bar_color};
+                height:10px;
+                border-radius:8px;
+                transition:width 0.4s ease;
+            "></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.get("streak", 0) > 0:
+        st.markdown(
+            f"🔥 <b>{st.session_state.streak}-day streak!</b>",
+            unsafe_allow_html=True,
+        )
 
     masked, _ = generate_missing_letter_question(current_word)
 
@@ -624,8 +678,23 @@ def render_practice_page():
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.checked:
         if st.session_state.correct:
-            st.success("🎉 Correct! Great job!")
-            st.info("⭐ You earned 10 XP")
+            msg = random.choice(CELEBRATION_MESSAGES)
+            st.success(msg)
+            st.markdown(
+                """
+                <div style="
+                    background:#064e3b;
+                    color:#d1fae5;
+                    padding:12px 16px;
+                    border-radius:10px;
+                    font-weight:600;
+                    margin-top:8px;
+                ">
+                    ⭐ You earned <b>10 XP</b>!
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
             st.error("😅 Not quite right — keep trying!")
 
@@ -1047,6 +1116,18 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
         st.warning("No words available to practice.")
         return
 
+    total_words = len(words)
+    practice_index = st.session_state.get("practice_index", 0) or 0
+    current_index = min(practice_index, total_words - 1)
+    progress = (current_index + 1) / total_words if total_words else 0
+
+    if progress < 0.3:
+        bar_color = "#ef4444"
+    elif progress < 0.7:
+        bar_color = "#f59e0b"
+    else:
+        bar_color = "#22c55e"
+
     last_word_id = st.session_state.get("last_word_id")
     current_level = difficulty_map.get(last_word_id, "MEDIUM") if last_word_id else "MEDIUM"
     word_pick = choose_next_word(
@@ -1066,6 +1147,42 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
     st.session_state["last_word_id"] = wid
 
     st.subheader("Spell the word:")
+
+    st.markdown(
+        f"""
+        <div style="font-size:14px; opacity:0.8; margin-bottom:6px;">
+            Q {current_index + 1} / {total_words}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            width:100%;
+            background:#1f2937;
+            border-radius:8px;
+            height:10px;
+            margin-bottom:18px;
+        ">
+            <div style="
+                width:{int(progress * 100)}%;
+                background:{bar_color};
+                height:10px;
+                border-radius:8px;
+                transition:width 0.4s ease;
+            "></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.get("streak", 0) > 0:
+        st.markdown(
+            f"🔥 <b>{st.session_state.streak}-day streak!</b>",
+            unsafe_allow_html=True,
+        )
 
     masked_word, _ = generate_missing_letter_question(
         target_word
@@ -1126,8 +1243,23 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
 
     if st.session_state.checked:
         if st.session_state.correct:
-            st.success("🎉 Correct! Great job!")
-            st.info("⭐ You earned 10 XP")
+            msg = random.choice(CELEBRATION_MESSAGES)
+            st.success(msg)
+            st.markdown(
+                """
+                <div style="
+                    background:#064e3b;
+                    color:#d1fae5;
+                    padding:12px 16px;
+                    border-radius:10px;
+                    font-weight:600;
+                    margin-top:8px;
+                ">
+                    ⭐ You earned <b>10 XP</b>!
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
             st.error("😅 Not quite right — keep trying!")
 
@@ -1181,6 +1313,7 @@ def main():
     user_id = st.session_state.get("user_id")
     if user_id:
         xp_total, streak = get_xp_and_streak(user_id)
+        st.session_state.streak = streak
         st.sidebar.metric("⭐ XP", xp_total)
         st.sidebar.metric("🔥 Streak (days)", streak)
 
