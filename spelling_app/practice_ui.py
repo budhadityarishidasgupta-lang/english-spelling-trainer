@@ -106,6 +106,63 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
     Main entry for masked spelling practice.
     Called from app.py when session_state['page'] == 'practice'.
     """
+    if "answered" not in st.session_state:
+        st.session_state.answered = False
+
+    if "is_correct" not in st.session_state:
+        st.session_state.is_correct = None
+
+    if "selected_answer" not in st.session_state:
+        st.session_state.selected_answer = None
+
+    st.markdown(
+        """
+        <style>
+        .feedback-card {
+            padding: 1.2rem;
+            border-radius: 14px;
+            margin-top: 1rem;
+            font-size: 1.05rem;
+            font-weight: 600;
+            animation-duration: 0.6s;
+            animation-fill-mode: both;
+        }
+
+        .correct-card {
+            background: linear-gradient(135deg, #d4f8e8, #b2f2d6);
+            border: 2px solid #2ecc71;
+            color: #145a32;
+            animation-name: fadeSlideUp;
+        }
+
+        .wrong-card {
+            background: linear-gradient(135deg, #fde2e2, #f8caca);
+            border: 2px solid #e74c3c;
+            color: #7b241c;
+            animation-name: fadeShake;
+        }
+
+        @keyframes fadeSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeShake {
+            0% { opacity: 0; transform: translateX(0); }
+            30% { transform: translateX(-6px); }
+            60% { transform: translateX(6px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     user = get_logged_in_user()
     if not user:
         st.error("You must be logged in to practice this lesson.")
@@ -116,6 +173,11 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
     state = _init_practice_state(lesson_id, course_id, lesson_title)
     if state is None:
         return
+
+    if state.get("index") == 0 and not state.get("attempts"):
+        st.session_state.answered = False
+        st.session_state.is_correct = None
+        st.session_state.selected_answer = None
 
     st.title(f"✏️ Spelling Practice — {lesson_title}")
 
@@ -145,14 +207,20 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
     st.subheader(f"Word {idx + 1} of {len(items)}")
     st.markdown(f"**Complete the word:** `{masked}`")
 
-    # Use a form so submit works cleanly
-    with st.form(key=f"practice_form_{lesson_id}_{idx}"):
-        typed = st.text_input("Type the full, correct spelling:", "")
-        submitted = st.form_submit_button("Submit")
+    answer_key = f"practice_answer_{lesson_id}_{idx}"
+    typed = st.text_input(
+        "Type the full, correct spelling:",
+        key=answer_key,
+        disabled=st.session_state.answered,
+    )
 
-    if submitted:
-        typed_clean = typed.strip()
+    if st.button("Submit", disabled=st.session_state.answered, type="primary"):
+        typed_clean = (st.session_state.get(answer_key) or "").strip()
         is_correct = typed_clean.lower() == base_word.lower()
+        st.session_state.selected_answer = typed_clean
+        st.session_state.is_correct = is_correct
+        st.session_state.answered = True
+
         response_ms = int((time.time() - state.get("start_ts", time.time())) * 1000)
 
         # Save attempt to DB
@@ -167,12 +235,8 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
             response_ms=response_ms,
         )
 
-        # Track in session
         if is_correct:
             state["correct_count"] += 1
-            st.success(f"✅ Correct! **{base_word}**")
-        else:
-            st.error(f"❌ Not quite. Correct spelling: **{base_word}**")
 
         state["attempts"].append(
             {
@@ -182,9 +246,36 @@ def render_practice_screen(lesson_id: int, course_id: int, lesson_title: str):
             }
         )
 
-        # Move to next item
-        state["index"] += 1
-        state["start_ts"] = time.time()
+    if st.session_state.answered and st.session_state.is_correct:
+        st.markdown(
+            """
+            <div class="feedback-card correct-card">
+                🎉 Correct! Excellent work — keep going!
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        # Force rerun to show next question
-        st.experimental_rerun()
+    if st.session_state.answered and st.session_state.is_correct is False:
+        st.markdown(
+            f"""
+            <div class="feedback-card wrong-card">
+                😅 Not quite right — the correct answer is <strong>{base_word}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if st.session_state.answered:
+        if st.button("Next ➡️"):
+            state["index"] += 1
+            state["start_ts"] = time.time()
+
+            st.session_state.answered = False
+            st.session_state.is_correct = None
+            st.session_state.selected_answer = None
+            st.session_state.pop(answer_key, None)
+
+            if state["index"] >= len(items):
+                state["finished"] = True
+            st.rerun()
