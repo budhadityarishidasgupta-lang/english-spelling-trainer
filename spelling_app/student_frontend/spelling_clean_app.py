@@ -302,11 +302,19 @@ def generate_question(word: str, pattern: str):
 import random
 
 
-def generate_missing_letter_question(word: str, base_blanks: int = 2):
-    if len(word) <= base_blanks:
-        indices = list(range(len(word)))
+def generate_missing_letter_question(
+    word: str, base_blanks: int = 2, max_blanks: int | None = None
+):
+    max_available = len(word)
+    blanks = max(1, min(base_blanks, max_available))
+
+    if max_blanks is not None:
+        blanks = min(blanks, max_blanks)
+
+    if max_available <= blanks:
+        indices = list(range(max_available))
     else:
-        indices = random.sample(range(len(word)), base_blanks)
+        indices = random.sample(range(max_available), blanks)
 
     masked = "".join("_" if i in indices else ch for i, ch in enumerate(word))
     return masked, indices
@@ -1144,6 +1152,14 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
     import time
 
     # --- SAFETY INITIALISATION ---
+    st.session_state.setdefault("correct_streak", 0)
+    st.session_state.setdefault("recent_results", [])
+    st.session_state.setdefault("difficulty_level", 2)
+    st.session_state.setdefault("earned_badges", set())
+    st.session_state.setdefault("attempts_total", 0)
+    st.session_state.setdefault("correct_total", 0)
+    st.session_state.setdefault("result_processed", False)
+
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
@@ -1168,9 +1184,6 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if "hint_level" not in st.session_state:
         st.session_state.hint_level = 0
-
-    if "recent_results" not in st.session_state:
-        st.session_state.recent_results = []
 
     if "current_word_pick" not in st.session_state:
         st.session_state.current_word_pick = None
@@ -1263,8 +1276,12 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             unsafe_allow_html=True,
         )
 
+    blank_count = max(1, int(st.session_state.get("difficulty_level", 2) or 1))
+
     masked_word, _ = generate_missing_letter_question(
-        target_word
+        target_word,
+        base_blanks=blank_count,
+        max_blanks=5,
     )
 
     st.markdown(
@@ -1319,13 +1336,64 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
                 wrong_letters_count=0 if is_correct else 1,
             )
 
+            st.session_state.attempts_total = st.session_state.get("attempts_total", 0) + 1
+            if is_correct:
+                st.session_state.correct_total = st.session_state.get("correct_total", 0) + 1
+
             # IMPORTANT: evaluation only
             st.session_state.submitted = True
             st.session_state.checked = True
             st.session_state.correct = is_correct
+            st.session_state.result_processed = False
 
             # ❌ DO NOT reset current_wid
             # ❌ DO NOT rerun
+
+    if (
+        st.session_state.submitted
+        and st.session_state.checked
+        and not st.session_state.get("result_processed")
+    ):
+        if st.session_state.correct:
+            st.session_state.correct_streak += 1
+        else:
+            st.session_state.correct_streak = 0
+
+        st.session_state.recent_results.append(st.session_state.correct)
+        st.session_state.recent_results = st.session_state.recent_results[-3:]
+
+        level = st.session_state.difficulty_level
+
+        if st.session_state.correct_streak >= 5:
+            level = min(level + 1, 5)
+        elif st.session_state.correct_streak >= 3:
+            level = min(level + 1, 4)
+        elif st.session_state.recent_results.count(False) >= 2:
+            level = max(level - 1, 1)
+
+        st.session_state.difficulty_level = level
+
+        def award_badge(badge_name, emoji):
+            if badge_name not in st.session_state.earned_badges:
+                st.session_state.earned_badges.add(badge_name)
+                st.success(f"{emoji} **Badge Unlocked:** {badge_name}")
+
+        if st.session_state.correct_streak == 3:
+            award_badge("Streak Starter", "🔥")
+
+        if st.session_state.correct_streak == 5:
+            award_badge("On Fire", "🚀")
+
+        attempts = st.session_state.get("attempts_total", 0)
+        corrects = st.session_state.get("correct_total", 0)
+
+        if attempts >= 10 and (attempts and (corrects / attempts) >= 0.9):
+            award_badge("Sharp Shooter", "🎯")
+
+        if st.session_state.correct_streak == 10:
+            award_badge("Perfect Run", "🏆")
+
+        st.session_state.result_processed = True
 
     if st.session_state.checked:
         if st.session_state.correct:
@@ -1360,6 +1428,7 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             st.session_state.correct = False
             st.session_state.hint_level = 0
             st.session_state.start_time = time.time()
+            st.session_state.result_processed = False
 
             # clear input
             st.session_state.pop(f"answer_{wid}", None)
