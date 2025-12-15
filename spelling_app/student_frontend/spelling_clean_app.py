@@ -1143,15 +1143,22 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
                          selected_lesson_name: str):
     import time
 
-    # --- GUARANTEED session state initialization ---
-    if "start_time" not in st.session_state:
-        st.session_state.start_time = time.time()
+    # --- SAFETY INITIALISATION ---
+    if "practice_index" not in st.session_state or st.session_state.practice_index is None:
+        st.session_state.practice_index = 0
+
+    if "current_wid" not in st.session_state:
+        st.session_state.current_wid = None
 
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
 
     if "checked" not in st.session_state:
         st.session_state.checked = False
+
+    # --- GUARANTEED session state initialization ---
+    if "start_time" not in st.session_state:
+        st.session_state.start_time = time.time()
 
     if "correct" not in st.session_state:
         st.session_state.correct = False
@@ -1182,8 +1189,9 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         st.warning("No words available to practice.")
         return
 
-    total_words = len(words)
-    practice_index = st.session_state.get("practice_index", 0) or 0
+    practice_words = words
+    total_words = len(practice_words)
+    practice_index = int(st.session_state.practice_index)
     current_index = min(practice_index, total_words - 1)
     progress = (current_index + 1) / total_words if total_words else 0
 
@@ -1194,44 +1202,27 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
     else:
         bar_color = "#22c55e"
 
-    last_word_id = st.session_state.get("last_word_id")
-    force_easy_word = False
-    recent_results = st.session_state.get("recent_results", [])
-    if len(recent_results) >= 3 and all(r is False for r in recent_results[-3:]):
-        force_easy_word = True
+    if practice_index >= total_words:
+        st.success("🎉 You finished all words!")
+        if st.button("Restart practice"):
+            st.session_state.practice_index = 0
+            st.session_state.current_wid = None
+            st.session_state.current_word_pick = None
+            st.session_state.start_time = time.time()
+            st.experimental_rerun()
+        return
 
-    if st.session_state.get("current_wid") is None:
-        word_pick = select_next_word(
-            words,
-            stats_map,
-            force_easy_word=force_easy_word,
-            last_word_id=last_word_id,
-        )
-        if not word_pick:
-            st.warning("No words available to practise.")
-            return
-
-        m_word = getattr(word_pick, "_mapping", word_pick)
-        wid = m_word.get("word_id") or m_word.get("col_0")
-        st.session_state.current_wid = wid
-        st.session_state.current_word_pick = m_word
+    if st.session_state.current_wid is None:
+        current = practice_words[st.session_state.practice_index]
+        st.session_state.current_wid = current["word_id"]
+        st.session_state.current_word_pick = current
+        st.session_state.start_time = time.time()
     else:
-        m_word = st.session_state.get("current_word_pick")
-        if not m_word:
-            word_pick = select_next_word(
-                words,
-                stats_map,
-                force_easy_word=force_easy_word,
-                last_word_id=last_word_id,
-            )
-            if not word_pick:
-                st.warning("No words available to practise.")
-                return
-            m_word = getattr(word_pick, "_mapping", word_pick)
-            st.session_state.current_word_pick = m_word
-        wid = st.session_state.get("current_wid")
+        current = st.session_state.get("current_word_pick") or practice_words[current_index]
+        st.session_state.current_word_pick = current
 
-    target_word = m_word["word"]
+    wid = st.session_state.current_wid
+    target_word = current["word"]
     st.session_state["last_word_id"] = wid
 
     st.subheader("Spell the word:")
@@ -1360,10 +1351,8 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
-            # advance progress
-            st.session_state.question_number += 1
-
-            st.session_state.practice_index = st.session_state.get("practice_index", 0) + 1
+            # increment index SAFELY
+            st.session_state.practice_index += 1
 
             # reset per-word state
             st.session_state.submitted = False
@@ -1373,9 +1362,9 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             st.session_state.start_time = time.time()
 
             # clear input
-            del st.session_state[f"answer_{wid}"]
+            st.session_state.pop(f"answer_{wid}", None)
 
-            # THIS is the only place we move on
+            # force new word selection
             st.session_state.current_wid = None
             st.session_state.current_word_pick = None
 
