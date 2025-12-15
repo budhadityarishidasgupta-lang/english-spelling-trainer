@@ -23,6 +23,7 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import text
 
 from dotenv import load_dotenv
+from html import escape
 load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
@@ -249,7 +250,7 @@ def get_lessons_for_course(course_id):
 def get_words_for_lesson(course_id, pattern_code):
     rows = fetch_all(
         """
-        SELECT word_id, word, pattern, pattern_code, level, lesson_name
+        SELECT word_id, word, pattern, pattern_code, level, lesson_name, example_sentence
         FROM spelling_words
         WHERE course_id = :cid
         AND pattern_code = :pc
@@ -267,6 +268,7 @@ def get_words_for_lesson(course_id, pattern_code):
             "pattern_code": m.get("pattern_code"),
             "level": m.get("level"),
             "lesson_name": m.get("lesson_name"),
+            "example_sentence": m.get("example_sentence"),
         })
     return out
 
@@ -582,6 +584,8 @@ def render_practice_page():
     pattern = current.get("pattern") or ""
     level = current.get("level")
 
+    st.session_state.current_example_sentence = current.get("example_sentence")
+
     info_bits = []
     if level is not None:
         info_bits.append(f"Level {level}")
@@ -692,26 +696,54 @@ def render_practice_page():
 
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.checked:
+        example_sentence = st.session_state.get("current_example_sentence")
+        example_html = ""
+        if example_sentence:
+            example_html = f"""
+                <div style=\"font-size:13px; opacity:0.9;\">
+                    📘 Example sentence: \"{escape(example_sentence)}\"
+                </div>
+            """
+
         if st.session_state.correct:
-            msg = random.choice(CELEBRATION_MESSAGES)
-            st.success(msg)
+            xp_earned = 10
             st.markdown(
-                """
-                <div style="
+                f"""
+                <div style=\"
                     background:#064e3b;
                     color:#d1fae5;
                     padding:12px 16px;
                     border-radius:10px;
                     font-weight:600;
                     margin-top:8px;
-                ">
-                    ⭐ You earned <b>10 XP</b>!
+                \">
+                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
+                        <div>🏆 Fantastic work! ⭐ You earned {xp_earned} XP</div>
+                        {example_html}
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         else:
-            st.error("😅 Not quite right — keep trying!")
+            st.markdown(
+                f"""
+                <div style=\"
+                    background:#1f2937;
+                    color:#e5e7eb;
+                    padding:12px 16px;
+                    border-radius:10px;
+                    font-weight:600;
+                    margin-top:8px;
+                \">
+                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
+                        <div>😅 Not quite right — keep trying!</div>
+                        {example_html}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
@@ -726,6 +758,7 @@ def render_practice_page():
             st.session_state.correct = False
             st.session_state.hint_level = 0
             st.session_state.start_time = time.time()
+            st.session_state.current_example_sentence = None
 
             # clear input
             del st.session_state[f"answer_{word_id}"]
@@ -1234,6 +1267,8 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         current = st.session_state.get("current_word_pick") or practice_words[current_index]
         st.session_state.current_word_pick = current
 
+    st.session_state.current_example_sentence = current.get("example_sentence")
+
     wid = st.session_state.current_wid
     target_word = current["word"]
     st.session_state["last_word_id"] = wid
@@ -1396,26 +1431,54 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         st.session_state.result_processed = True
 
     if st.session_state.checked:
+        example_sentence = st.session_state.get("current_example_sentence")
+        example_html = ""
+        if example_sentence:
+            example_html = f"""
+                <div style=\"font-size:13px; opacity:0.9;\">
+                    📘 Example sentence: \"{escape(example_sentence)}\"
+                </div>
+            """
+
         if st.session_state.correct:
-            msg = random.choice(CELEBRATION_MESSAGES)
-            st.success(msg)
+            xp_earned = 10
             st.markdown(
-                """
-                <div style="
+                f"""
+                <div style=\"
                     background:#064e3b;
                     color:#d1fae5;
                     padding:12px 16px;
                     border-radius:10px;
                     font-weight:600;
                     margin-top:8px;
-                ">
-                    ⭐ You earned <b>10 XP</b>!
+                \">
+                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
+                        <div>🏆 Fantastic work! ⭐ You earned {xp_earned} XP</div>
+                        {example_html}
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         else:
-            st.error("😅 Not quite right — keep trying!")
+            st.markdown(
+                f"""
+                <div style=\"
+                    background:#1f2937;
+                    color:#e5e7eb;
+                    padding:12px 16px;
+                    border-radius:10px;
+                    font-weight:600;
+                    margin-top:8px;
+                \">
+                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
+                        <div>😅 Not quite right — keep trying!</div>
+                        {example_html}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
@@ -1429,6 +1492,7 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             st.session_state.hint_level = 0
             st.session_state.start_time = time.time()
             st.session_state.result_processed = False
+            st.session_state.current_example_sentence = None
 
             # clear input
             st.session_state.pop(f"answer_{wid}", None)
