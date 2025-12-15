@@ -836,47 +836,77 @@ def get_cached_word_signals(user_id: int, course_id: int, lesson_id: int):
             "avg_time": float(m.get("avg_time") or 0),
             "avg_wrong_letters": float(m.get("avg_wrong_letters") or 0),
             "recent_failures": int(m.get("recent_failures") or 0),
+            "recent_correct": float(m.get("recent_correct") or 0),
+            "recent_wrong_last3": int(m.get("recent_wrong_last3") or 0),
             "total_attempts": int(m.get("total_attempts") or 0),
         }
     return out
 
 
-def classify_word_difficulty(signals: dict, avg_time_threshold: float = 8.0):
-    accuracy = signals.get("accuracy", 0)
-    avg_time = signals.get("avg_time", 0) or 0
-    avg_wrong = signals.get("avg_wrong_letters", 0) or 0
-    recent_failures = signals.get("recent_failures", 0) or 0
-    total_attempts = signals.get("total_attempts", 0) or 0
+def compute_word_score(stats):
+    """
+    Compute an adaptive score (0-1) using accuracy, recent performance, and speed.
+    Lower scores imply the word is harder for the student.
+    """
+    if stats["attempts"] == 0:
+        return 0.5  # unseen words are medium priority
 
-    if total_attempts == 0:
-        return "MEDIUM"
+    accuracy = stats["correct"] / stats["attempts"]
 
-    if accuracy >= 0.85 and avg_time < avg_time_threshold and recent_failures == 0 and avg_wrong < 1.5:
-        return "EASY"
+    score = (
+        0.6 * accuracy +
+        0.2 * stats.get("recent_correct", accuracy) +
+        0.2 * max(0, 1 - (stats.get("avg_time", 5) / 6))
+    )
 
-    if accuracy < 0.6 or recent_failures > 0 or avg_wrong >= 2:
+    return round(score, 2)
+
+
+def classify_word_difficulty(stats: dict):
+    score = compute_word_score(stats)
+
+    if score < 0.4:
         return "HARD"
-
+    if score > 0.75:
+        return "EASY"
     return "MEDIUM"
 
 
-def build_difficulty_map(words, signals_map):
+def build_stats_map(signals_map: dict):
+    stats_map = {}
+    for wid, signals in signals_map.items():
+        attempts = int(signals.get("total_attempts", 0) or 0)
+        accuracy = float(signals.get("accuracy", 0) or 0)
+        correct = int(round(accuracy * attempts)) if attempts else 0
+        stats_map[wid] = {
+            "attempts": attempts,
+            "correct": correct,
+            "avg_time": float(signals.get("avg_time", 5) or 5),
+            "recent_correct": float(
+                signals.get("recent_correct", accuracy if attempts else 0.5)
+            ),
+            "recent_wrong_last3": int(signals.get("recent_wrong_last3", 0) or 0),
+            "accuracy": accuracy,
+        }
+    return stats_map
+
+
+def build_difficulty_map(words, stats_map):
     difficulty_map = {}
     for w in words:
         m = getattr(w, "_mapping", w)
         wid = m.get("word_id") or m.get("col_0")
-        signals = signals_map.get(wid, {})
-        difficulty_map[wid] = classify_word_difficulty(signals)
+        stats = stats_map.get(wid, {"attempts": 0, "correct": 0, "avg_time": 5, "recent_correct": 0.5})
+        difficulty_map[wid] = classify_word_difficulty(stats)
     return difficulty_map
 
 
-def get_weak_word_ids(difficulty_map, signals_map):
+def get_weak_word_ids(stats_map):
     weak_ids = set()
-    for wid, level in difficulty_map.items():
-        signals = signals_map.get(wid, {})
-        accuracy = signals.get("accuracy", 1)
-        recent_failures = signals.get("recent_failures", 0)
-        if level == "HARD" or accuracy < 0.6 or recent_failures >= 2:
+    for wid, stats in stats_map.items():
+        accuracy = stats.get("accuracy", 1)
+        recent_wrong = stats.get("recent_wrong_last3", 0)
+        if accuracy < 0.6 or recent_wrong >= 2:
             weak_ids.add(wid)
     return weak_ids
 
@@ -895,84 +925,76 @@ def _word_id(word_row):
     return m.get("word_id") or m.get("col_0")
 
 
-def choose_next_word(words, difficulty_map, current_level: str, weak_word_ids=None, last_word_id=None):
+def select_next_word(words, stats_map, force_easy_word: bool = False, last_word_id=None):
     """
-    Adaptive selector using difficulty buckets:
-      - 60% from current level
-      - 20% from one level easier
-      - 20% from one level harder
-    Weak words are prioritised inside each bucket and immediate repeats are avoided.
+    Score all available words, weight towards weaker items, and optionally bias
+    towards easy words when the student is struggling.
     """
     import random
 
     if not words:
         return None
 
-    weak_word_ids = weak_word_ids or set()
-    levels = ["EASY", "MEDIUM", "HARD"]
-    current_level = current_level if current_level in levels else "MEDIUM"
-    idx = levels.index(current_level)
-    easier = levels[max(0, idx - 1)]
-    harder = levels[min(len(levels) - 1, idx + 1)]
+    scored = []
+    for w in words:
+        wid = _word_id(w)
+        stats = stats_map.get(wid, {
+            "attempts": 0,
+            "correct": 0,
+            "avg_time": 5,
+            "recent_correct": 0.5,
+        })
+        score = compute_word_score(stats)
+        scored.append((w, wid, score))
 
-    roll = random.random()
-    if roll < 0.6:
-        target_levels = [current_level]
-    elif roll < 0.8:
-        target_levels = [easier]
-    else:
-        target_levels = [harder]
+    # Sort weakest first
+    scored.sort(key=lambda x: x[2])
 
-    def bucket(levels_to_use):
-        return [
-            w for w in words
-            if difficulty_map.get(_word_id(w), "MEDIUM") in levels_to_use
-            and _word_id(w) != last_word_id
-        ]
+    if force_easy_word:
+        easy_bucket = [item for item in scored if item[2] > 0.75 and item[1] != last_word_id]
+        if easy_bucket:
+            return random.choice(easy_bucket)[0]
 
-    candidates = bucket(target_levels)
-    if not candidates:
-        candidates = bucket(levels)  # full fallback
+    bucket = (
+        scored[:5] * 3 +      # weakest words appear more often
+        scored[5:10] * 2 +    # medium words
+        scored[10:20]         # easy words
+    )
 
-    if not candidates:
-        return None
+    bucket = [item for item in bucket if item[1] != last_word_id] or [item for item in scored if item[1] != last_word_id]
+    if not bucket:
+        bucket = scored
 
-    weak_candidates = [w for w in candidates if _word_id(w) in weak_word_ids]
-    if weak_candidates and random.random() < 0.6:
-        candidates = weak_candidates
-
-    return random.choice(candidates)
+    return random.choice(bucket)[0]
 
 
-def select_daily_five(words, difficulty_map, signals_map, weak_word_ids):
+def select_daily_five(words, stats_map):
     import random
 
-    selected = []
-    seen = set()
+    scored = []
+    for w in words:
+        wid = _word_id(w)
+        stats = stats_map.get(wid, {"attempts": 0, "correct": 0, "avg_time": 5, "recent_correct": 0.5})
+        score = compute_word_score(stats)
+        scored.append((w, wid, score))
 
-    def take_from(pool, count):
-        picks = []
-        filtered = [w for w in pool if _word_id(w) not in seen]
-        if filtered:
-            picks = random.sample(filtered, min(count, len(filtered)))
-        for p in picks:
-            wid = _word_id(p)
-            seen.add(wid)
-        return picks
+    scored.sort(key=lambda x: x[2])
 
-    weak_pool = [w for w in words if _word_id(w) in weak_word_ids]
-    medium_pool = [w for w in words if difficulty_map.get(_word_id(w), "MEDIUM") == "MEDIUM"]
-    new_pool = [w for w in words if signals_map.get(_word_id(w), {}).get("total_attempts", 0) == 0]
+    hard_words = [item for item in scored if item[2] < 0.4]
+    medium_words = [item for item in scored if 0.4 <= item[2] <= 0.75]
+    easy_words = [item for item in scored if item[2] > 0.75]
 
-    selected.extend(take_from(weak_pool, 2))
-    selected.extend(take_from(medium_pool, 2))
-    selected.extend(take_from(new_pool, 1))
+    daily_words = (
+        [w for w, _, _ in hard_words[:3]] +
+        [w for w, _, _ in medium_words[:1]] +
+        [w for w, _, _ in easy_words[:1]]
+    )
 
-    if len(selected) < 5:
-        remaining = [w for w in words if _word_id(w) not in seen]
-        selected.extend(take_from(remaining, 5 - len(selected)))
+    if len(daily_words) < 5:
+        remaining = [w for w, _, _ in scored if w not in daily_words]
+        daily_words.extend(remaining[: max(0, 5 - len(daily_words))])
 
-    return selected[:5]
+    return daily_words[:5] if daily_words else [w for w, _, _ in scored[:5]]
 
 
 def get_lesson_attempt_stats(user_id: int, course_id: int, lesson_id: int):
@@ -1102,7 +1124,7 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_map: dict,
+def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map: dict,
                          weak_word_ids: set, selected_course_id: int, selected_lesson_id: int,
                          selected_lesson_name: str):
     import time
@@ -1125,6 +1147,9 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
 
     if "hint_level" not in st.session_state:
         st.session_state.hint_level = 0
+
+    if "recent_results" not in st.session_state:
+        st.session_state.recent_results = []
     # ------------------------------------------------
 
     if mode == "Weak Words":
@@ -1134,7 +1159,7 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
             st.info("You have no weak words yet!")
 
     if mode == "Daily-5":
-        words = select_daily_five(words, difficulty_map, signals_map, weak_word_ids)
+        words = select_daily_five(words, stats_map)
 
     if not words:
         st.warning("No words available to practice.")
@@ -1153,12 +1178,15 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
         bar_color = "#22c55e"
 
     last_word_id = st.session_state.get("last_word_id")
-    current_level = difficulty_map.get(last_word_id, "MEDIUM") if last_word_id else "MEDIUM"
-    word_pick = choose_next_word(
+    force_easy_word = False
+    recent_results = st.session_state.get("recent_results", [])
+    if len(recent_results) >= 3 and all(r is False for r in recent_results[-3:]):
+        force_easy_word = True
+
+    word_pick = select_next_word(
         words,
-        difficulty_map,
-        current_level=current_level,
-        weak_word_ids=weak_word_ids,
+        stats_map,
+        force_easy_word=force_easy_word,
         last_word_id=last_word_id,
     )
     if not word_pick:
@@ -1262,6 +1290,10 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
                 blanks_count=masked_word.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
+
+            recent_results = st.session_state.get("recent_results", [])
+            recent_results.append(is_correct)
+            st.session_state.recent_results = recent_results[-3:]
 
             st.session_state.submitted = True
             st.session_state.checked = True
@@ -1421,8 +1453,9 @@ def main():
         course_id=selected_course_id,
         lesson_id=selected_lesson_id,
     )
-    difficulty_map = build_difficulty_map(words, signals_map)
-    weak_word_ids = get_weak_word_ids(difficulty_map, signals_map)
+    stats_map = build_stats_map(signals_map)
+    difficulty_map = build_difficulty_map(words, stats_map)
+    weak_word_ids = get_weak_word_ids(stats_map)
 
     mastery = mastery_map[selected_lesson_name]
     xp_total, streak = get_xp_and_streak(st.session_state["user_id"])
@@ -1452,7 +1485,7 @@ def main():
             mode="Practice",
             words=words,
             difficulty_map=difficulty_map,
-            signals_map=signals_map,
+            stats_map=stats_map,
             weak_word_ids=weak_word_ids,
             selected_course_id=selected_course_id,
             selected_lesson_id=selected_lesson_id,
@@ -1466,7 +1499,7 @@ def main():
             mode="Weak Words",
             words=words,
             difficulty_map=difficulty_map,
-            signals_map=signals_map,
+            stats_map=stats_map,
             weak_word_ids=weak_word_ids,
             selected_course_id=selected_course_id,
             selected_lesson_id=selected_lesson_id,
@@ -1480,7 +1513,7 @@ def main():
             mode="Daily-5",
             words=words,
             difficulty_map=difficulty_map,
-            signals_map=signals_map,
+            stats_map=stats_map,
             weak_word_ids=weak_word_ids,
             selected_course_id=selected_course_id,
             selected_lesson_id=selected_lesson_id,

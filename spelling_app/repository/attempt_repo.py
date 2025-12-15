@@ -42,6 +42,8 @@ def get_word_difficulty_signals(user_id: int, course_id: int, lesson_id: int):
       - avg_time
       - avg_wrong_letters
       - recent_failures (count in last 5 attempts)
+      - recent_correct (ratio in last 3 attempts)
+      - recent_wrong_last3
       - total_attempts
     """
     return fetch_all(
@@ -62,6 +64,8 @@ def get_word_difficulty_signals(user_id: int, course_id: int, lesson_id: int):
                AVG(time_taken) AS avg_time,
                AVG(wrong_letters_count) AS avg_wrong_letters,
                SUM(CASE WHEN rn <= 5 AND correct = false THEN 1 ELSE 0 END) AS recent_failures,
+               AVG(CASE WHEN rn <= 3 THEN CASE WHEN correct THEN 1 ELSE 0 END END) AS recent_correct,
+               SUM(CASE WHEN rn <= 3 AND correct = false THEN 1 ELSE 0 END) AS recent_wrong_last3,
                COUNT(*) AS total_attempts
         FROM ranked
         GROUP BY word_id;
