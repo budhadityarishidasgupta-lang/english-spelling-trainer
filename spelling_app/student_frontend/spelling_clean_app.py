@@ -660,22 +660,27 @@ def render_practice_page():
 
     if not st.session_state.submitted:
         if st.button("✅ Submit"):
-            is_correct = user_answer.strip().lower() == current_word.lower()
-
             start = st.session_state.get("start_time", time.time())
+            time_taken = int(time.time() - start)
+
+            is_correct = user_answer.strip().lower() == current_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=word_id,
                 correct=is_correct,
-                time_taken=int(time.time() - start),
+                time_taken=time_taken,
                 blanks_count=masked.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
 
+            # IMPORTANT: evaluation only
             st.session_state.submitted = True
             st.session_state.checked = True
             st.session_state.correct = is_correct
+
+            # ❌ DO NOT reset current_wid
+            # ❌ DO NOT rerun
 
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.checked:
@@ -702,13 +707,22 @@ def render_practice_page():
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
+            # advance progress
+            st.session_state.question_number += 1
+
             st.session_state.practice_index += 1
+
+            # reset per-word state
             st.session_state.submitted = False
             st.session_state.checked = False
             st.session_state.correct = False
+            st.session_state.hint_level = 0
             st.session_state.start_time = time.time()
 
+            # clear input
             del st.session_state[f"answer_{word_id}"]
+
+            # THIS is the only place we move on
             st.session_state.current_wid = None
 
             st.experimental_rerun()
@@ -1150,6 +1164,9 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if "recent_results" not in st.session_state:
         st.session_state.recent_results = []
+
+    if "current_word_pick" not in st.session_state:
+        st.session_state.current_word_pick = None
     # ------------------------------------------------
 
     if mode == "Weak Words":
@@ -1183,18 +1200,37 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
     if len(recent_results) >= 3 and all(r is False for r in recent_results[-3:]):
         force_easy_word = True
 
-    word_pick = select_next_word(
-        words,
-        stats_map,
-        force_easy_word=force_easy_word,
-        last_word_id=last_word_id,
-    )
-    if not word_pick:
-        st.warning("No words available to practise.")
-        return
+    if st.session_state.get("current_wid") is None:
+        word_pick = select_next_word(
+            words,
+            stats_map,
+            force_easy_word=force_easy_word,
+            last_word_id=last_word_id,
+        )
+        if not word_pick:
+            st.warning("No words available to practise.")
+            return
 
-    m_word = getattr(word_pick, "_mapping", word_pick)
-    wid = m_word.get("word_id") or m_word.get("col_0")
+        m_word = getattr(word_pick, "_mapping", word_pick)
+        wid = m_word.get("word_id") or m_word.get("col_0")
+        st.session_state.current_wid = wid
+        st.session_state.current_word_pick = m_word
+    else:
+        m_word = st.session_state.get("current_word_pick")
+        if not m_word:
+            word_pick = select_next_word(
+                words,
+                stats_map,
+                force_easy_word=force_easy_word,
+                last_word_id=last_word_id,
+            )
+            if not word_pick:
+                st.warning("No words available to practise.")
+                return
+            m_word = getattr(word_pick, "_mapping", word_pick)
+            st.session_state.current_word_pick = m_word
+        wid = st.session_state.get("current_wid")
+
     target_word = m_word["word"]
     st.session_state["last_word_id"] = wid
 
@@ -1278,26 +1314,27 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if not st.session_state.submitted:
         if st.button("✅ Submit"):
-            is_correct = user_answer.strip().lower() == target_word.lower()
-
             start = st.session_state.get("start_time", time.time())
+            time_taken = int(time.time() - start)
+
+            is_correct = user_answer.strip().lower() == target_word.lower()
 
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=wid,
                 correct=is_correct,
-                time_taken=int(time.time() - start),
+                time_taken=time_taken,
                 blanks_count=masked_word.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
 
-            recent_results = st.session_state.get("recent_results", [])
-            recent_results.append(is_correct)
-            st.session_state.recent_results = recent_results[-3:]
-
+            # IMPORTANT: evaluation only
             st.session_state.submitted = True
             st.session_state.checked = True
             st.session_state.correct = is_correct
+
+            # ❌ DO NOT reset current_wid
+            # ❌ DO NOT rerun
 
     if st.session_state.checked:
         if st.session_state.correct:
@@ -1323,14 +1360,24 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if st.session_state.checked:
         if st.button("➡️ Next"):
+            # advance progress
+            st.session_state.question_number += 1
+
             st.session_state.practice_index = st.session_state.get("practice_index", 0) + 1
+
+            # reset per-word state
             st.session_state.submitted = False
             st.session_state.checked = False
             st.session_state.correct = False
+            st.session_state.hint_level = 0
             st.session_state.start_time = time.time()
 
+            # clear input
             del st.session_state[f"answer_{wid}"]
+
+            # THIS is the only place we move on
             st.session_state.current_wid = None
+            st.session_state.current_word_pick = None
 
             st.experimental_rerun()
 
