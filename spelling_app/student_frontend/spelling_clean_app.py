@@ -662,11 +662,13 @@ def render_practice_page():
         if st.button("✅ Submit"):
             is_correct = user_answer.strip().lower() == current_word.lower()
 
+            start = st.session_state.get("start_time", time.time())
+
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=word_id,
                 correct=is_correct,
-                time_taken=int(time.time() - st.session_state.start_time),
+                time_taken=int(time.time() - start),
                 blanks_count=masked.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
@@ -1103,6 +1105,28 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
 def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_map: dict,
                          weak_word_ids: set, selected_course_id: int, selected_lesson_id: int,
                          selected_lesson_name: str):
+    import time
+
+    # --- GUARANTEED session state initialization ---
+    if "start_time" not in st.session_state:
+        st.session_state.start_time = time.time()
+
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+
+    if "checked" not in st.session_state:
+        st.session_state.checked = False
+
+    if "correct" not in st.session_state:
+        st.session_state.correct = False
+
+    if "question_number" not in st.session_state:
+        st.session_state.question_number = 1
+
+    if "hint_level" not in st.session_state:
+        st.session_state.hint_level = 0
+    # ------------------------------------------------
+
     if mode == "Weak Words":
         filtered = [w for w in words if _word_id(w) in weak_word_ids]
         words = filtered
@@ -1228,11 +1252,13 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, signals_m
         if st.button("✅ Submit"):
             is_correct = user_answer.strip().lower() == target_word.lower()
 
+            start = st.session_state.get("start_time", time.time())
+
             record_attempt(
                 user_id=st.session_state.user_id,
                 word_id=wid,
                 correct=is_correct,
-                time_taken=int(time.time() - st.session_state.start_time),
+                time_taken=int(time.time() - start),
                 blanks_count=masked_word.count("_"),
                 wrong_letters_count=0 if is_correct else 1,
             )
