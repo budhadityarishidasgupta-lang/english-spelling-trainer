@@ -93,6 +93,19 @@ def get_spelling_hint(word: str):
     return "💡 Say the word slowly and listen to each sound."
 
 
+def _ensure_hint_state():
+    if "hint_used" not in st.session_state:
+        st.session_state["hint_used"] = False
+    if "wrong_attempts" not in st.session_state:
+        st.session_state["wrong_attempts"] = 0
+    if "base_xp" not in st.session_state:
+        st.session_state["base_xp"] = 10
+    if "spelling_feedback" not in st.session_state:
+        st.session_state["spelling_feedback"] = None
+    if "spelling_last_correct" not in st.session_state:
+        st.session_state["spelling_last_correct"] = False
+
+
 def _weak_words_for_user(user_id: int, lesson_id: int):
     return fetch_all(
         """
@@ -256,7 +269,13 @@ def _reset_session(
     st.session_state["current_streak"] = 0
     st.session_state["correct_count"] = 0
     st.session_state["wrong_count"] = 0
-    st.session_state["hint_level"] = 0
+    st.session_state["hint_used"] = False
+    st.session_state["wrong_attempts"] = 0
+    st.session_state["base_xp"] = 10
+    st.session_state["spelling_feedback"] = None
+    st.session_state["spelling_last_correct"] = False
+    st.session_state["current_display_mask"] = None
+    st.session_state["active_word_id"] = None
 
 
 def _current_word():
@@ -434,21 +453,37 @@ def _render_active_session(lesson_id: int, user_id: int):
     mode = st.session_state.get("spelling_mode", "normal")
     scope = st.session_state.get("spelling_scope", "lesson")
 
-    if "hint_level" not in st.session_state:
-        st.session_state.hint_level = 0
+    _ensure_hint_state()
 
     if not word:
         st.info("No words to practice right now.")
         return
+
+    if st.session_state.get("active_word_id") != word.get("id"):
+        st.session_state["active_word_id"] = word.get("id")
+        st.session_state["hint_used"] = False
+        st.session_state["wrong_attempts"] = 0
+        st.session_state["base_xp"] = 10
+        st.session_state["spelling_feedback"] = None
+        st.session_state["spelling_last_submitted"] = False
+        st.session_state["spelling_last_correct"] = False
+        st.session_state["current_display_mask"] = None
 
     _session_hud(total)
 
     st.caption(f"Word {idx + 1} of {total}")
 
     display_mask = word.get("missing_letter_mask") or _generate_mask(str(word.get("word", "")))
-    masked_word = display_mask if mode == "missing" else str(word.get("word", ""))
+    if st.session_state.get("current_display_mask") is None:
+        st.session_state["current_display_mask"] = display_mask
+
+    current_mask = st.session_state.get("current_display_mask") or display_mask
+    masked_word = current_mask if mode == "missing" else str(word.get("word", ""))
     if mode == "missing":
-        st.markdown(f"<div class='masked-word' style='font-size:28px;font-weight:700;'>{display_mask}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='masked-word' style='font-size:28px;font-weight:700;'>{masked_word}</div>",
+            unsafe_allow_html=True,
+        )
         st.caption("Fill in the missing letters to spell the full word.")
     elif word.get("pattern_hint"):
         st.caption(f"Hint: {word.get('pattern_hint')}")
@@ -459,33 +494,28 @@ def _render_active_session(lesson_id: int, user_id: int):
         placeholder="Type the spelling here...",
     )
 
+    show_hint_button = (
+        st.session_state.get("spelling_last_submitted")
+        and not st.session_state.get("spelling_last_correct")
+        and not st.session_state.get("hint_used")
+    )
+
+    if show_hint_button:
+        if st.button("💡 Hint", help="Reveal the first missing letter"):
+            blank_indices = [i for i, ch in enumerate(masked_word) if ch == "_"]
+            reveal_index = blank_indices[0] if blank_indices else None
+            if reveal_index is not None:
+                word_text = str(word.get("word", ""))
+                hint_word = list(masked_word)
+                if reveal_index < len(word_text):
+                    hint_word[reveal_index] = word_text[reveal_index]
+                    st.session_state["current_display_mask"] = "".join(hint_word)
+            st.session_state["hint_used"] = True
+            st.session_state["spelling_last_submitted"] = False
+
+    submitted = False
     if not st.session_state.get("spelling_last_submitted"):
-        if st.button("💡 Hint"):
-            st.session_state.hint_level += 1
-
-    if st.session_state.hint_level >= 1:
-        st.info(get_spelling_hint(str(word.get("word", ""))))
-
-    if st.session_state.hint_level >= 2:
-        revealed_index = next(
-            (i for i, ch in enumerate(masked_word) if ch == "_"),
-            None
-        )
-
-        if revealed_index is not None:
-            hint_word = list(masked_word)
-            word_text = str(word.get("word", ""))
-            if revealed_index < len(word_text):
-                hint_word[revealed_index] = word_text[revealed_index]
-
-                st.markdown(
-                    f"🔍 One letter revealed: **{''.join(hint_word)}**"
-                )
-
-    if st.session_state.hint_level >= 3:
-        st.warning("👍 Give it another try — you’re close!")
-
-    submitted = st.button("Submit", type="primary")
+        submitted = st.button("Submit", type="primary")
     if submitted:
         typed = (st.session_state.get("spelling_input") or "").strip()
         is_correct = typed.lower() == str(word.get("word", "")).strip().lower()
@@ -505,28 +535,76 @@ def _render_active_session(lesson_id: int, user_id: int):
             st.session_state["current_streak"] = st.session_state.get("current_streak", 0) + 1
             st.session_state["spelling_correct"] = st.session_state.get("spelling_correct", 0) + 1
             st.session_state["correct_count"] = st.session_state.get("correct_count", 0) + 1
-            st.success("Correct! Keep the streak going.")
         else:
             st.session_state["spelling_streak"] = 0
             st.session_state["current_streak"] = 0
             st.session_state["spelling_wrong"] = st.session_state.get("spelling_wrong", 0) + 1
             st.session_state["wrong_count"] = st.session_state.get("wrong_count", 0) + 1
-            st.error(f"Incorrect. The correct spelling is: **{word.get('word')}**")
+            st.session_state["wrong_attempts"] = st.session_state.get("wrong_attempts", 0) + 1
+
+        xp_awarded = 0
+        feedback_lines = []
+        if is_correct:
+            st.session_state["spelling_last_correct"] = True
+            base_xp = st.session_state.get("base_xp", 10)
+            xp_awarded = base_xp if not st.session_state.get("hint_used") else max(base_xp - 2, 0)
+            primary = (
+                "🏆 Fantastic work! ⭐ You earned 10 XP"
+                if not st.session_state.get("hint_used")
+                else "⭐ Well done! You earned 8 XP"
+            )
+            secondary = (
+                "🎯 No hints used — excellent spelling!"
+                if not st.session_state.get("hint_used")
+                else "💡 Hint used: first letter revealed"
+            )
+            feedback_lines = [primary, secondary]
+        else:
+            st.session_state["spelling_last_correct"] = False
+            feedback_lines = [
+                "😅 Not quite right — keep trying!",
+                "💡 Need help? Use a hint to reveal the first letter.",
+            ]
+
+        example_sentence = word.get("sample_sentence") or ""
+        feedback_lines.append(f'📘 Example sentence: "{example_sentence}"')
+
+        st.session_state["spelling_feedback"] = {
+            "correct": is_correct,
+            "xp": xp_awarded,
+            "lines": feedback_lines,
+        }
 
         st.session_state["spelling_last_submitted"] = True
 
-    if st.session_state.get("spelling_last_submitted"):
+    feedback = st.session_state.get("spelling_feedback")
+    if feedback:
+        feedback_block = ["<div class=\"quiz-surface\" style=\"margin-top:12px;\">"]
+        for line in feedback.get("lines", []):
+            feedback_block.append(f"<p class='quiz-instructions' style='margin:4px 0;'>{line}</p>")
+        feedback_block.append("</div>")
+        st.markdown("\n".join(feedback_block), unsafe_allow_html=True)
+
+    if st.session_state.get("spelling_last_submitted") and st.session_state.get("spelling_last_correct"):
         if idx + 1 < total:
             if st.button("Next word →"):
                 st.session_state["spelling_index"] += 1
                 st.session_state["current_index"] = st.session_state.get("current_index", 0) + 1
                 st.session_state["spelling_input"] = ""
                 st.session_state["spelling_last_submitted"] = False
-                st.session_state["hint_level"] = 0
+                st.session_state["spelling_last_correct"] = False
+                st.session_state["spelling_feedback"] = None
+                st.session_state["hint_used"] = False
+                st.session_state["wrong_attempts"] = 0
+                st.session_state["base_xp"] = 10
+                st.session_state["current_display_mask"] = None
+                st.session_state["active_word_id"] = None
                 st.rerun()
         else:
             st.session_state["spelling_done"] = True
             st.session_state["spelling_last_submitted"] = False
+            st.session_state["spelling_last_correct"] = False
+            st.session_state["spelling_feedback"] = None
             st.session_state["spelling_input"] = ""
             _render_summary(user_id, lesson_id)
 
