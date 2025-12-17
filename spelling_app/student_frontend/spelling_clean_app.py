@@ -1542,21 +1542,12 @@ def main():
         return  # stop here when logged out
 
     # LOGGED IN
-    # Sidebar content: user and logout
-    st.sidebar.write(f"Logged in as: {st.session_state.user_name}")
+    st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
 
-    st.sidebar.title("📚 My Spelling Courses")
-
-    # XP & streak header (computed from attempts)
-    user_id = st.session_state.get("user_id")
-    if user_id:
-        xp_total, streak = get_xp_and_streak(user_id)
-        st.session_state.streak = streak
-        st.sidebar.metric("⭐ XP", xp_total)
-        st.sidebar.metric("🔥 Streak (days)", streak)
+    st.sidebar.markdown("### 📘 Course")
 
     # 1) Load student courses
     courses = safe_rows(
@@ -1580,8 +1571,38 @@ def main():
         c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
         for c in courses
     }
-    selected_course_name = st.sidebar.selectbox("Select Course", list(course_map.keys()))
+
+    # Remember last active course if set
+    last_course_id = st.session_state.get("selected_course_id")
+    course_names = list(course_map.keys())
+    default_course_index = 0
+    if last_course_id in course_map.values():
+        name_for_id = next(
+            (name for name, cid in course_map.items() if cid == last_course_id),
+            None,
+        )
+        if name_for_id is not None:
+            default_course_index = course_names.index(name_for_id)
+
+    selected_course_name = st.sidebar.selectbox(
+        "Course",
+        course_names,
+        index=default_course_index,
+    )
     selected_course_id = course_map[selected_course_name]
+
+    # Reset lesson choice when switching courses
+    if selected_course_id != st.session_state.get("selected_course_id"):
+        st.session_state.selected_lesson = None
+        st.session_state.selected_lesson_pattern_code = None
+        st.session_state.practice_index = 0
+
+    st.session_state.selected_course_id = selected_course_id
+    st.session_state.selected_course_title = selected_course_name
+
+    if st.sidebar.button("Change lesson ▸"):
+        st.session_state.page = "lesson_picker"
+        st.experimental_rerun()
 
     # 2) Load lessons (patterns)
     lessons = safe_rows(fetch_all("""
@@ -1592,7 +1613,7 @@ def main():
     """, {"cid": selected_course_id}))
 
     if not lessons:
-        st.sidebar.info("No lessons found.")
+        st.info("No lessons found for this course yet.")
         return
 
     lesson_map = {}
@@ -1608,11 +1629,41 @@ def main():
         lesson_map[lname] = lid
         mastery_map[lname] = mastery
 
-    # sidebar with mastery
-    st.sidebar.markdown("### 📘 Lessons (Patterns)")
-    for lname in lesson_map.keys():
-        st.sidebar.write(f"**{lname}** — {mastery_map[lname]}%")
-    selected_lesson_name = st.sidebar.radio("Select Pattern", list(lesson_map.keys()))
+    current_lesson_name = st.session_state.get("selected_lesson")
+    if current_lesson_name not in lesson_map:
+        st.session_state.page = "lesson_picker"
+
+    if st.session_state.get("page") == "lesson_picker":
+        st.title("Pick a lesson")
+
+        if mastery_map:
+            recommended_lesson = min(mastery_map.items(), key=lambda item: item[1])[0]
+        else:
+            recommended_lesson = next(iter(lesson_map.keys()))
+
+        st.markdown(
+            f"#### Recommended lesson\n**{recommended_lesson}** is next up for you."
+        )
+        if st.button("Start recommended lesson", type="primary"):
+            st.session_state.selected_lesson = recommended_lesson
+            st.session_state.practice_index = 0
+            st.session_state.page = "dashboard"
+            st.experimental_rerun()
+
+        st.markdown("---")
+        st.subheader("Browse all lessons")
+        browse_choice = st.radio("Available lessons", list(lesson_map.keys()))
+        if st.button("Use this lesson", key="browse_pick"):
+            st.session_state.selected_lesson = browse_choice
+            st.session_state.practice_index = 0
+            st.session_state.page = "dashboard"
+            st.experimental_rerun()
+        return
+
+    selected_lesson_name = (
+        st.session_state.get("selected_lesson")
+        or next(iter(lesson_map.keys()))
+    )
     selected_lesson_id = lesson_map[selected_lesson_name]
 
     # ---------------------------------------------
