@@ -670,29 +670,36 @@ def render_practice_page():
         disabled=st.session_state.get("checked", False),
     )
 
+    action_col, _ = st.columns([1, 1])
+    submit_clicked = False
+    next_clicked = False
+
     if not st.session_state.submitted:
-        if st.button("✅ Submit"):
-            start = st.session_state.get("start_time", time.time())
-            time_taken = int(time.time() - start)
+        with action_col:
+            submit_clicked = st.button("✅ Submit", use_container_width=True)
 
-            is_correct = user_answer.strip().lower() == current_word.lower()
+    if submit_clicked:
+        start = st.session_state.get("start_time", time.time())
+        time_taken = int(time.time() - start)
 
-            record_attempt(
-                user_id=st.session_state.user_id,
-                word_id=word_id,
-                correct=is_correct,
-                time_taken=time_taken,
-                blanks_count=masked.count("_"),
-                wrong_letters_count=0 if is_correct else 1,
-            )
+        is_correct = user_answer.strip().lower() == current_word.lower()
 
-            # IMPORTANT: evaluation only
-            st.session_state.submitted = True
-            st.session_state.checked = True
-            st.session_state.correct = is_correct
+        record_attempt(
+            user_id=st.session_state.user_id,
+            word_id=word_id,
+            correct=is_correct,
+            time_taken=time_taken,
+            blanks_count=masked.count("_"),
+            wrong_letters_count=0 if is_correct else 1,
+        )
 
-            # ❌ DO NOT reset current_wid
-            # ❌ DO NOT rerun
+        # IMPORTANT: evaluation only
+        st.session_state.submitted = True
+        st.session_state.checked = True
+        st.session_state.correct = is_correct
+
+        # ❌ DO NOT reset current_wid
+        # ❌ DO NOT rerun
 
     # ---------------- FEEDBACK + NEXT ----------------
     if st.session_state.checked:
@@ -745,28 +752,35 @@ def render_practice_page():
                 unsafe_allow_html=True,
             )
 
-    if st.session_state.checked:
-        if st.button("➡️ Next"):
-            # advance progress
-            st.session_state.question_number += 1
+    if st.session_state.submitted:
+        with action_col:
+            next_clicked = st.button("➡️ Next", use_container_width=True)
 
-            st.session_state.practice_index += 1
+    if next_clicked:
+        # advance progress
+        st.session_state.question_number += 1
 
-            # reset per-word state
-            st.session_state.submitted = False
-            st.session_state.checked = False
-            st.session_state.correct = False
-            st.session_state.hint_level = 0
-            st.session_state.start_time = time.time()
-            st.session_state.current_example_sentence = None
+        st.session_state.practice_index += 1
 
-            # clear input
-            del st.session_state[f"answer_{word_id}"]
+        # reset per-word state
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+        st.session_state.hint_level = 0
+        st.session_state.start_time = time.time()
+        st.session_state.current_example_sentence = None
+        st.session_state.hint_used = False
+        st.session_state.wrong_attempts = 0
+        st.session_state.user_input = ""
 
-            # THIS is the only place we move on
-            st.session_state.current_wid = None
+        # clear input
+        st.session_state[f"answer_{word_id}"] = ""
+        del st.session_state[f"answer_{word_id}"]
 
-            st.experimental_rerun()
+        # THIS is the only place we move on
+        st.session_state.current_wid = None
+
+        st.experimental_rerun()
 
     # Sidebar navigation
     if st.sidebar.button("Back to Courses"):
@@ -1357,34 +1371,42 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     submitted = st.session_state.get("submitted", False)
 
+    action_col, _ = st.columns([1, 1])
+    submit_clicked = False
+    next_clicked = False
+
     if not submitted:
-        if st.button("✅ Submit", type="primary"):
-            start = st.session_state.get("start_time", time.time())
-            time_taken = int(time.time() - start)
-
-            is_correct = user_answer.strip().lower() == target_word.lower()
-
-            record_attempt(
-                user_id=st.session_state.user_id,
-                word_id=wid,
-                correct=is_correct,
-                time_taken=time_taken,
-                blanks_count=masked_word.count("_"),
-                wrong_letters_count=0 if is_correct else 1,
+        with action_col:
+            submit_clicked = st.button(
+                "✅ Submit", type="primary", use_container_width=True
             )
+    if submit_clicked:
+        start = st.session_state.get("start_time", time.time())
+        time_taken = int(time.time() - start)
 
-            st.session_state.attempts_total = st.session_state.get("attempts_total", 0) + 1
-            if is_correct:
-                st.session_state.correct_total = st.session_state.get("correct_total", 0) + 1
+        is_correct = user_answer.strip().lower() == target_word.lower()
 
-            # IMPORTANT: evaluation only
-            st.session_state.submitted = True
-            st.session_state.checked = True
-            st.session_state.correct = is_correct
-            st.session_state.result_processed = False
+        record_attempt(
+            user_id=st.session_state.user_id,
+            word_id=wid,
+            correct=is_correct,
+            time_taken=time_taken,
+            blanks_count=masked_word.count("_"),
+            wrong_letters_count=0 if is_correct else 1,
+        )
 
-            # ❌ DO NOT reset current_wid
-            # ❌ DO NOT rerun
+        st.session_state.attempts_total = st.session_state.get("attempts_total", 0) + 1
+        if is_correct:
+            st.session_state.correct_total = st.session_state.get("correct_total", 0) + 1
+
+        # IMPORTANT: evaluation only
+        st.session_state.submitted = True
+        st.session_state.checked = True
+        st.session_state.correct = is_correct
+        st.session_state.result_processed = False
+
+        # ❌ DO NOT reset current_wid
+        # ❌ DO NOT rerun
 
     if (
         st.session_state.submitted
@@ -1467,27 +1489,33 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         )
 
     if st.session_state.get("submitted", False):
-        if st.button("➡️ Next"):
-            # increment index SAFELY
-            st.session_state.practice_index += 1
+        with action_col:
+            next_clicked = st.button("➡️ Next", use_container_width=True)
 
-            # reset per-word state
-            st.session_state.submitted = False
-            st.session_state.checked = False
-            st.session_state.correct = False
-            st.session_state.hint_level = 0
-            st.session_state.start_time = time.time()
-            st.session_state.result_processed = False
-            st.session_state.current_example_sentence = None
+    if next_clicked:
+        # increment index SAFELY
+        st.session_state.practice_index += 1
 
-            # clear input
-            st.session_state.pop(f"answer_{wid}", None)
+        # reset per-word state
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+        st.session_state.hint_level = 0
+        st.session_state.start_time = time.time()
+        st.session_state.result_processed = False
+        st.session_state.current_example_sentence = None
+        st.session_state.hint_used = False
+        st.session_state.wrong_attempts = 0
+        st.session_state.user_input = ""
 
-            # force new word selection
-            st.session_state.current_wid = None
-            st.session_state.current_word_pick = None
+        # clear input
+        st.session_state.pop(f"answer_{wid}", None)
 
-            st.experimental_rerun()
+        # force new word selection
+        st.session_state.current_wid = None
+        st.session_state.current_word_pick = None
+
+        st.experimental_rerun()
 
 
 ###########################################################
