@@ -1355,8 +1355,10 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         disabled=st.session_state.get("checked", False),
     )
 
-    if not st.session_state.submitted:
-        if st.button("✅ Submit"):
+    submitted = st.session_state.get("submitted", False)
+
+    if not submitted:
+        if st.button("✅ Submit", type="primary"):
             start = st.session_state.get("start_time", time.time())
             time_taken = int(time.time() - start)
 
@@ -1432,55 +1434,39 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if st.session_state.checked:
         example_sentence = st.session_state.get("current_example_sentence")
-        example_html = ""
+        example_line = ""
         if example_sentence:
-            example_html = f"""
-                <div style=\"font-size:13px; opacity:0.9;\">
-                    📘 Example sentence: \"{escape(example_sentence)}\"
-                </div>
-            """
+            example_line = f"<div style=\"font-size:13px; opacity:0.9;\">📘 Example sentence: \"{escape(example_sentence)}\"</div>"
+
+        feedback_text = "😅 Try again!"
+        feedback_bg = "#1f2937"
+        feedback_color = "#e5e7eb"
 
         if st.session_state.correct:
-            xp_earned = 10
-            st.markdown(
-                f"""
-                <div style=\"
-                    background:#064e3b;
-                    color:#d1fae5;
-                    padding:12px 16px;
-                    border-radius:10px;
-                    font-weight:600;
-                    margin-top:8px;
-                \">
-                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
-                        <div>🏆 Fantastic work! ⭐ You earned {xp_earned} XP</div>
-                        {example_html}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f"""
-                <div style=\"
-                    background:#1f2937;
-                    color:#e5e7eb;
-                    padding:12px 16px;
-                    border-radius:10px;
-                    font-weight:600;
-                    margin-top:8px;
-                \">
-                    <div style=\"display:flex; flex-direction:column; gap:4px;\">
-                        <div>😅 Not quite right — keep trying!</div>
-                        {example_html}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            feedback_text = "🏆 Fantastic work! ⭐ You earned 10 XP"
+            feedback_bg = "#064e3b"
+            feedback_color = "#d1fae5"
 
-    if st.session_state.checked:
+        st.markdown(
+            f"""
+            <div style=\"
+                background:{feedback_bg};
+                color:{feedback_color};
+                padding:12px 16px;
+                border-radius:10px;
+                font-weight:600;
+                margin-top:8px;
+            \">
+                <div style=\"display:flex; flex-direction:column; gap:4px;\">
+                    <div>{feedback_text}</div>
+                    {example_line}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if st.session_state.get("submitted", False):
         if st.button("➡️ Next"):
             # increment index SAFELY
             st.session_state.practice_index += 1
