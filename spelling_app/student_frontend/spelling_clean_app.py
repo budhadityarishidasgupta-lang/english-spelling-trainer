@@ -1511,9 +1511,13 @@ def main():
 
     # LOGGED IN
     st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
+    
+    st.sidebar.error(f"DEBUG user_id = {st.session_state.get('user_id')}")
+    
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
+        
 
     st.sidebar.markdown("### 📘 Course")
 
