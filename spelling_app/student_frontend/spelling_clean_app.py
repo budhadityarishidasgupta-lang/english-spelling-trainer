@@ -1534,7 +1534,7 @@ def main():
 
     if not courses:
         st.sidebar.warning("No courses assigned.")
-        return
+        st.stop()
 
     course_map = {
         c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
