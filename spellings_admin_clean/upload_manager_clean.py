@@ -21,6 +21,7 @@ REQUIRED_COLUMNS = [
     "pattern_code",
     "level",
     "lesson_name",
+    "example_sentence",
 ]
 
 

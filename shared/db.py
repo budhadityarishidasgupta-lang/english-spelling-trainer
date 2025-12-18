@@ -83,6 +83,26 @@ def fetch_all(sql, params=None):
             return []
 
 # --------------------------------------------------------------------
+# fetch_one() — Return a single row (or None)
+# --------------------------------------------------------------------
+def fetch_one(sql, params=None):
+    with engine.connect() as connection:
+        try:
+            result = connection.execute(text(sql), params or {})
+            try:
+                row = result.fetchone()
+            except Exception:
+                try:
+                    row = result.first()
+                except Exception:
+                    row = None
+            return row
+        except Exception as e:
+            print("SQL ERROR in fetch_one():", e)
+            print("FAILED SQL:", sql)
+            return None
+
+# --------------------------------------------------------------------
 # execute() — Unified write/return behaviour
 # --------------------------------------------------------------------
 def execute(query: str, params=None):

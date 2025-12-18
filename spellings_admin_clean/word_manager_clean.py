@@ -1,7 +1,5 @@
 import pandas as pd
-from shared.db import fetch_all, execute
-
-from spelling_app.repository.words_repo import get_word_by_text, insert_word
+from shared.db import fetch_all, fetch_one, execute
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name_and_course,
     get_or_create_lesson as repo_get_or_create_lesson,
@@ -24,37 +22,92 @@ def _safe_int(value):
 # ---------------------------
 
 def get_or_create_word(
-    *,
     word: str,
     pattern: str | None,
     pattern_code: int | None,
     level: int | None,
     lesson_name: str | None,
-    example_sentence: str | None,
     course_id: int,
+    example_sentence: str | None = None,
 ):
     """
+    Creates a word if it doesn't exist.
+    If it exists and example_sentence is missing, backfills it.
     Always returns an integer word_id.
     """
-    existing_rows = get_word_by_text(word, course_id=course_id)
 
-    # If we got a list of dict rows
-    if existing_rows and isinstance(existing_rows, list):
-        row = existing_rows[0]
-        if isinstance(row, dict) and "word_id" in row:
-            return row["word_id"]
-
-    # Create new word
-    new_id = insert_word(
-        word=word,
-        pattern=pattern,
-        pattern_code=pattern_code,
-        level=level,
-        lesson_name=lesson_name,
-        example_sentence=example_sentence,
-        course_id=course_id,
+    existing = fetch_one(
+        """
+        SELECT word_id, example_sentence
+        FROM spelling_words
+        WHERE LOWER(word) = LOWER(:word)
+          AND course_id = :course_id
+        """,
+        {"word": word, "course_id": course_id},
     )
-    return new_id
+
+    if existing:
+        word_id = getattr(existing, "_mapping", existing).get("word_id")
+
+        # 🔑 BACKFILL example sentence if missing
+        if example_sentence and not getattr(existing, "_mapping", existing).get("example_sentence"):
+            execute(
+                """
+                UPDATE spelling_words
+                SET example_sentence = :example_sentence
+                WHERE word_id = :id AND course_id = :course_id
+                """,
+                {
+                    "example_sentence": example_sentence.strip(),
+                    "id": word_id,
+                    "course_id": course_id,
+                },
+            )
+
+        return word_id
+
+    # 🆕 Create new word
+    result = execute(
+        """
+        INSERT INTO spelling_words (
+            word,
+            course_id,
+            pattern,
+            pattern_code,
+            level,
+            lesson_name,
+            example_sentence
+        )
+        VALUES (
+            :word,
+            :course_id,
+            :pattern,
+            :pattern_code,
+            :level,
+            :lesson_name,
+            :example_sentence
+        )
+        RETURNING word_id
+        """,
+        {
+            "word": word.strip(),
+            "course_id": course_id,
+            "pattern": pattern,
+            "pattern_code": pattern_code,
+            "level": level,
+            "lesson_name": lesson_name,
+            "example_sentence": example_sentence.strip() if example_sentence else None,
+        },
+    )
+
+    if isinstance(result, list) and result:
+        first_row = getattr(result[0], "_mapping", result[0])
+        return first_row.get("word_id")
+
+    if isinstance(result, dict):
+        return result.get("word_id")
+
+    return None
 
 
 # ---------------------------
