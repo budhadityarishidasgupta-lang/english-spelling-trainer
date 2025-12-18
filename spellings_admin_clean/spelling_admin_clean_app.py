@@ -13,6 +13,11 @@ if PROJECT_ROOT not in sys.path:
 
 from shared.db import fetch_all
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+from spelling_app.repository.spelling_course_repo import archive_course
+from spelling_app.repository.spelling_lesson_repo import (
+    archive_lesson,
+    get_lessons_for_course,
+)
 from spelling_app.repository.student_pending_repo import (
     approve_pending_registration,
     delete_pending_registration,
@@ -74,20 +79,6 @@ def rename_course(course_id: int, new_name: str):
     )
     rows = rows_to_dicts(rows)
     return bool(rows)
-
-
-def delete_course(course_id: int):
-    if not course_id:
-        return False
-
-    fetch_all(
-        """
-        DELETE FROM spelling_courses
-        WHERE course_id = :cid;
-        """,
-        {"cid": course_id},
-    )
-    return True
 
 
 def fetch_active_students():
@@ -190,18 +181,45 @@ def render_course_management():
                     st.error("Course rename failed.")
 
     with action_cols[2]:
-        confirm_delete = st.checkbox("Confirm delete")
-        if st.button("Delete"):
-            if not selected_course_id:
-                st.error("Select a course to delete.")
-            elif not confirm_delete:
-                st.warning("Please confirm deletion before proceeding.")
-            else:
-                if delete_course(selected_course_id):
-                    st.success(f"Course '{selected_course_name}' deleted.")
-                    st.experimental_rerun()
+        if st.checkbox("Confirm archive"):
+            if st.button("Archive Course"):
+                if not selected_course_id:
+                    st.error("Select a course to archive.")
                 else:
-                    st.error("Could not delete course.")
+                    archive_course(selected_course_id)
+                    st.success("Course archived successfully.")
+                    st.experimental_rerun()
+
+    st.subheader("Lessons")
+
+    if not selected_course_id:
+        st.info("Select a course to view its lessons.")
+    else:
+        show_archived = st.checkbox("Show archived", value=False)
+        lessons = get_lessons_for_course(
+            selected_course_id,
+            include_archived=show_archived,
+        )
+
+        if not lessons:
+            st.info("No lessons for this course yet.")
+        else:
+            for lesson in lessons:
+                if not lesson.get("is_active") and not show_archived:
+                    continue
+
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.write(lesson.get("lesson_name"))
+
+                with col2:
+                    if lesson.get("is_active"):
+                        if st.button("Archive", key=f"archive_{lesson['lesson_id']}"):
+                            archive_lesson(lesson["lesson_id"])
+                            st.success(f"Lesson '{lesson['lesson_name']}' archived.")
+                            st.experimental_rerun()
+                    else:
+                        st.caption("Archived")
 
     st.markdown("## Upload Spelling CSV")
 

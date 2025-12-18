@@ -1,6 +1,6 @@
 # spelling_app/repository/spelling_lesson_repo.py
 
-from shared.db import fetch_all
+from shared.db import execute, fetch_all
 
 
 def _to_dict(row):
@@ -171,24 +171,41 @@ def delete_lesson(lesson_id: int):
     """
     return fetch_all(sql, {"lesson_id": lesson_id})
 
+
+def archive_lesson(lesson_id: int):
+    """Mark a lesson as inactive without deleting it."""
+    return execute(
+        """
+        UPDATE spelling_lessons
+        SET is_active = false
+        WHERE lesson_id = :lesson_id;
+        """,
+        {"lesson_id": lesson_id},
+    )
+
 # ============================================================
 # LESSON LIST FOR A COURSE
 # ============================================================
 
-def get_lessons_for_course(course_id: int):
+def get_lessons_for_course(course_id: int, include_archived: bool = False):
     """
     Returns all lessons for a given course.
     Output: list of dicts with {lesson_id, lesson_name, course_id}
     """
-    rows = fetch_all(
+    query = [
         """
-        SELECT lesson_id, lesson_name, course_id
+        SELECT lesson_id, lesson_name, course_id, is_active
         FROM spelling_lessons
         WHERE course_id = :cid
-        ORDER BY lesson_id ASC;
-        """,
-        {"cid": course_id},
-    )
+        """
+    ]
+
+    if not include_archived:
+        query.append(" AND is_active = true")
+
+    query.append(" ORDER BY lesson_id ASC;")
+
+    rows = fetch_all("".join(query), {"cid": course_id})
 
     if isinstance(rows, dict) or not rows:
         return []
@@ -230,4 +247,3 @@ def get_lesson_words(course_id: int, lesson_id: int):
     for r in _to_list(rows):
         out.append(_to_dict(r))
     return out
-
