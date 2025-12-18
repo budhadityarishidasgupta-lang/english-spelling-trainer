@@ -134,6 +134,7 @@ def get_student_courses(user_id: int) -> List[Dict[str, Any]]:
         FROM spelling_enrollments e
         JOIN spelling_courses c ON c.course_id = e.course_id
         WHERE e.user_id = :uid
+          AND c.is_active = true
         ORDER BY c.course_name
         """,
         {"uid": user_id},

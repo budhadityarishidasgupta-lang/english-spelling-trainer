@@ -200,6 +200,7 @@ def get_student_courses(user_id: int):
         FROM spelling_courses c
         JOIN spelling_enrollments e ON e.course_id = c.course_id
         WHERE e.user_id = :uid
+          AND c.is_active = true
         ORDER BY c.course_name
         """,
         {"uid": user_id},
@@ -1524,6 +1525,7 @@ def main():
             FROM spelling_courses c
             JOIN spelling_enrollments e ON e.course_id = c.course_id
             WHERE e.user_id = :uid
+              AND c.is_active = true
             ORDER BY c.course_name
             """,
             {"uid": st.session_state["user_id"]},
@@ -1576,6 +1578,7 @@ def main():
         SELECT lesson_id, lesson_name
         FROM spelling_lessons
         WHERE course_id = :cid
+          AND is_active = true
         ORDER BY lesson_name
     """, {"cid": selected_course_id}))
 

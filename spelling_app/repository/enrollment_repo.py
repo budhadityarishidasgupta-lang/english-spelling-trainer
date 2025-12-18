@@ -33,6 +33,7 @@ def get_courses_for_student(student_id: int):
         FROM spelling_enrollments e
         JOIN spelling_courses c ON c.course_id = e.course_id
         WHERE e.student_id = :student_id
+          AND c.is_active = true
         ORDER BY e.assigned_on DESC;
     """
     rows = fetch_all(sql, {"student_id": student_id})
