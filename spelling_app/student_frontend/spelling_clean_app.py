@@ -442,6 +442,9 @@ def render_student_dashboard():
     user_id = st.session_state.get("user_id")
     courses = get_student_courses(user_id)
 
+    # 🔒 CRITICAL FIX: force evaluation / normalize result
+    courses = list(courses) if courses else []
+
     if not courses:
         st.warning("No courses assigned yet.")
         return
@@ -450,7 +453,10 @@ def render_student_dashboard():
     course_names = [c["course_name"] for c in courses]
     selected_course_name = st.selectbox("Choose a course:", course_names)
 
-    selected_course = next(c for c in courses if c["course_name"] == selected_course_name)
+    selected_course = next(
+        c for c in courses if c["course_name"] == selected_course_name
+    )
+
     st.session_state.selected_course_id = selected_course["course_id"]
     st.session_state.selected_level = None
     st.session_state.selected_lesson = None
