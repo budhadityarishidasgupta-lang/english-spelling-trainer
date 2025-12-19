@@ -1536,7 +1536,7 @@ def main():
 
     # 1) Load student courses
 # 1) Load student courses
-    courses = fetch_all(
+    rows = fetch_all(
         """
         SELECT c.course_id, c.course_name
         FROM spelling_courses c
@@ -1547,7 +1547,8 @@ def main():
         {"uid": st.session_state["user_id"]},
     )
 
-    courses = list(courses) if courses else []
+    # 🔒 CRITICAL FIX: convert SQLAlchemy Rows → dicts
+    courses = [dict(r._mapping) for r in rows] if rows else []
 
 
     if not courses:
