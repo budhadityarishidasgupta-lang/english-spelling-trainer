@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-# --- Force load .env from project root ---
 import os
 from dotenv import load_dotenv
 
-ROOT_ENV = "/workspaces/english-spelling-trainer/.env"
-load_dotenv(ROOT_ENV)
-print("Loaded DB:", os.getenv("DATABASE_URL"))
+# Load env ONLY if present (local dev); do NOT override runtime env
+load_dotenv()
 
 # --- Fix PYTHONPATH so "shared" and "spelling_app" can be imported ---
 import sys
@@ -1512,10 +1510,6 @@ def main():
     # LOGGED IN
     st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
     
-    st.sidebar.error(f"DEBUG user_id = {st.session_state.get('user_id')}")
-
-    st.sidebar.error(f"DEBUG DATABASE_URL = {os.getenv('DATABASE_URL')}")
-
     
     if st.sidebar.button("Logout"):
         logout(st)
