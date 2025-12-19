@@ -192,31 +192,32 @@ def logout(st_module):
 ###########################################################
 
 def get_student_courses(user_id: int):
-    rows = fetch_all(
+    courses = fetch_all(
         """
         SELECT c.course_id, c.course_name
         FROM spelling_courses c
         JOIN spelling_enrollments e ON e.course_id = c.course_id
         WHERE e.user_id = :uid
-          AND c.is_active = true
         ORDER BY c.course_name
         """,
         {"uid": user_id},
     )
 
-    if isinstance(rows, dict) or not rows:
+    courses = list(courses) if courses else []
+
+    if isinstance(courses, dict) or not courses:
         return []
 
-    courses = []
-    for r in rows:
+    course_list = []
+    for r in courses:
         m = getattr(r, "_mapping", r)
-        courses.append(
+        course_list.append(
             {
                 "course_id": m["course_id"],
                 "course_name": m["course_name"],
             }
         )
-    return courses
+    return course_list
 
 
 def get_lessons_for_course(course_id):
@@ -1535,21 +1536,17 @@ def main():
 
     # 1) Load student courses
 # 1) Load student courses
-    courses = safe_rows(
-        fetch_all(
-            """
-            SELECT c.course_id, c.course_name
-            FROM spelling_courses c
-            JOIN spelling_enrollments e ON e.course_id = c.course_id
-            WHERE e.user_id = :uid
-            AND c.is_active = true
-            ORDER BY c.course_name
-            """,
-            {"uid": st.session_state["user_id"]},
-        )
+    courses = fetch_all(
+        """
+        SELECT c.course_id, c.course_name
+        FROM spelling_courses c
+        JOIN spelling_enrollments e ON e.course_id = c.course_id
+        WHERE e.user_id = :uid
+        ORDER BY c.course_name
+        """,
+        {"uid": st.session_state["user_id"]},
     )
 
-    # 🔒 CRITICAL FIX: normalize result so Streamlit can iterate reliably
     courses = list(courses) if courses else []
 
 
