@@ -1540,8 +1540,8 @@ def main():
         )
     )
 
-# 🔒 CRITICAL FIX: normalize result so Streamlit can iterate reliably
-courses = list(courses) if courses else []
+    # 🔒 CRITICAL FIX: normalize result so Streamlit can iterate reliably
+    courses = list(courses) if courses else []
 
 
     if not courses:
