@@ -1519,6 +1519,7 @@ def main():
     st.sidebar.markdown("### 📘 Course")
 
     # 1) Load student courses
+# 1) Load student courses
     courses = safe_rows(
         fetch_all(
             """
@@ -1526,12 +1527,16 @@ def main():
             FROM spelling_courses c
             JOIN spelling_enrollments e ON e.course_id = c.course_id
             WHERE e.user_id = :uid
-              AND c.is_active = true
+            AND c.is_active = true
             ORDER BY c.course_name
             """,
             {"uid": st.session_state["user_id"]},
         )
     )
+
+# 🔒 CRITICAL FIX: normalize result so Streamlit can iterate reliably
+courses = list(courses) if courses else []
+
 
     if not courses:
         st.sidebar.warning("No courses assigned.")
