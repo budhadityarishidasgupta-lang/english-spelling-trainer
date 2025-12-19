@@ -440,16 +440,24 @@ def render_student_dashboard():
     st.title("📘 My Courses")
 
     user_id = st.session_state.get("user_id")
-    courses = get_student_courses(user_id)
 
-    # 🔒 CRITICAL FIX: force evaluation / normalize result
+    courses = fetch_all(
+        """
+        SELECT c.course_id, c.course_name
+        FROM spelling_courses c
+        JOIN spelling_enrollments e ON e.course_id = c.course_id
+        WHERE e.user_id = :uid
+        ORDER BY c.course_name
+        """,
+        {"uid": user_id},
+    )
+
     courses = list(courses) if courses else []
 
     if not courses:
         st.warning("No courses assigned yet.")
         return
 
-    # Let student choose a course
     course_names = [c["course_name"] for c in courses]
     selected_course_name = st.selectbox("Choose a course:", course_names)
 
@@ -462,6 +470,7 @@ def render_student_dashboard():
     st.session_state.selected_lesson = None
     st.session_state.selected_lesson_pattern_code = None
     st.session_state.practice_index = 0
+
 
     # Show current mode to the student
     ensure_default_mode()
