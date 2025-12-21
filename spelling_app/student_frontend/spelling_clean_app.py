@@ -95,6 +95,7 @@ SESSION_KEYS.extend([
     "selected_level",
     "selected_lesson",
     "selected_lesson_pattern_code",
+    "prev_lesson_id",
 ])
 
 
@@ -1584,6 +1585,7 @@ def main():
         st.session_state.selected_lesson = None
         st.session_state.selected_lesson_pattern_code = None
         st.session_state.practice_index = 0
+        st.session_state.prev_lesson_id = None
 
     st.session_state.selected_course_id = selected_course_id
     st.session_state.selected_course_title = selected_course_name
@@ -1654,6 +1656,26 @@ def main():
         or next(iter(lesson_map.keys()))
     )
     selected_lesson_id = lesson_map[selected_lesson_name]
+
+    if "prev_lesson_id" not in st.session_state:
+        st.session_state.prev_lesson_id = selected_lesson_id
+
+    if st.session_state.prev_lesson_id != selected_lesson_id:
+        st.session_state.practice_index = 0
+        st.session_state.current_word = None
+        st.session_state.masked_word = None
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.streak = 0
+        st.session_state.current_wid = None
+        st.session_state.current_word_pick = None
+        st.session_state.word_state = "editing"
+        st.session_state.correct = False
+        st.session_state.hint_level = 0
+        st.session_state.start_time = time.time()
+        st.session_state.result_processed = False
+        st.session_state.prev_lesson_id = selected_lesson_id
+        st.experimental_rerun()
 
     # ---------------------------------------------
     # FETCH WORDS FOR THIS LESSON
