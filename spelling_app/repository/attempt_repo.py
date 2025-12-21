@@ -1,6 +1,21 @@
 from typing import List, Dict, Any
 from shared.db import fetch_all, execute
 
+
+def upsert_weak_word(user_id: int, word_id: int) -> None:
+    """Insert or update a weak word entry for a user."""
+    execute(
+        """
+        INSERT INTO weak_words (user_id, word_id, fail_count, last_failed_at)
+        VALUES (:uid, :wid, 1, NOW())
+        ON CONFLICT (user_id, word_id)
+        DO UPDATE SET
+            fail_count = weak_words.fail_count + 1,
+            last_failed_at = NOW()
+        """,
+        {"uid": user_id, "wid": word_id},
+    )
+
 def record_attempt(user_id: int, word_id: int, correct: bool,
                    time_taken: int, blanks_count: int, wrong_letters_count: int):
     execute("""
@@ -15,6 +30,9 @@ def record_attempt(user_id: int, word_id: int, correct: bool,
         "b": blanks_count,
         "w": wrong_letters_count,
     })
+
+    if not correct:
+        upsert_weak_word(user_id, word_id)
 
 
 def get_last_attempts(user_id: int, word_id: int, limit: int = 3):
