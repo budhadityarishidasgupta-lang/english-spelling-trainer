@@ -16,6 +16,7 @@ if ROOT not in sys.path:
 
 import time
 import random
+import pandas as pd
 import streamlit as st
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
@@ -221,31 +222,55 @@ def get_student_courses(user_id: int):
     return course_list
 
 
-def get_lessons_for_course(course_id):
+def get_lessons_for_course(course_id, user_id=None):
     """
-    Returns distinct levels and lesson names for left menu.
+    Returns distinct levels and lesson names for left menu with counts and optional progress.
     """
     rows = fetch_all(
         """
-        SELECT DISTINCT pattern_code, pattern, level, lesson_name
-        FROM spelling_words
-        WHERE course_id = :cid
-        ORDER BY level, pattern_code
+        SELECT
+            sl.lesson_id,
+            sl.lesson_name,
+            sl.course_id,
+            COALESCE(MIN(w.pattern_code), '') AS pattern_code,
+            COALESCE(MIN(w.pattern), '') AS pattern,
+            COALESCE(MIN(w.level), 0) AS level,
+            COUNT(li.word_id) AS word_count
+        FROM spelling_lessons sl
+        LEFT JOIN spelling_lesson_items li ON li.lesson_id = sl.lesson_id
+        LEFT JOIN spelling_words w ON w.word_id = li.word_id
+        WHERE sl.course_id = :cid
+          AND sl.is_active = true
+        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id
+        ORDER BY sl.lesson_name
         """,
         {"cid": course_id},
     )
-    out = []
-    for r in rows:
+
+    lessons = []
+    for r in rows or []:
         m = getattr(r, "_mapping", r)
-        out.append(
-            {
-                "pattern_code": m["pattern_code"],
-                "pattern": m["pattern"],
-                "level": m["level"],
-                "lesson_name": m["lesson_name"],
-            }
-        )
-    return out
+        lesson_data = {
+            "lesson_id": m.get("lesson_id") or m.get("col_0"),
+            "lesson_name": m.get("lesson_name") or m.get("col_1"),
+            "course_id": m.get("course_id") or m.get("col_2"),
+            "pattern_code": m.get("pattern_code", ""),
+            "pattern": m.get("pattern", ""),
+            "level": m.get("level", 0),
+            "word_count": m.get("word_count", 0),
+        }
+
+        if user_id is not None:
+            mastery = get_lesson_mastery(
+                user_id=user_id,
+                course_id=course_id,
+                lesson_id=lesson_data["lesson_id"],
+            )
+            lesson_data["progress_pct"] = mastery
+
+        lessons.append(lesson_data)
+
+    return lessons
 
 
 def get_words_for_lesson(course_id, pattern_code):
@@ -1625,37 +1650,76 @@ def main():
         st.session_state.page = "lesson_picker"
 
     if st.session_state.get("page") == "lesson_picker":
-        st.title("Pick a lesson")
+        import pandas as pd
 
-        if mastery_map:
-            recommended_lesson = min(mastery_map.items(), key=lambda item: item[1])[0]
-        else:
-            recommended_lesson = next(iter(lesson_map.keys()))
+        st.subheader("📘 Pick a lesson")
 
-        st.markdown(
-            f"#### Recommended lesson\n**{recommended_lesson}** is next up for you."
+        lessons = get_lessons_for_course(
+            st.session_state.selected_course_id,
+            user_id=st.session_state.user_id,
         )
-        if st.button("Start recommended lesson", type="primary"):
-            st.session_state.selected_lesson = recommended_lesson
-            st.session_state.practice_index = 0
-            st.session_state.page = "dashboard"
-            st.experimental_rerun()
 
-        st.markdown("---")
-        st.subheader("Browse all lessons")
-        browse_choice = st.radio("Available lessons", list(lesson_map.keys()))
-        if st.button("Use this lesson", key="browse_pick"):
-            st.session_state.selected_lesson = browse_choice
-            st.session_state.practice_index = 0
-            st.session_state.page = "dashboard"
-            st.experimental_rerun()
-        return
+        if not lessons:
+            st.warning("No lessons available for this course.")
+            st.stop()
 
-    selected_lesson_name = (
-        st.session_state.get("selected_lesson")
-        or next(iter(lesson_map.keys()))
-    )
-    selected_lesson_id = lesson_map[selected_lesson_name]
+        rows = []
+        for l in lessons:
+            progress = l.get("progress_pct", 0)
+
+            if progress >= 100:
+                action = "Revise"
+            elif progress > 0:
+                action = "Continue"
+            else:
+                action = "Start"
+
+            rows.append({
+                "Lesson": l["lesson_name"],
+                "Pattern": l.get("pattern_code", ""),
+                "Words": l.get("word_count", 0),
+                "Progress": f"{progress}%",
+                "Action": action,
+                "_lesson_id": l["lesson_id"],
+            })
+
+        df = pd.DataFrame(rows)
+
+        st.dataframe(
+            df[["Lesson", "Pattern", "Words", "Progress", "Action"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        selected_lesson_name = st.selectbox(
+            "Choose lesson:",
+            df["Lesson"].tolist(),
+        )
+
+        selected_row = df[df["Lesson"] == selected_lesson_name].iloc[0]
+
+        if st.button("▶ Start lesson"):
+            st.session_state.selected_lesson_id = selected_row["_lesson_id"]
+            st.session_state.practice_index = 0
+            st.session_state.checked = False
+            st.session_state.submitted = False
+            st.rerun()
+
+    selected_lesson_id = st.session_state.get("selected_lesson_id")
+    if selected_lesson_id in lesson_map.values():
+        selected_lesson_name = next(
+            (name for name, lid in lesson_map.items() if lid == selected_lesson_id),
+            next(iter(lesson_map.keys())),
+        )
+    else:
+        selected_lesson_name = (
+            st.session_state.get("selected_lesson")
+            or next(iter(lesson_map.keys()))
+        )
+        selected_lesson_id = lesson_map[selected_lesson_name]
+
+    st.session_state.selected_lesson = selected_lesson_name
+    st.session_state.selected_lesson_id = selected_lesson_id
 
     if "prev_lesson_id" not in st.session_state:
         st.session_state.prev_lesson_id = selected_lesson_id
