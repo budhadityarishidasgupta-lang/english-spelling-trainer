@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import text
+
 from shared.db import execute, fetch_all
 
 
@@ -18,6 +20,28 @@ def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
         elif isinstance(row, dict):
             dict_rows.append(row)
     return dict_rows
+
+
+def upsert_weak_word(user_id: int, word_id: int, lesson_id: int) -> None:
+    sql = text(
+        """
+        INSERT INTO weak_words (user_id, word_id, lesson_id, wrong_count, last_wrong_at)
+        VALUES (:user_id, :word_id, :lesson_id, 1, NOW())
+        ON CONFLICT (user_id, word_id)
+        DO UPDATE SET
+            wrong_count = weak_words.wrong_count + 1,
+            last_wrong_at = NOW(),
+            lesson_id = EXCLUDED.lesson_id
+        """
+    )
+    execute(
+        sql,
+        {
+            "user_id": user_id,
+            "word_id": word_id,
+            "lesson_id": lesson_id,
+        },
+    )
 
 
 # ---------------------------------------------------------
