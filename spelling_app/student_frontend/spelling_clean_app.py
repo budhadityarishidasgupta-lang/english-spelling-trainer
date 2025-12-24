@@ -1585,6 +1585,12 @@ def main():
         user_id=st.session_state.user_id,
     )
 
+    # Guard: selected lesson must belong to this course
+    if st.session_state.get("selected_lesson_id"):
+        valid_lesson_ids = {l["lesson_id"] for l in lessons}
+        if st.session_state.selected_lesson_id not in valid_lesson_ids:
+            st.session_state.selected_lesson_id = None
+
     if not lessons:
         st.info("No lessons available in this course yet.")
         if st.button("Back to courses"):

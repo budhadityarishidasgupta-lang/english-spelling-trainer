@@ -201,6 +201,12 @@ def render_course_management():
             include_archived=show_archived,
         )
 
+        # Guard: selected lesson must belong to this course
+        if st.session_state.get("selected_lesson_id"):
+            valid_lesson_ids = {l["lesson_id"] for l in lessons}
+            if st.session_state.selected_lesson_id not in valid_lesson_ids:
+                st.session_state.selected_lesson_id = None
+
         if not lessons:
             st.info("No lessons for this course yet.")
         else:
