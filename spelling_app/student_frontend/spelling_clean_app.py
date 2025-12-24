@@ -31,6 +31,8 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
+from spelling_app.repository.student_repo import get_words_by_ids
+from spelling_app.services.spelling_service import get_daily_five_words
 from spelling_app.repository.student_repo import (
     get_lessons_for_course as repo_get_lessons_for_course,
     get_student_courses as repo_get_student_courses,
@@ -1242,7 +1244,16 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             st.info("You have no weak words yet!")
 
     if mode == "Daily-5":
-        words = select_daily_five(words, stats_map)
+        user_id = st.session_state.get("user_id")
+        daily_ids = get_daily_five_words(user_id)
+        words = get_words_by_ids(daily_ids)
+        st.session_state.practice_words = words
+        st.session_state.practice_index = 0
+        st.session_state.current_wid = None
+        st.session_state.current_word_pick = None
+
+        if len(words) < 5:
+            st.info("Only a few personalised words are available right now, but let's practise them!")
 
     if not words:
         st.warning("No words available to practice.")
