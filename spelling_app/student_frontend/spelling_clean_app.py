@@ -34,7 +34,6 @@ from spelling_app.repository.attempt_repo import get_word_difficulty_signals
 from spelling_app.repository.student_repo import (
     get_lessons_for_course as repo_get_lessons_for_course,
     get_student_courses as repo_get_student_courses,
-    upsert_weak_word,
 )
 
 def compute_badge(xp_total: int, mastery: float):
@@ -1392,13 +1391,6 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
                     blanks_count=blanks_count,
                     wrong_letters_count=0 if is_correct else 1,
                 )
-
-                if not is_correct:
-                    upsert_weak_word(
-                        user_id=st.session_state.user_id,
-                        word_id=wid,
-                        lesson_id=selected_lesson_id,
-                    )
 
                 st.session_state.last_result_correct = is_correct
                 st.session_state.word_state = "submitted"
