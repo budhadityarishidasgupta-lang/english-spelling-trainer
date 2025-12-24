@@ -1542,37 +1542,43 @@ def main():
         return
 
     course_map = {
-        c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
+        c.get("course_id") or c.get("col_0"): c.get("course_name") or c.get("col_1")
         for c in courses
     }
 
     # Remember last active course if set
     last_course_id = st.session_state.get("selected_course_id")
-    course_names = list(course_map.keys())
-    default_course_index = 0
-    if last_course_id in course_map.values():
-        name_for_id = next(
-            (name for name, cid in course_map.items() if cid == last_course_id),
-            None,
-        )
-        if name_for_id is not None:
-            default_course_index = course_names.index(name_for_id)
+    course_ids = list(course_map.keys())
+    default_index = 0
+    if last_course_id in course_ids:
+        default_index = course_ids.index(last_course_id)
 
-    selected_course_name = st.sidebar.selectbox(
+    prev_course_id = st.session_state.get("selected_course_id")
+
+    selected_course_id = st.sidebar.selectbox(
         "Course",
-        course_names,
-        index=default_course_index,
+        course_ids,
+        format_func=lambda cid: course_map[cid],
+        index=default_index,
     )
-    selected_course_id = course_map[selected_course_name]
 
-    if selected_course_id != st.session_state.get("selected_course_id"):
-        reset_practice_state()
-        st.session_state.selected_lesson = None
+    # 🔴 CRITICAL: reset ALL lesson state if course changes
+    if prev_course_id != selected_course_id:
+        st.session_state.selected_course_id = selected_course_id
+
+        # HARD RESET lesson-related state
         st.session_state.selected_lesson_id = None
-        st.session_state.prev_lesson_id = None
+        st.session_state.selected_lesson = None
+        st.session_state.practice_index = 0
+        st.session_state.current_words = []
+        st.session_state.practice_complete = False
+        st.session_state.feedback = None
+
+        # Force rerun so UI reflects new course cleanly
+        st.rerun()
 
     st.session_state.selected_course_id = selected_course_id
-    st.session_state.selected_course_title = selected_course_name
+    st.session_state.selected_course_title = course_map[selected_course_id]
 
     lessons = get_lessons_for_course(
         st.session_state.selected_course_id,
