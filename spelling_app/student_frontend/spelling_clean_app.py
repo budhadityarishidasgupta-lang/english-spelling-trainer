@@ -292,6 +292,28 @@ def generate_question(word: str, pattern: str):
 import random
 
 
+def blanks_for_streak(streak: int, word_len: int) -> int:
+    """Map a streak to a blanks count, clamped for very short words."""
+    try:
+        s = int(streak)
+    except Exception:
+        s = 0
+
+    wl = max(0, int(word_len))
+
+    if s >= 9:
+        base = 5
+    elif s >= 6:
+        base = 4
+    elif s >= 3:
+        base = 3
+    else:
+        base = 2
+
+    max_allowed = max(1, wl - 2)
+    return max(1, min(base, max_allowed))
+
+
 def generate_missing_letter_question(
     word: str, base_blanks: int = 2, max_blanks: int | None = None
 ):
@@ -596,7 +618,10 @@ def render_practice_page():
             unsafe_allow_html=True,
         )
 
-    masked, _ = generate_missing_letter_question(current_word)
+    blanks_count = blanks_for_streak(st.session_state.get("streak", 0), len(current_word))
+    masked, _ = generate_missing_letter_question(
+        current_word, base_blanks=blanks_count, max_blanks=blanks_count
+    )
 
     st.markdown(
         f"""
@@ -615,6 +640,8 @@ def render_practice_page():
         """,
         unsafe_allow_html=True,
     )
+
+    st.caption(f"Difficulty: {blanks_count} blanks")
 
     if st.session_state.get("current_wid") != word_id:
         st.session_state.current_wid = word_id
@@ -1299,12 +1326,14 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             unsafe_allow_html=True,
         )
 
-    blank_count = max(1, int(st.session_state.get("difficulty_level", 2) or 1))
+    blanks_count = blanks_for_streak(
+        st.session_state.get("streak", 0), len(target_word)
+    )
 
     masked_word, _ = generate_missing_letter_question(
         target_word,
-        base_blanks=blank_count,
-        max_blanks=5,
+        base_blanks=blanks_count,
+        max_blanks=blanks_count,
     )
 
     st.markdown(
@@ -1324,6 +1353,8 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         """,
         unsafe_allow_html=True,
     )
+
+    st.caption(f"Difficulty: {blanks_count} blanks")
 
     if st.session_state.get("current_wid") != wid:
         st.session_state.current_wid = wid
