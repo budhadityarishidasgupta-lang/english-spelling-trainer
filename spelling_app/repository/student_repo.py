@@ -205,16 +205,26 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
 # ---------------------------------------------------------
 def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
-    Return active spelling lessons for a course ordered by sort_order then name.
+    Return active spelling lessons for a course with pattern metadata and counts.
     """
 
     rows = fetch_all(
         """
-        SELECT lesson_id, lesson_name, sort_order
-        FROM spelling_lessons
-        WHERE course_id = :cid
-          AND is_active = true
-        ORDER BY sort_order, lesson_name
+        SELECT
+            sl.lesson_id,
+            sl.lesson_name,
+            sl.course_id,
+            COALESCE(MIN(w.pattern_code), '') AS pattern_code,
+            COALESCE(MIN(w.pattern), '') AS pattern,
+            COALESCE(MIN(w.level), 0) AS level,
+            COUNT(li.word_id) AS word_count
+        FROM spelling_lessons sl
+        LEFT JOIN spelling_lesson_items li ON li.lesson_id = sl.lesson_id
+        LEFT JOIN spelling_words w ON w.word_id = li.word_id
+        WHERE sl.course_id = :cid
+          AND sl.is_active = true
+        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id
+        ORDER BY sl.lesson_name
         """,
         {"cid": course_id},
     )
