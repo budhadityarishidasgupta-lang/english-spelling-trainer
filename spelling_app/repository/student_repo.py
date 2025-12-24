@@ -22,26 +22,48 @@ def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
     return dict_rows
 
 
-def upsert_weak_word(user_id: int, word_id: int, lesson_id: int) -> None:
+def record_wrong_attempt(user_id: int, word_id: int) -> None:
+    """Insert or update a weak word for the user after an incorrect attempt."""
     sql = text(
         """
-        INSERT INTO weak_words (user_id, word_id, lesson_id, wrong_count, last_wrong_at)
-        VALUES (:user_id, :word_id, :lesson_id, 1, NOW())
+        INSERT INTO weak_words (user_id, word_id, wrong_count, last_wrong_at, created_at)
+        VALUES (:user_id, :word_id, 1, NOW(), NOW())
         ON CONFLICT (user_id, word_id)
         DO UPDATE SET
             wrong_count = weak_words.wrong_count + 1,
-            last_wrong_at = NOW(),
-            lesson_id = EXCLUDED.lesson_id
+            last_wrong_at = NOW()
         """
     )
+    execute(sql, {"user_id": user_id, "word_id": word_id})
+
+
+def record_correct_attempt(user_id: int, word_id: int) -> None:
+    """Decay or remove weak word entries after correct attempts."""
     execute(
-        sql,
-        {
-            "user_id": user_id,
-            "word_id": word_id,
-            "lesson_id": lesson_id,
-        },
+        text(
+            """
+            UPDATE weak_words
+            SET wrong_count = wrong_count - 1
+            WHERE user_id = :user_id AND word_id = :word_id
+            """
+        ),
+        {"user_id": user_id, "word_id": word_id},
     )
+
+    execute(
+        text(
+            """
+            DELETE FROM weak_words
+            WHERE user_id = :user_id AND word_id = :word_id AND wrong_count <= 0
+            """
+        ),
+        {"user_id": user_id, "word_id": word_id},
+    )
+
+
+def upsert_weak_word(user_id: int, word_id: int, lesson_id: int | None = None) -> None:
+    """Compat wrapper to preserve old imports; forwards to record_wrong_attempt."""
+    record_wrong_attempt(user_id, word_id)
 
 
 # ---------------------------------------------------------
