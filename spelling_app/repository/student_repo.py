@@ -198,3 +198,25 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
             """,
             {"uid": user_id, "cid": course_id},
         )
+
+
+# ---------------------------------------------------------
+# LESSONS
+# ---------------------------------------------------------
+def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
+    """
+    Return active spelling lessons for a course ordered by sort_order then name.
+    """
+
+    rows = fetch_all(
+        """
+        SELECT lesson_id, lesson_name, sort_order
+        FROM spelling_lessons
+        WHERE course_id = :cid
+          AND is_active = true
+        ORDER BY sort_order, lesson_name
+        """,
+        {"cid": course_id},
+    )
+
+    return _rows_to_dicts(rows)
