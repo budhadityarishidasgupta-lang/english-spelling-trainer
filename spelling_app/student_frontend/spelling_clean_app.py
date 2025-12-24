@@ -31,6 +31,7 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
+from spelling_app.repository.student_repo import upsert_weak_word
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -1427,14 +1428,24 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             if st.button("✅ Submit", key=f"submit_{wid}"):
                 is_correct = user_input.lower() == target_word.lower()
 
+                time_taken = int(time.time() - st.session_state.start_time)
+                blanks_count = masked_word.count("_")
+
                 record_attempt(
                     user_id=st.session_state.user_id,
                     word_id=wid,
                     correct=is_correct,
-                    time_taken=int(time.time() - st.session_state.start_time),
-                    blanks_count=masked_word.count("_"),
+                    time_taken=time_taken,
+                    blanks_count=blanks_count,
                     wrong_letters_count=0 if is_correct else 1,
                 )
+
+                if not is_correct:
+                    upsert_weak_word(
+                        user_id=st.session_state.user_id,
+                        word_id=wid,
+                        lesson_id=selected_lesson_id,
+                    )
 
                 st.session_state.last_result_correct = is_correct
                 st.session_state.word_state = "submitted"
