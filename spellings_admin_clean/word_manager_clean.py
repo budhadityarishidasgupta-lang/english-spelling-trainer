@@ -36,6 +36,8 @@ def get_or_create_word(
     Always returns an integer word_id.
     """
 
+    normalized_example = example_sentence.strip() if example_sentence else None
+
     existing = fetch_one(
         """
         SELECT word_id, example_sentence
@@ -47,10 +49,14 @@ def get_or_create_word(
     )
 
     if existing:
-        word_id = getattr(existing, "_mapping", existing).get("word_id")
+        existing_mapping = getattr(existing, "_mapping", existing)
+        word_id = existing_mapping.get("word_id")
 
         # 🔑 BACKFILL example sentence if missing
-        if example_sentence and not getattr(existing, "_mapping", existing).get("example_sentence"):
+        db_example = existing_mapping.get("example_sentence")
+        db_example_normalized = db_example.strip() if isinstance(db_example, str) else None
+
+        if normalized_example and not db_example_normalized:
             execute(
                 """
                 UPDATE spelling_words
@@ -58,7 +64,7 @@ def get_or_create_word(
                 WHERE word_id = :id AND course_id = :course_id
                 """,
                 {
-                    "example_sentence": example_sentence.strip(),
+                    "example_sentence": normalized_example,
                     "id": word_id,
                     "course_id": course_id,
                 },
@@ -96,7 +102,7 @@ def get_or_create_word(
             "pattern_code": pattern_code,
             "level": level,
             "lesson_name": lesson_name,
-            "example_sentence": example_sentence.strip() if example_sentence else None,
+            "example_sentence": normalized_example,
         },
     )
 
