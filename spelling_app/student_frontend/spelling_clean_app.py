@@ -370,7 +370,7 @@ def render_login_page():
 def render_registration_page():
     st.header("New Student Registration")
 
-    st.write("Enter your details below. An admin will approve your account shortly.")
+    st.caption("Enter your details below. An admin will approve your account shortly.")
 
     name = st.text_input("Full name")
     email = st.text_input("Email address")
@@ -452,7 +452,8 @@ def render_student_dashboard():
     courses = get_student_courses(user_id)
 
     if not courses:
-        st.warning("No courses assigned yet.")
+        st.info("No courses assigned yet.")
+        st.caption("Your teacher will assign a course soon.")
         return
 
     course_names = [c["course_name"] for c in courses]
@@ -1237,7 +1238,9 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         filtered = [w for w in words if _word_id(w) in weak_word_ids]
         words = filtered
         if not filtered:
-            st.info("You have no weak words yet!")
+            st.info("No weak words yet — great job!")
+            st.caption("Keep practising to see personalised review words here.")
+            return
 
     if mode == "Daily-5":
         user_id = st.session_state.get("user_id")
@@ -1248,11 +1251,17 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         st.session_state.current_wid = None
         st.session_state.current_word_pick = None
 
+        if not words:
+            st.info("Your Daily-5 will appear once you start practising.")
+            st.button("Start Daily-5", disabled=True)
+            return
+
         if len(words) < 5:
             st.info("Only a few personalised words are available right now, but let's practise them!")
 
     if not words:
-        st.warning("No words available to practice.")
+        st.info("This lesson doesn’t have words yet.")
+        st.caption("Try another lesson.")
         return
 
     practice_words = words
@@ -1500,6 +1509,8 @@ def main():
     if "mode" not in st.session_state:
         st.session_state.mode = "Practice"
 
+    st.title("WordSprint")
+
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
         tab_login, tab_register = st.tabs(["Login", "New Registration"])
@@ -1526,8 +1537,9 @@ def main():
     courses = get_student_courses(st.session_state["user_id"])
 
     if not courses:
-        st.sidebar.warning("No courses assigned.")
-        st.stop()
+        st.info("No courses assigned yet.")
+        st.caption("Your teacher will assign a course soon.")
+        return
 
     course_map = {
         c.get("course_name") or c.get("col_1"): c.get("course_id") or c.get("col_0")
@@ -1568,7 +1580,10 @@ def main():
     )
 
     if not lessons:
-        st.info("No lessons found for this course yet.")
+        st.info("No lessons available in this course yet.")
+        if st.button("Back to courses"):
+            st.session_state.selected_course_id = None
+            st.experimental_rerun()
         return
 
     lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
@@ -1648,6 +1663,11 @@ def main():
     # FETCH WORDS FOR THIS LESSON
     # ---------------------------------------------
     words = get_words_for_lesson(selected_lesson_id)
+
+    if not words:
+        st.info("This lesson doesn’t have words yet.")
+        st.caption("Try another lesson.")
+        return
 
     signals_map = get_cached_word_signals(
         user_id=st.session_state["user_id"],
