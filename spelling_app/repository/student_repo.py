@@ -50,6 +50,31 @@ def record_correct_attempt(user_id: int, word_id: int) -> None:
         {"user_id": user_id, "word_id": word_id},
     )
 
+
+def record_attempt(user_id: int, word_id: int, correct: bool, time_taken: int) -> None:
+    """Insert a spelling attempt for the student."""
+    execute(
+        text(
+            """
+            INSERT INTO spelling_attempts
+                (user_id, word_id, correct, time_taken, created_at)
+            VALUES
+                (:user_id, :word_id, :correct, :time_taken, NOW())
+            """
+        ),
+        {
+            "user_id": user_id,
+            "word_id": word_id,
+            "correct": correct,
+            "time_taken": time_taken,
+        },
+    )
+
+    if not correct:
+        record_wrong_attempt(user_id, word_id)
+    else:
+        record_correct_attempt(user_id, word_id)
+
     execute(
         text(
             """
@@ -252,3 +277,127 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     )
 
     return _rows_to_dicts(rows)
+
+
+def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
+    rows = fetch_all(
+        text(
+            """
+            SELECT w.word_id,
+                   w.word,
+                   w.pattern,
+                   w.pattern_code,
+                   w.level,
+                   w.lesson_name,
+                   w.example_sentence
+            FROM spelling_words w
+            JOIN spelling_lesson_items li ON li.word_id = w.word_id
+            WHERE li.lesson_id = :lid
+            ORDER BY w.word
+            """
+        ),
+        {"lid": lesson_id},
+    )
+
+    return _rows_to_dicts(rows)
+
+
+def get_words_by_ids(word_ids: List[int]) -> List[Dict[str, Any]]:
+    if not word_ids:
+        return []
+
+    placeholders = ", ".join([f":w{i}" for i in range(len(word_ids))])
+    params = {f"w{i}": wid for i, wid in enumerate(word_ids)}
+
+    sql = text(
+        f"""
+        SELECT word_id,
+               word,
+               pattern,
+               pattern_code,
+               level,
+               lesson_name,
+               example_sentence
+        FROM spelling_words
+        WHERE word_id IN ({placeholders})
+        ORDER BY CASE word_id {" ".join([f'WHEN :w{i} THEN {i}' for i in range(len(word_ids))])} END
+        """
+    )
+
+    rows = fetch_all(sql, params)
+    return _rows_to_dicts(rows)
+
+
+def get_daily_five_word_ids(user_id: int) -> List[int]:
+    weak_rows = fetch_all(
+        text(
+            """
+            SELECT word_id
+            FROM weak_words
+            WHERE user_id = :uid
+            ORDER BY last_wrong_at DESC
+            LIMIT 3
+            """
+        ),
+        {"uid": user_id},
+    )
+
+    result: List[int] = []
+    seen: set[int] = set()
+
+    for row in _rows_to_dicts(weak_rows):
+        wid = row.get("word_id")
+        if wid is not None and wid not in seen:
+            result.append(wid)
+            seen.add(wid)
+
+    remaining_slots = 5 - len(result)
+
+    if remaining_slots > 0:
+        recent_rows = fetch_all(
+            text(
+                """
+                SELECT DISTINCT a.word_id
+                FROM spelling_attempts a
+                LEFT JOIN weak_words w
+                  ON w.word_id = a.word_id AND w.user_id = :uid
+                WHERE a.user_id = :uid
+                  AND a.correct = false
+                  AND w.word_id IS NULL
+                ORDER BY a.created_at DESC
+                LIMIT 2
+                """
+            ),
+            {"uid": user_id},
+        )
+
+        for row in _rows_to_dicts(recent_rows):
+            wid = row.get("word_id")
+            if wid is not None and wid not in seen and len(result) < 5:
+                result.append(wid)
+                seen.add(wid)
+
+    remaining_slots = 5 - len(result)
+
+    if remaining_slots > 0:
+        backfill_rows = fetch_all(
+            text(
+                """
+                SELECT DISTINCT a.word_id
+                FROM spelling_attempts a
+                WHERE a.user_id = :uid
+                  AND a.correct = true
+                ORDER BY a.created_at ASC
+                LIMIT :lim
+                """
+            ),
+            {"uid": user_id, "lim": remaining_slots},
+        )
+
+        for row in _rows_to_dicts(backfill_rows):
+            wid = row.get("word_id")
+            if wid is not None and wid not in seen and len(result) < 5:
+                result.append(wid)
+                seen.add(wid)
+
+    return result
