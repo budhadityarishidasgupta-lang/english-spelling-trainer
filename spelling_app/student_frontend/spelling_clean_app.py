@@ -1718,8 +1718,18 @@ def main():
         )
         selected_lesson_id = lesson_map[selected_lesson_name]
 
+    new_lesson_id = selected_lesson_id
+
+    if st.session_state.get("selected_lesson_id") != new_lesson_id:
+        st.session_state.selected_lesson_id = new_lesson_id
+        st.session_state.practice_index = 0
+        st.session_state.current_word = None
+        st.session_state.checked = False
+        st.session_state.submitted = False
+        st.session_state.feedback = None
+
     st.session_state.selected_lesson = selected_lesson_name
-    st.session_state.selected_lesson_id = selected_lesson_id
+    st.session_state.selected_lesson_id = new_lesson_id
 
     if "prev_lesson_id" not in st.session_state:
         st.session_state.prev_lesson_id = selected_lesson_id
