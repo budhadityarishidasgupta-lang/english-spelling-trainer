@@ -425,7 +425,7 @@ def render_mode_selector_sidebar():
 
 def render_mode_cards():
     st.markdown("### 🎯 What would you like to do today?")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
 
     with c1:
         if st.button("✏️ Practice", use_container_width=True):
@@ -438,10 +438,6 @@ def render_mode_cards():
     with c3:
         if st.button("📆 Daily-5", use_container_width=True):
             st.session_state.mode = "Daily-5"
-
-    with c4:
-        if st.button("📊 Dashboard", use_container_width=True):
-            st.session_state.mode = "Dashboard"
 
 
 ###########################################################
@@ -1566,10 +1562,6 @@ def main():
     st.session_state.selected_course_id = selected_course_id
     st.session_state.selected_course_title = selected_course_name
 
-    if st.sidebar.button("Change lesson ▸"):
-        st.session_state.page = "lesson_picker"
-        st.experimental_rerun()
-
     lessons = get_lessons_for_course(
         st.session_state.selected_course_id,
         user_id=st.session_state.user_id,
@@ -1582,67 +1574,68 @@ def main():
     lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
     mastery_map = {l["lesson_name"]: l.get("progress_pct", 0) for l in lessons}
 
-    current_lesson_name = st.session_state.get("selected_lesson")
-    if current_lesson_name not in lesson_map:
-        st.session_state.page = "lesson_picker"
+    selected_lesson_id = st.session_state.get("selected_lesson_id")
+    if selected_lesson_id not in lesson_map.values():
+        st.session_state.selected_lesson_id = None
+        st.session_state.selected_lesson = None
+        st.session_state.prev_lesson_id = None
 
-    if st.session_state.get("page") == "lesson_picker":
-        st.subheader("📘 Pick a lesson")
+    st.markdown("### Lesson catalogue")
 
-        rows = []
-        for l in lessons:
-            progress = l.get("progress_pct", 0)
+    header_cols = st.columns([3, 1, 1, 1])
+    headers = ["Lesson", "Words", "Status", "Action"]
+    for col, label in zip(header_cols, headers):
+        col.markdown(f"**{label}**")
 
-            if progress >= 100:
-                action = "Revise"
-            elif progress > 0:
-                action = "Continue"
-            else:
-                action = "Start"
+    for l in lessons:
+        progress = l.get("progress_pct", 0) or 0
+        word_count = l.get("word_count")
 
-            rows.append({
-                "Lesson": l["lesson_name"],
-                "Pattern": l.get("pattern_code", ""),
-                "Words": l.get("word_count", 0),
-                "Progress": f"{progress}%",
-                "Action": action,
-                "_lesson_id": l["lesson_id"],
-            })
+        if progress >= 90:
+            status = "Mastered"
+            status_color = "#16a34a"  # green
+        elif progress > 0:
+            status = "In progress"
+            status_color = "#2563eb"  # blue
+        else:
+            status = "Not started"
+            status_color = "#6b7280"  # grey
 
-        df = pd.DataFrame(rows)
+        action_label = "Start" if status == "Not started" else "Continue"
 
-        st.dataframe(
-            df[["Lesson", "Pattern", "Words", "Progress", "Action"]],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        selected_lesson_name = st.selectbox(
-            "Choose lesson:",
-            df["Lesson"].tolist(),
-        )
-
-        selected_row = df[df["Lesson"] == selected_lesson_name].iloc[0]
-
-        if st.button("▶ Start lesson"):
-            st.session_state.selected_lesson_id = selected_row["_lesson_id"]
-            st.session_state.selected_lesson = selected_row["Lesson"]
-            reset_practice_state()
-            st.session_state.prev_lesson_id = selected_row["_lesson_id"]
-            st.rerun()
+        row_cols = st.columns([3, 1, 1, 1])
+        with row_cols[0]:
+            st.markdown(f"**{l['lesson_name']}**")
+        with row_cols[1]:
+            st.markdown(str(word_count) if word_count else "—")
+        with row_cols[2]:
+            st.markdown(
+                f"<span style='color:{status_color}'>{status}</span>",
+                unsafe_allow_html=True,
+            )
+        with row_cols[3]:
+            if st.button(action_label, key=f"lesson_action_{l['lesson_id']}", use_container_width=True):
+                st.session_state.selected_lesson_id = l["lesson_id"]
+                st.session_state.selected_lesson = l["lesson_name"]
+                st.session_state.mode = "Practice"
+                st.session_state.practice_mode = "Practice"
+                reset_practice_state()
+                st.session_state.prev_lesson_id = l["lesson_id"]
+                st.experimental_rerun()
 
     selected_lesson_id = st.session_state.get("selected_lesson_id")
-    if selected_lesson_id in lesson_map.values():
-        selected_lesson_name = next(
-            (name for name, lid in lesson_map.items() if lid == selected_lesson_id),
-            next(iter(lesson_map.keys())),
-        )
-    else:
-        selected_lesson_name = (
-            st.session_state.get("selected_lesson")
-            or next(iter(lesson_map.keys()))
-        )
-        selected_lesson_id = lesson_map[selected_lesson_name]
+    if not selected_lesson_id:
+        st.info("Select a lesson from the catalogue to begin.")
+        return
+
+    selected_lesson_name = next(
+        (name for name, lid in lesson_map.items() if lid == selected_lesson_id),
+        None,
+    )
+
+    if not selected_lesson_name:
+        st.info("Select a lesson from the catalogue to begin.")
+        return
 
     st.session_state.selected_lesson = selected_lesson_name
     st.session_state.selected_lesson_id = selected_lesson_id
@@ -1675,19 +1668,7 @@ def main():
 
     render_mode_cards()
 
-    if st.session_state.mode == "Dashboard":
-        render_learning_dashboard(
-            user_id=st.session_state["user_id"],
-            course_id=selected_course_id,
-            xp_total=xp_total,
-            streak=streak,
-            mastery_map=mastery_map,
-            difficulty_map=difficulty_map,
-            weak_word_ids=weak_word_ids,
-        )
-        return
-
-    elif st.session_state.mode == "Practice":
+    if st.session_state.mode == "Practice":
         st.session_state.practice_mode = "Practice"
         render_practice_mode(
             mode="Practice",
@@ -1728,6 +1709,10 @@ def main():
             selected_lesson_name=selected_lesson_name,
         )
         return
+
+    else:
+        st.session_state.mode = "Practice"
+        st.experimental_rerun()
 
 
 if __name__ == "__main__":
