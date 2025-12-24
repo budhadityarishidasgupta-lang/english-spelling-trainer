@@ -1751,6 +1751,7 @@ def main():
         st.session_state.masked_word = None
         st.session_state.submitted = False
         st.session_state.checked = False
+        st.session_state.feedback = None
         st.session_state.streak = 0
         st.session_state.current_wid = None
         st.session_state.current_word_pick = None
