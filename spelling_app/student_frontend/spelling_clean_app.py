@@ -31,7 +31,11 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
-from spelling_app.repository.student_repo import upsert_weak_word
+from spelling_app.repository.student_repo import (
+    get_lessons_for_course as repo_get_lessons_for_course,
+    get_student_courses as repo_get_student_courses,
+    upsert_weak_word,
+)
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -96,7 +100,6 @@ SESSION_KEYS.extend([
     "practice_mode",
     "selected_level",
     "selected_lesson",
-    "selected_lesson_pattern_code",
     "prev_lesson_id",
 ])
 
@@ -143,6 +146,24 @@ def initialize_session_state(st_module):
                 st_module.session_state[key] = "Guest"
             else:
                 st_module.session_state[key] = None
+
+
+def reset_practice_state():
+    """Centralised reset for all practice state fields."""
+    st.session_state.practice_index = 0
+    st.session_state.current_word = None
+    st.session_state.current_wid = None
+    st.session_state.current_word_pick = None
+    st.session_state.masked_word = None
+    st.session_state.submitted = False
+    st.session_state.checked = False
+    st.session_state.feedback = None
+    st.session_state.streak = 0
+    st.session_state.word_state = "editing"
+    st.session_state.correct = False
+    st.session_state.hint_level = 0
+    st.session_state.result_processed = False
+    st.session_state.start_time = time.time()
 
 
 ###########################################################
@@ -195,102 +216,42 @@ def logout(st_module):
 ###########################################################
 
 def get_student_courses(user_id: int):
-    courses = fetch_all(
-        """
-        SELECT c.course_id, c.course_name
-        FROM spelling_courses c
-        JOIN spelling_enrollments e ON e.course_id = c.course_id
-        WHERE e.user_id = :uid
-        ORDER BY c.course_name
-        """,
-        {"uid": user_id},
-    )
-
-    courses = list(courses) if courses else []
-
-    if isinstance(courses, dict) or not courses:
-        return []
-
-    course_list = []
-    for r in courses:
-        m = getattr(r, "_mapping", r)
-        course_list.append(
-            {
-                "course_id": m["course_id"],
-                "course_name": m["course_name"],
-            }
-        )
-    return course_list
+    return repo_get_student_courses(user_id)
 
 
 def get_lessons_for_course(course_id, user_id=None):
-    """
-    Returns distinct levels and lesson names for left menu with counts and optional progress.
-    """
-    rows = fetch_all(
-        """
-        SELECT
-            sl.lesson_id,
-            sl.lesson_name,
-            sl.course_id,
-            COALESCE(MIN(w.pattern_code), '') AS pattern_code,
-            COALESCE(MIN(w.pattern), '') AS pattern,
-            COALESCE(MIN(w.level), 0) AS level,
-            COUNT(li.word_id) AS word_count
-        FROM spelling_lessons sl
-        LEFT JOIN spelling_lesson_items li ON li.lesson_id = sl.lesson_id
-        LEFT JOIN spelling_words w ON w.word_id = li.word_id
-        WHERE sl.course_id = :cid
-          AND sl.is_active = true
-        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id
-        ORDER BY sl.lesson_name
-        """,
-        {"cid": course_id},
-    )
+    lessons = repo_get_lessons_for_course(course_id) or []
 
-    lessons = []
-    for r in rows or []:
-        m = getattr(r, "_mapping", r)
-        lesson_data = {
-            "lesson_id": m.get("lesson_id") or m.get("col_0"),
-            "lesson_name": m.get("lesson_name") or m.get("col_1"),
-            "course_id": m.get("course_id") or m.get("col_2"),
-            "pattern_code": m.get("pattern_code", ""),
-            "pattern": m.get("pattern", ""),
-            "level": m.get("level", 0),
-            "word_count": m.get("word_count", 0),
-        }
-
+    for lesson_data in lessons:
         if user_id is not None:
             mastery = get_lesson_mastery(
                 user_id=user_id,
                 course_id=course_id,
-                lesson_id=lesson_data["lesson_id"],
+                lesson_id=lesson_data.get("lesson_id"),
             )
             lesson_data["progress_pct"] = mastery
-
-        lessons.append(lesson_data)
 
     return lessons
 
 
-def get_words_for_lesson(course_id, pattern_code):
+def get_words_for_lesson(lesson_id: int):
     rows = fetch_all(
         """
-        SELECT word_id, word, pattern, pattern_code, level, lesson_name, example_sentence
-        FROM spelling_words
-        WHERE course_id = :cid
-        AND pattern_code = :pc
-        ORDER BY word_id
+        SELECT w.word_id, w.word, w.pattern, w.pattern_code, w.level, w.lesson_name,
+               w.example_sentence
+        FROM spelling_words w
+        JOIN spelling_lesson_items li ON li.word_id = w.word_id
+        WHERE li.lesson_id = :lid
+        ORDER BY w.word
         """,
-        {"cid": course_id, "pc": pattern_code},
+        {"lid": lesson_id},
     )
     out = []
-    for r in rows:
+    for r in rows or []:
         m = getattr(r, "_mapping", r)
         out.append({
-            "word_id": m["word_id"],
-            "word": m["word"],
+            "word_id": m.get("word_id") or m.get("col_0"),
+            "word": m.get("word"),
             "pattern": m.get("pattern"),
             "pattern_code": m.get("pattern_code"),
             "level": m.get("level"),
@@ -469,18 +430,7 @@ def render_student_dashboard():
 
     user_id = st.session_state.get("user_id")
 
-    courses = fetch_all(
-        """
-        SELECT c.course_id, c.course_name
-        FROM spelling_courses c
-        JOIN spelling_enrollments e ON e.course_id = c.course_id
-        WHERE e.user_id = :uid
-        ORDER BY c.course_name
-        """,
-        {"uid": user_id},
-    )
-
-    courses = list(courses) if courses else []
+    courses = get_student_courses(user_id)
 
     if not courses:
         st.warning("No courses assigned yet.")
@@ -493,11 +443,17 @@ def render_student_dashboard():
         c for c in courses if c["course_name"] == selected_course_name
     )
 
-    st.session_state.selected_course_id = selected_course["course_id"]
+    previous_course_id = st.session_state.get("selected_course_id")
+    new_course_id = selected_course["course_id"]
+
+    if previous_course_id != new_course_id:
+        reset_practice_state()
+        st.session_state.selected_lesson_id = None
+        st.session_state.prev_lesson_id = None
+
+    st.session_state.selected_course_id = new_course_id
     st.session_state.selected_level = None
     st.session_state.selected_lesson = None
-    st.session_state.selected_lesson_pattern_code = None
-    st.session_state.practice_index = 0
 
 
     # Show current mode to the student
@@ -507,44 +463,10 @@ def render_student_dashboard():
     st.success(f"Mode: **{mode_label}**")
 
     if mode_label == "Practice":
-        st.info("Select a lesson from the left sidebar to begin practising.")
+        st.info("Use the lesson catalogue to begin practising.")
     else:
-        st.info("Select a lesson from the left sidebar. This mode is in early build – behaviour may be limited.")
+        st.info("Use the lesson catalogue. This mode is in early build – behaviour may be limited.")
 
-
-def render_sidebar_navigation():
-    st.sidebar.title("📚 Lessons")
-
-    cid = st.session_state.get("selected_course_id")
-    if not cid:
-        st.sidebar.info("Select a course first.")
-        return
-
-    lessons = get_lessons_for_course(cid)
-    if not lessons:
-        st.sidebar.warning("No lessons found.")
-        return
-
-    levels = sorted(set(int(l["level"]) for l in lessons if l["level"] is not None))
-
-
-    for lvl in levels:
-        st.sidebar.markdown(f"### ⭐ Level {lvl}")
-
-        lvl_lessons = [l for l in lessons if l["level"] == lvl]
-        for lesson in lvl_lessons:
-            pattern_code = lesson["pattern_code"]
-            label = f"{lesson['lesson_name']} ({lesson.get('pattern','')})"
-
-
-            if st.sidebar.button(label, key=f"lesson_{pattern_code}"):
-                st.session_state.selected_level = lvl
-                st.session_state.selected_lesson = lesson["lesson_name"]
-                st.session_state.selected_lesson_pattern_code = pattern_code
-                st.session_state.practice_index = 0
-                st.session_state.start_time = time.time()
-                st.session_state.page = "practice"
-                st.experimental_rerun()
 
 
 ###########################################################
@@ -576,18 +498,18 @@ def render_practice_page():
         return
 
     cid = st.session_state.get("selected_course_id")
-    pc = st.session_state.get("selected_lesson_pattern_code")
+    lesson_id = st.session_state.get("selected_lesson_id")
     lesson_name = st.session_state.get("selected_lesson")
 
-    if not cid or not pc:
-        st.error("No lesson selected. Choose from the left panel.")
+    if not cid or not lesson_id:
+        st.error("No lesson selected. Choose from the lesson catalogue.")
         st.session_state.page = "dashboard"
         st.experimental_rerun()
         return
 
     st.markdown(f"### Lesson: **{lesson_name}**")
 
-    words = get_words_for_lesson(cid, pc)
+    words = get_words_for_lesson(lesson_id)
     if not words:
         st.warning("No words found for this lesson.")
         return
@@ -1571,22 +1493,7 @@ def main():
 
     st.sidebar.markdown("### 📘 Course")
 
-    # 1) Load student courses
-# 1) Load student courses
-    rows = fetch_all(
-        """
-        SELECT c.course_id, c.course_name
-        FROM spelling_courses c
-        JOIN spelling_enrollments e ON e.course_id = c.course_id
-        WHERE e.user_id = :uid
-        ORDER BY c.course_name
-        """,
-        {"uid": st.session_state["user_id"]},
-    )
-
-    # 🔒 CRITICAL FIX: convert SQLAlchemy Rows → dicts
-    courses = [dict(r._mapping) for r in rows] if rows else []
-
+    courses = get_student_courses(st.session_state["user_id"])
 
     if not courses:
         st.sidebar.warning("No courses assigned.")
@@ -1616,11 +1523,10 @@ def main():
     )
     selected_course_id = course_map[selected_course_name]
 
-    # Reset lesson choice when switching courses
     if selected_course_id != st.session_state.get("selected_course_id"):
+        reset_practice_state()
         st.session_state.selected_lesson = None
-        st.session_state.selected_lesson_pattern_code = None
-        st.session_state.practice_index = 0
+        st.session_state.selected_lesson_id = None
         st.session_state.prev_lesson_id = None
 
     st.session_state.selected_course_id = selected_course_id
@@ -1630,49 +1536,24 @@ def main():
         st.session_state.page = "lesson_picker"
         st.experimental_rerun()
 
-    # 2) Load lessons (patterns)
-    lessons = safe_rows(fetch_all("""
-        SELECT lesson_id, lesson_name
-        FROM spelling_lessons
-        WHERE course_id = :cid
-          AND is_active = true
-        ORDER BY lesson_name
-    """, {"cid": selected_course_id}))
+    lessons = get_lessons_for_course(
+        st.session_state.selected_course_id,
+        user_id=st.session_state.user_id,
+    )
 
     if not lessons:
         st.info("No lessons found for this course yet.")
         return
 
-    lesson_map = {}
-    mastery_map = {}
-    for l in lessons:
-        lname = l.get("lesson_name") or l.get("col_1")
-        lid = l.get("lesson_id") or l.get("col_0")
-        mastery = get_lesson_mastery(
-            user_id=st.session_state["user_id"],
-            course_id=selected_course_id,
-            lesson_id=lid
-        )
-        lesson_map[lname] = lid
-        mastery_map[lname] = mastery
+    lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
+    mastery_map = {l["lesson_name"]: l.get("progress_pct", 0) for l in lessons}
 
     current_lesson_name = st.session_state.get("selected_lesson")
     if current_lesson_name not in lesson_map:
         st.session_state.page = "lesson_picker"
 
     if st.session_state.get("page") == "lesson_picker":
-        import pandas as pd
-
         st.subheader("📘 Pick a lesson")
-
-        lessons = get_lessons_for_course(
-            st.session_state.selected_course_id,
-            user_id=st.session_state.user_id,
-        )
-
-        if not lessons:
-            st.warning("No lessons available for this course.")
-            st.stop()
 
         rows = []
         for l in lessons:
@@ -1711,9 +1592,9 @@ def main():
 
         if st.button("▶ Start lesson"):
             st.session_state.selected_lesson_id = selected_row["_lesson_id"]
-            st.session_state.practice_index = 0
-            st.session_state.checked = False
-            st.session_state.submitted = False
+            st.session_state.selected_lesson = selected_row["Lesson"]
+            reset_practice_state()
+            st.session_state.prev_lesson_id = selected_row["_lesson_id"]
             st.rerun()
 
     selected_lesson_id = st.session_state.get("selected_lesson_id")
@@ -1729,55 +1610,17 @@ def main():
         )
         selected_lesson_id = lesson_map[selected_lesson_name]
 
-    new_lesson_id = selected_lesson_id
-
-    if st.session_state.get("selected_lesson_id") != new_lesson_id:
-        st.session_state.selected_lesson_id = new_lesson_id
-        st.session_state.practice_index = 0
-        st.session_state.current_word = None
-        st.session_state.checked = False
-        st.session_state.submitted = False
-        st.session_state.feedback = None
-
     st.session_state.selected_lesson = selected_lesson_name
-    st.session_state.selected_lesson_id = new_lesson_id
+    st.session_state.selected_lesson_id = selected_lesson_id
 
-    if "prev_lesson_id" not in st.session_state:
+    if st.session_state.get("prev_lesson_id") != selected_lesson_id:
+        reset_practice_state()
         st.session_state.prev_lesson_id = selected_lesson_id
-
-    if st.session_state.prev_lesson_id != selected_lesson_id:
-        st.session_state.practice_index = 0
-        st.session_state.current_word = None
-        st.session_state.masked_word = None
-        st.session_state.submitted = False
-        st.session_state.checked = False
-        st.session_state.feedback = None
-        st.session_state.streak = 0
-        st.session_state.current_wid = None
-        st.session_state.current_word_pick = None
-        st.session_state.word_state = "editing"
-        st.session_state.correct = False
-        st.session_state.hint_level = 0
-        st.session_state.start_time = time.time()
-        st.session_state.result_processed = False
-        st.session_state.prev_lesson_id = selected_lesson_id
-        st.experimental_rerun()
 
     # ---------------------------------------------
     # FETCH WORDS FOR THIS LESSON
     # ---------------------------------------------
-    words = safe_rows(
-        fetch_all(
-            """
-            SELECT w.word_id, w.word, w.example_sentence, w.level
-            FROM spelling_words w
-            JOIN spelling_lesson_items li ON li.word_id = w.word_id
-            WHERE li.lesson_id = :lid
-            ORDER BY w.word
-            """,
-            {"lid": selected_lesson_id},
-        )
-    )
+    words = get_words_for_lesson(selected_lesson_id)
 
     signals_map = get_cached_word_signals(
         user_id=st.session_state["user_id"],
