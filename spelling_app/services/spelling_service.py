@@ -61,3 +61,8 @@ def get_daily_five_words(user_id: int) -> List[int]:
     """Return the deterministic Daily-5 word ids for a user."""
     return student_repo.get_daily_five_word_ids(user_id)
 
+
+def get_weak_words(user_id: int) -> List[Dict[str, Any]]:
+    """Fetch weak words for a user sourced from the authoritative weak_words table."""
+    return student_repo.get_weak_words(user_id)
+

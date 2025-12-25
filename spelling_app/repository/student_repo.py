@@ -26,29 +26,21 @@ def record_wrong_attempt(user_id: int, word_id: int) -> None:
     """Insert or update a weak word for the user after an incorrect attempt."""
     sql = text(
         """
-        INSERT INTO weak_words (user_id, word_id, wrong_count, last_wrong_at, created_at)
-        VALUES (:user_id, :word_id, 1, NOW(), NOW())
+        INSERT INTO weak_words (user_id, word_id, incorrect_count, last_seen_at, is_resolved, created_at)
+        VALUES (:user_id, :word_id, 1, NOW(), FALSE, NOW())
         ON CONFLICT (user_id, word_id)
         DO UPDATE SET
-            wrong_count = weak_words.wrong_count + 1,
-            last_wrong_at = NOW()
+            incorrect_count = weak_words.incorrect_count + 1,
+            last_seen_at = NOW(),
+            is_resolved = FALSE
         """
     )
     execute(sql, {"user_id": user_id, "word_id": word_id})
 
 
 def record_correct_attempt(user_id: int, word_id: int) -> None:
-    """Decay or remove weak word entries after correct attempts."""
-    execute(
-        text(
-            """
-            UPDATE weak_words
-            SET wrong_count = wrong_count - 1
-            WHERE user_id = :user_id AND word_id = :word_id
-            """
-        ),
-        {"user_id": user_id, "word_id": word_id},
-    )
+    """Placeholder: correct attempts do not immediately resolve weak words."""
+    return None
 
 
 def record_attempt(user_id: int, word_id: int, correct: bool, time_taken: int) -> None:
@@ -75,15 +67,31 @@ def record_attempt(user_id: int, word_id: int, correct: bool, time_taken: int) -
     else:
         record_correct_attempt(user_id, word_id)
 
-    execute(
+
+def get_weak_words(user_id: int) -> List[Dict[str, Any]]:
+    """Return the user's weak words ordered by recency and mistake count."""
+    rows = fetch_all(
         text(
             """
-            DELETE FROM weak_words
-            WHERE user_id = :user_id AND word_id = :word_id AND wrong_count <= 0
+            SELECT
+                ww.word_id,
+                w.word,
+                MIN(li.lesson_id) AS lesson_id,
+                ww.incorrect_count,
+                ww.last_seen_at
+            FROM weak_words ww
+            JOIN spelling_words w ON w.word_id = ww.word_id
+            LEFT JOIN spelling_lesson_items li ON li.word_id = ww.word_id
+            WHERE ww.user_id = :uid
+              AND ww.is_resolved = FALSE
+            GROUP BY ww.word_id, w.word, ww.incorrect_count, ww.last_seen_at
+            ORDER BY ww.last_seen_at DESC, ww.incorrect_count DESC
             """
         ),
-        {"user_id": user_id, "word_id": word_id},
+        {"uid": user_id},
     )
+
+    return _rows_to_dicts(rows)
 
 
 def upsert_weak_word(user_id: int, word_id: int, lesson_id: int | None = None) -> None:
@@ -331,7 +339,8 @@ def get_daily_five_word_ids(user_id: int) -> List[int]:
             SELECT word_id
             FROM weak_words
             WHERE user_id = :uid
-            ORDER BY last_wrong_at DESC
+              AND is_resolved = FALSE
+            ORDER BY last_seen_at DESC, incorrect_count DESC
             LIMIT 3
             """
         ),
