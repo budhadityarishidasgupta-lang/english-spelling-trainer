@@ -266,7 +266,7 @@ def get_words_for_lesson(lesson_id: int):
         """
         )
 
-        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).fetchall()
+        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
 
         if rows:
             return rows  # ✅ Word Mastery path untouched
@@ -288,7 +288,7 @@ def get_words_for_lesson(lesson_id: int):
         """
         )
 
-        return conn.execute(fallback_sql, {"lesson_id": lesson_id}).fetchall()
+        return conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
 
 
 
