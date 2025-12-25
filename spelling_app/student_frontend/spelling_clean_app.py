@@ -240,16 +240,11 @@ def get_lessons_for_course(course_id, user_id=None):
 
 def get_words_for_lesson(lesson_id: int):
     """
-    Fetch practice words for a lesson.
-
-    SAFE LOGIC:
-    1. Try spelling_lesson_items (Word Mastery – existing, working path)
-    2. If empty, fall back to spelling_lesson_words (Word Pattern)
+    Return dict-like rows for UI: current["word_id"], current["word"], etc.
+    Primary: spelling_lesson_items (Word Mastery)
+    Fallback: spelling_lesson_words (Word Pattern)
     """
-
     with engine.connect() as conn:
-
-        # --- Step 1: primary path (DO NOT BREAK WORD MASTERY) ---
         primary_sql = text(
             """
             SELECT
@@ -265,13 +260,10 @@ def get_words_for_lesson(lesson_id: int):
             ORDER BY w.word
         """
         )
-
         rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
-
         if rows:
-            return rows  # ✅ Word Mastery path untouched
+            return rows
 
-        # --- Step 2: fallback path (Word Pattern support) ---
         fallback_sql = text(
             """
             SELECT
@@ -287,7 +279,6 @@ def get_words_for_lesson(lesson_id: int):
             ORDER BY w.word
         """
         )
-
         return conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
 
 
@@ -1741,8 +1732,24 @@ def main():
     words = get_words_for_lesson(selected_lesson_id)
 
     if not words:
-        st.info("This lesson doesn’t have words yet.")
-        st.caption("Try another lesson.")
+        # Explicit debug counts (prevents silent “nothing happens”)
+        with engine.connect() as conn:
+            c_items = conn.execute(
+                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
+                {"lid": selected_lesson_id},
+            ).scalar() or 0
+            c_words = conn.execute(
+                text("SELECT COUNT(*) FROM spelling_lesson_words WHERE lesson_id=:lid"),
+                {"lid": selected_lesson_id},
+            ).scalar() or 0
+
+        st.error("No practice words are mapped to this lesson yet.")
+        st.caption(f"lesson_id={selected_lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_words={int(c_words)}")
+
+        if st.button("Back to lesson catalogue", use_container_width=True):
+            st.session_state.selected_lesson_id = None
+            st.session_state.selected_lesson = None
+            st.experimental_rerun()
         return
 
     signals_map = get_cached_word_signals(

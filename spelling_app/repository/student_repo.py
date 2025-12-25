@@ -269,12 +269,20 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
             sl.lesson_id,
             sl.lesson_name,
             sl.course_id,
-            COALESCE(COUNT(li.word_id), 0) AS word_count
+            COALESCE(wc.word_count, 0) AS word_count
         FROM spelling_lessons sl
-        LEFT JOIN spelling_lesson_items li ON li.lesson_id = sl.lesson_id
+        LEFT JOIN (
+            SELECT lesson_id, COUNT(DISTINCT word_id) AS word_count
+            FROM (
+                SELECT lesson_id, word_id FROM spelling_lesson_items
+                UNION
+                SELECT lesson_id, word_id FROM spelling_lesson_words
+            ) lesson_words
+            GROUP BY lesson_id
+        ) wc ON wc.lesson_id = sl.lesson_id
         WHERE sl.course_id = :cid
           AND sl.is_active = true
-        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id, sl.sort_order
+        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id, wc.word_count, sl.sort_order
         ORDER BY sl.sort_order NULLS LAST, sl.lesson_id
         """,
         {"cid": course_id},
@@ -284,8 +292,8 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
 
 
 def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
-    rows = fetch_all(
-        text(
+    with engine.connect() as conn:
+        primary_sql = text(
             """
             SELECT w.word_id,
                    w.word,
@@ -296,14 +304,32 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
                    w.example_sentence
             FROM spelling_words w
             JOIN spelling_lesson_items li ON li.word_id = w.word_id
-            WHERE li.lesson_id = :lid
+            WHERE li.lesson_id = :lesson_id
             ORDER BY w.word
             """
-        ),
-        {"lid": lesson_id},
-    )
+        )
+        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
+        if rows:
+            return _rows_to_dicts(rows)
 
-    return _rows_to_dicts(rows)
+        fallback_sql = text(
+            """
+            SELECT w.word_id,
+                   w.word,
+                   w.pattern,
+                   w.pattern_code,
+                   w.level,
+                   w.lesson_name,
+                   w.example_sentence
+            FROM spelling_words w
+            JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
+            WHERE lw.lesson_id = :lesson_id
+            ORDER BY w.word
+            """
+        )
+        return _rows_to_dicts(
+            conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
+        )
 
 
 def get_resume_index_for_lesson(student_id, lesson_id):
