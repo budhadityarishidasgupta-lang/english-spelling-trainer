@@ -1706,6 +1706,11 @@ def main():
     st.session_state.selected_lesson = selected_lesson_name
     st.session_state.selected_lesson_id = selected_lesson_id
 
+    selected_lesson = next(
+        (lesson for lesson in lessons if lesson["lesson_id"] == selected_lesson_id),
+        {},
+    )
+
     if st.session_state.get("prev_lesson_id") != selected_lesson_id:
         reset_practice_state()
         st.session_state.prev_lesson_id = selected_lesson_id
@@ -1714,6 +1719,11 @@ def main():
     # FETCH WORDS FOR THIS LESSON
     # ---------------------------------------------
     words = get_words_for_lesson(selected_lesson_id)
+
+    # Allow Word Pattern lessons (word_count may be 0) to start if words exist
+    if selected_lesson.get("word_count", 0) == 0 and not words:
+        st.warning("No words found for this lesson")
+        return
 
     if not words:
         st.info("This lesson doesn’t have words yet.")
