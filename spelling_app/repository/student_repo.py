@@ -314,7 +314,7 @@ def get_resume_index_for_lesson(student_id, lesson_id):
 
     with engine.connect() as conn:
 
-        # 1) Ordered word list for the lesson (Word Mastery path)
+        # --- 1) Get ordered lesson words (Word Mastery path only) ---
         lesson_words_sql = text(
             """
             SELECT w.word_id
@@ -333,12 +333,36 @@ def get_resume_index_for_lesson(student_id, lesson_id):
         if not lesson_word_ids:
             return 0
 
-        # 2) Last correct attempt
-        last_correct_sql = text(
+        # --- 2) Detect which user column exists in spelling_attempts ---
+        column_check_sql = text(
             """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'spelling_attempts'
+        """
+        )
+
+        columns = {
+            row.column_name
+            for row in conn.execute(column_check_sql).fetchall()
+        }
+
+        if "student_id" in columns:
+            user_col = "student_id"
+        elif "user_id" in columns:
+            user_col = "user_id"
+        elif "student_user_id" in columns:
+            user_col = "student_user_id"
+        else:
+            # No usable user column → safe fallback
+            return 0
+
+        # --- 3) Fetch last correct attempt using detected column ---
+        last_correct_sql = text(
+            f"""
             SELECT word_id
             FROM spelling_attempts
-            WHERE student_id = :student_id
+            WHERE {user_col} = :student_id
               AND lesson_id = :lesson_id
               AND is_correct = TRUE
             ORDER BY attempted_at DESC
@@ -354,7 +378,7 @@ def get_resume_index_for_lesson(student_id, lesson_id):
         if not row:
             return 0
 
-        # 3) Resume from next index
+        # --- 4) Resume from next word ---
         try:
             last_index = lesson_word_ids.index(row.word_id)
             return min(last_index + 1, len(lesson_word_ids))
