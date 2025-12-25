@@ -363,8 +363,8 @@ def get_resume_index_for_lesson(student_id, lesson_id):
               ON sli.word_id = sa.word_id
             WHERE sa.{user_col} = :student_id
               AND sli.lesson_id = :lesson_id
-              AND sa.is_correct = TRUE
-            ORDER BY sa.attempted_at DESC
+              AND sa.correct = TRUE
+            ORDER BY sa.created_at DESC
             LIMIT 1
         """
         )
