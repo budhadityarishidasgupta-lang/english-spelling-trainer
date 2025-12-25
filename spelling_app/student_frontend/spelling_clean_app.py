@@ -1641,7 +1641,7 @@ def main():
 
     for l in lessons:
         progress = l.get("progress_pct", 0) or 0
-        word_count = l.get("word_count")
+        word_count = l.get("word_count", "—")
 
         if progress >= 90:
             status = "Mastered"
@@ -1659,7 +1659,7 @@ def main():
         with row_cols[0]:
             st.markdown(f"**{l['lesson_name']}**")
         with row_cols[1]:
-            st.markdown(str(word_count) if word_count else "—")
+            st.markdown(str(word_count))
         with row_cols[2]:
             st.markdown(
                 f"<span style='color:{status_color}'>{status}</span>",

@@ -260,39 +260,28 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
 # ---------------------------------------------------------
 def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
-    Return active spelling lessons for a course with word counts.
+    AUTHORITATIVE lesson fetch.
+    Lessons must ALWAYS be visible regardless of word mappings.
     """
+    from sqlalchemy import text
 
-    rows = fetch_all(
-        text(
-            """
-            WITH counts AS (
-              SELECT lesson_id, COUNT(DISTINCT word_id) AS word_count
-              FROM (
-                SELECT lesson_id, word_id FROM spelling_lesson_items
-                UNION ALL
-                SELECT lesson_id, word_id FROM spelling_lesson_words
-              ) u
-              GROUP BY lesson_id
-            )
-            SELECT
-              l.lesson_id,
-              l.lesson_name,
-              l.course_id,
-              l.sort_order,
-              l.is_active,
-              COALESCE(c.word_count, 0) AS word_count
-            FROM spelling_lessons l
-            LEFT JOIN counts c ON c.lesson_id = l.lesson_id
-            WHERE l.course_id = :course_id
-              AND l.is_active = TRUE
-            ORDER BY l.sort_order, l.lesson_id
-            """
-        ),
-        {"course_id": course_id},
+    sql = text(
+        """
+        SELECT
+            lesson_id,
+            lesson_name,
+            course_id,
+            sort_order,
+            is_active
+        FROM spelling_lessons
+        WHERE course_id = :course_id
+          AND is_active = TRUE
+        ORDER BY sort_order, lesson_id
+    """
     )
 
-    return _rows_to_dicts(rows)
+    with engine.connect() as conn:
+        return conn.execute(sql, {"course_id": course_id}).mappings().all()
 
 
 def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
