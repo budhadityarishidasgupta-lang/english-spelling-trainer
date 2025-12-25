@@ -1532,6 +1532,11 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 ###########################################################
 
 def main():
+    # === HARD SAFETY: if a lesson is selected, ALWAYS enter practice ===
+    if st.session_state.get("active_lesson_id") is not None:
+        st.session_state["mode"] = "Practice"
+        st.session_state["lesson_started"] = True
+
     inject_student_css()
     initialize_session_state(st)
 
@@ -1691,16 +1696,15 @@ def main():
                 st.session_state.selected_lesson_id = l["lesson_id"]
                 st.session_state.selected_lesson = l["lesson_name"]
                 reset_practice_state()
-                if l.get("word_count"):
-                    student_id = st.session_state.get("student_id") or st.session_state.get("user_id")
-                    resume_index = 0
-                    if student_id is not None:
-                        resume_index = get_resume_index_for_lesson(
-                            student_id=student_id,
-                            lesson_id=l["lesson_id"],
-                        )
-                    st.session_state["q_index"] = resume_index
-                    st.session_state.practice_index = resume_index
+                student_id = st.session_state.get("student_id") or st.session_state.get("user_id")
+                resume_index = 0
+                if student_id is not None:
+                    resume_index = get_resume_index_for_lesson(
+                        student_id=student_id,
+                        lesson_id=l["lesson_id"],
+                    )
+                st.session_state["q_index"] = resume_index
+                st.session_state.practice_index = resume_index
                 st.session_state.prev_lesson_id = l["lesson_id"]
 
                 st.rerun()
@@ -1736,11 +1740,6 @@ def main():
     # ---------------------------------------------
     words = get_words_for_lesson(selected_lesson_id)
 
-    # Allow Word Pattern lessons (word_count may be 0) to start if words exist
-    if selected_lesson.get("word_count", 0) == 0 and not words:
-        st.warning("No words found for this lesson")
-        return
-
     if not words:
         st.info("This lesson doesn’t have words yet.")
         st.caption("Try another lesson.")
@@ -1765,20 +1764,19 @@ def main():
 
     render_mode_cards()
 
-    if st.session_state.get("lesson_started") is True:
-        practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
-        st.session_state.practice_mode = practice_mode
-        render_practice_mode(
-            mode=practice_mode,
-            words=words,
-            difficulty_map=difficulty_map,
-            stats_map=stats_map,
-            weak_word_ids=weak_word_ids,
-            selected_course_id=selected_course_id,
-            selected_lesson_id=selected_lesson_id,
-            selected_lesson_name=selected_lesson_name,
-        )
-        return
+    practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
+    st.session_state.practice_mode = practice_mode
+    render_practice_mode(
+        mode=practice_mode,
+        words=words,
+        difficulty_map=difficulty_map,
+        stats_map=stats_map,
+        weak_word_ids=weak_word_ids,
+        selected_course_id=selected_course_id,
+        selected_lesson_id=selected_lesson_id,
+        selected_lesson_name=selected_lesson_name,
+    )
+    return
 
 
 if __name__ == "__main__":
