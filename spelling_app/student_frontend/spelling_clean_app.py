@@ -225,6 +225,7 @@ def get_student_courses(user_id: int):
 
 def get_lessons_for_course(course_id, user_id=None):
     lessons = repo_get_lessons_for_course(course_id) or []
+    lessons = [dict(l) for l in lessons]
 
     for lesson_data in lessons:
         if user_id is not None:
