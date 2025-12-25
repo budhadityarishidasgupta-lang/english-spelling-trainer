@@ -31,7 +31,10 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
-from spelling_app.repository.student_repo import get_words_by_ids
+from spelling_app.repository.student_repo import (
+    get_resume_index_for_lesson,
+    get_words_by_ids,
+)
 from spelling_app.services.spelling_service import get_daily_five_words
 from spelling_app.repository.student_repo import (
     get_lessons_for_course as repo_get_lessons_for_course,
@@ -1673,6 +1676,16 @@ def main():
                 st.session_state.mode = "Practice"
                 st.session_state.practice_mode = "Practice"
                 reset_practice_state()
+                if l.get("word_count"):
+                    student_id = st.session_state.get("student_id") or st.session_state.get("user_id")
+                    resume_index = 0
+                    if student_id is not None:
+                        resume_index = get_resume_index_for_lesson(
+                            student_id=student_id,
+                            lesson_id=l["lesson_id"],
+                        )
+                    st.session_state["q_index"] = resume_index
+                    st.session_state.practice_index = resume_index
                 st.session_state.prev_lesson_id = l["lesson_id"]
                 st.experimental_rerun()
 
