@@ -264,28 +264,32 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
 
     rows = fetch_all(
-        """
-        SELECT
-            sl.lesson_id,
-            sl.lesson_name,
-            sl.course_id,
-            COALESCE(wc.word_count, 0) AS word_count
-        FROM spelling_lessons sl
-        LEFT JOIN (
-            SELECT lesson_id, COUNT(DISTINCT word_id) AS word_count
-            FROM (
+        text(
+            """
+            WITH counts AS (
+              SELECT lesson_id, COUNT(DISTINCT word_id) AS word_count
+              FROM (
                 SELECT lesson_id, word_id FROM spelling_lesson_items
-                UNION
+                UNION ALL
                 SELECT lesson_id, word_id FROM spelling_lesson_words
-            ) lesson_words
-            GROUP BY lesson_id
-        ) wc ON wc.lesson_id = sl.lesson_id
-        WHERE sl.course_id = :cid
-          AND sl.is_active = true
-        GROUP BY sl.lesson_id, sl.lesson_name, sl.course_id, wc.word_count, sl.sort_order
-        ORDER BY sl.sort_order NULLS LAST, sl.lesson_id
-        """,
-        {"cid": course_id},
+              ) u
+              GROUP BY lesson_id
+            )
+            SELECT
+              l.lesson_id,
+              l.lesson_name,
+              l.course_id,
+              l.sort_order,
+              l.is_active,
+              COALESCE(c.word_count, 0) AS word_count
+            FROM spelling_lessons l
+            LEFT JOIN counts c ON c.lesson_id = l.lesson_id
+            WHERE l.course_id = :course_id
+              AND l.is_active = TRUE
+            ORDER BY l.sort_order, l.lesson_id
+            """
+        ),
+        {"course_id": course_id},
     )
 
     return _rows_to_dicts(rows)
