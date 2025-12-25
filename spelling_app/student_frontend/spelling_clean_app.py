@@ -236,30 +236,56 @@ def get_lessons_for_course(course_id, user_id=None):
 
 
 def get_words_for_lesson(lesson_id: int):
-    rows = fetch_all(
+    """
+    Fetch practice words for a lesson.
+
+    SAFE LOGIC:
+    1. Try spelling_lesson_items (Word Mastery – existing, working path)
+    2. If empty, fall back to spelling_lesson_words (Word Pattern)
+    """
+
+    with engine.connect() as conn:
+
+        # --- Step 1: primary path (DO NOT BREAK WORD MASTERY) ---
+        primary_sql = text(
+            """
+            SELECT
+                w.word_id,
+                w.word,
+                w.pattern,
+                w.pattern_code,
+                w.level,
+                w.example_sentence
+            FROM spelling_lesson_items sli
+            JOIN spelling_words w ON w.word_id = sli.word_id
+            WHERE sli.lesson_id = :lesson_id
+            ORDER BY w.word
         """
-        SELECT w.word_id, w.word, w.pattern, w.pattern_code, w.level, w.lesson_name,
-               w.example_sentence
-        FROM spelling_words w
-        JOIN spelling_lesson_items li ON li.word_id = w.word_id
-        WHERE li.lesson_id = :lid
-        ORDER BY w.word
-        """,
-        {"lid": lesson_id},
-    )
-    out = []
-    for r in rows or []:
-        m = getattr(r, "_mapping", r)
-        out.append({
-            "word_id": m.get("word_id") or m.get("col_0"),
-            "word": m.get("word"),
-            "pattern": m.get("pattern"),
-            "pattern_code": m.get("pattern_code"),
-            "level": m.get("level"),
-            "lesson_name": m.get("lesson_name"),
-            "example_sentence": m.get("example_sentence"),
-        })
-    return out
+        )
+
+        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).fetchall()
+
+        if rows:
+            return rows  # ✅ Word Mastery path untouched
+
+        # --- Step 2: fallback path (Word Pattern support) ---
+        fallback_sql = text(
+            """
+            SELECT
+                w.word_id,
+                w.word,
+                w.pattern,
+                w.pattern_code,
+                w.level,
+                w.example_sentence
+            FROM spelling_lesson_words slw
+            JOIN spelling_words w ON w.word_id = slw.word_id
+            WHERE slw.lesson_id = :lesson_id
+            ORDER BY w.word
+        """
+        )
+
+        return conn.execute(fallback_sql, {"lesson_id": lesson_id}).fetchall()
 
 
 
