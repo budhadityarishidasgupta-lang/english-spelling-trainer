@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from shared.db import execute, fetch_all
+from shared.db import engine, execute, fetch_all
 
 
 def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
@@ -304,6 +304,62 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
     )
 
     return _rows_to_dicts(rows)
+
+
+def get_resume_index_for_lesson(student_id, lesson_id):
+    """
+    Returns the index to resume from for a student + lesson.
+    Resume from the word AFTER the last correct attempt.
+    """
+
+    with engine.connect() as conn:
+
+        # 1) Ordered word list for the lesson (Word Mastery path)
+        lesson_words_sql = text(
+            """
+            SELECT w.word_id
+            FROM spelling_lesson_items sli
+            JOIN spelling_words w ON w.word_id = sli.word_id
+            WHERE sli.lesson_id = :lesson_id
+            ORDER BY w.word
+        """
+        )
+
+        lesson_word_ids = [
+            row.word_id
+            for row in conn.execute(lesson_words_sql, {"lesson_id": lesson_id}).fetchall()
+        ]
+
+        if not lesson_word_ids:
+            return 0
+
+        # 2) Last correct attempt
+        last_correct_sql = text(
+            """
+            SELECT word_id
+            FROM spelling_attempts
+            WHERE student_id = :student_id
+              AND lesson_id = :lesson_id
+              AND is_correct = TRUE
+            ORDER BY attempted_at DESC
+            LIMIT 1
+        """
+        )
+
+        row = conn.execute(
+            last_correct_sql,
+            {"student_id": student_id, "lesson_id": lesson_id},
+        ).fetchone()
+
+        if not row:
+            return 0
+
+        # 3) Resume from next index
+        try:
+            last_index = lesson_word_ids.index(row.word_id)
+            return min(last_index + 1, len(lesson_word_ids))
+        except ValueError:
+            return 0
 
 
 def get_words_by_ids(word_ids: List[int]) -> List[Dict[str, Any]]:
