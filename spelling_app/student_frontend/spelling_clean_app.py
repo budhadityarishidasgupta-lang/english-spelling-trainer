@@ -1670,11 +1670,26 @@ def main():
                 unsafe_allow_html=True,
             )
         with row_cols[3]:
-            if st.button(action_label, key=f"lesson_action_{l['lesson_id']}", use_container_width=True):
+            if st.button(action_label, key=f"start_{l['lesson_id']}", use_container_width=True):
+
+                # --- REQUIRED practice-entry flags (UNIFIED) ---
+                st.session_state["mode"] = "Practice"
+                st.session_state["practice_mode"] = "Practice"
+                st.session_state["active_lesson_id"] = l["lesson_id"]
+                st.session_state["active_lesson_name"] = l["lesson_name"]
+                st.session_state["active_course_id"] = l["course_id"]
+
+                # --- Reset practice state ---
+                st.session_state["q_index"] = 0
+                st.session_state["show_feedback"] = False
+                st.session_state["current_input"] = ""
+
+                # --- CRITICAL: mark lesson as started ---
+                st.session_state["lesson_started"] = True
+
+                # Preserve existing selection + resume behavior
                 st.session_state.selected_lesson_id = l["lesson_id"]
                 st.session_state.selected_lesson = l["lesson_name"]
-                st.session_state.mode = "Practice"
-                st.session_state.practice_mode = "Practice"
                 reset_practice_state()
                 if l.get("word_count"):
                     student_id = st.session_state.get("student_id") or st.session_state.get("user_id")
@@ -1687,7 +1702,8 @@ def main():
                     st.session_state["q_index"] = resume_index
                     st.session_state.practice_index = resume_index
                 st.session_state.prev_lesson_id = l["lesson_id"]
-                st.experimental_rerun()
+
+                st.rerun()
 
     selected_lesson_id = st.session_state.get("selected_lesson_id")
     if not selected_lesson_id:
@@ -1749,10 +1765,11 @@ def main():
 
     render_mode_cards()
 
-    if st.session_state.mode == "Practice":
-        st.session_state.practice_mode = "Practice"
+    if st.session_state.get("lesson_started") is True:
+        practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
+        st.session_state.practice_mode = practice_mode
         render_practice_mode(
-            mode="Practice",
+            mode=practice_mode,
             words=words,
             difficulty_map=difficulty_map,
             stats_map=stats_map,
@@ -1762,38 +1779,6 @@ def main():
             selected_lesson_name=selected_lesson_name,
         )
         return
-
-    elif st.session_state.mode == "Weak Words":
-        st.session_state.practice_mode = "Weak Words"
-        render_practice_mode(
-            mode="Weak Words",
-            words=words,
-            difficulty_map=difficulty_map,
-            stats_map=stats_map,
-            weak_word_ids=weak_word_ids,
-            selected_course_id=selected_course_id,
-            selected_lesson_id=selected_lesson_id,
-            selected_lesson_name=selected_lesson_name,
-        )
-        return
-
-    elif st.session_state.mode == "Daily-5":
-        st.session_state.practice_mode = "Daily-5"
-        render_practice_mode(
-            mode="Daily-5",
-            words=words,
-            difficulty_map=difficulty_map,
-            stats_map=stats_map,
-            weak_word_ids=weak_word_ids,
-            selected_course_id=selected_course_id,
-            selected_lesson_id=selected_lesson_id,
-            selected_lesson_name=selected_lesson_name,
-        )
-        return
-
-    else:
-        st.session_state.mode = "Practice"
-        st.experimental_rerun()
 
 
 if __name__ == "__main__":
