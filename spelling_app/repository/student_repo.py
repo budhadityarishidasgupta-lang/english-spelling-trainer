@@ -308,13 +308,14 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
 
 def get_resume_index_for_lesson(student_id, lesson_id):
     """
-    Returns the index to resume from for a student + lesson.
-    Resume from the word AFTER the last correct attempt.
+    Resume Word Mastery progress safely.
+    Derives lesson membership via lesson→word mappings.
+    Schema-agnostic and non-breaking.
     """
 
     with engine.connect() as conn:
 
-        # --- 1) Get ordered lesson words (Word Mastery path only) ---
+        # --- 1) Ordered lesson words (Word Mastery only) ---
         lesson_words_sql = text(
             """
             SELECT w.word_id
@@ -333,8 +334,8 @@ def get_resume_index_for_lesson(student_id, lesson_id):
         if not lesson_word_ids:
             return 0
 
-        # --- 2) Detect which user column exists in spelling_attempts ---
-        column_check_sql = text(
+        # --- 2) Detect user column in spelling_attempts ---
+        cols_sql = text(
             """
             SELECT column_name
             FROM information_schema.columns
@@ -342,30 +343,28 @@ def get_resume_index_for_lesson(student_id, lesson_id):
         """
         )
 
-        columns = {
-            row.column_name
-            for row in conn.execute(column_check_sql).fetchall()
-        }
+        columns = {r.column_name for r in conn.execute(cols_sql).fetchall()}
 
-        if "student_id" in columns:
-            user_col = "student_id"
-        elif "user_id" in columns:
+        if "user_id" in columns:
             user_col = "user_id"
+        elif "student_id" in columns:
+            user_col = "student_id"
         elif "student_user_id" in columns:
             user_col = "student_user_id"
         else:
-            # No usable user column → safe fallback
-            return 0
+            return 0  # fail safe
 
-        # --- 3) Fetch last correct attempt using detected column ---
+        # --- 3) Last correct attempt FOR THIS LESSON (via JOIN) ---
         last_correct_sql = text(
             f"""
-            SELECT word_id
-            FROM spelling_attempts
-            WHERE {user_col} = :student_id
-              AND lesson_id = :lesson_id
-              AND is_correct = TRUE
-            ORDER BY attempted_at DESC
+            SELECT sa.word_id
+            FROM spelling_attempts sa
+            JOIN spelling_lesson_items sli
+              ON sli.word_id = sa.word_id
+            WHERE sa.{user_col} = :student_id
+              AND sli.lesson_id = :lesson_id
+              AND sa.is_correct = TRUE
+            ORDER BY sa.attempted_at DESC
             LIMIT 1
         """
         )
