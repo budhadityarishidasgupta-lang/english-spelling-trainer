@@ -471,6 +471,7 @@ def render_student_dashboard():
     user_id = st.session_state.get("user_id")
 
     courses = get_student_courses(user_id)
+    st.session_state["courses"] = courses
 
     if not courses:
         st.info("No courses assigned yet.")
@@ -1618,11 +1619,45 @@ def main():
     st.sidebar.markdown("### 📘 Course")
 
     courses = get_student_courses(st.session_state["user_id"])
+    st.session_state["courses"] = courses
 
     if not courses:
         st.info("No courses assigned yet.")
         st.caption("Your teacher will assign a course soon.")
         return
+
+    # --- Course switcher (available even during practice) ---
+    if st.session_state.get("courses"):
+
+        current_course_id = st.session_state.get("active_course_id")
+
+        selected_course = st.sidebar.selectbox(
+            "Switch course",
+            options=st.session_state["courses"],
+            format_func=lambda c: c["course_name"],
+            index=next(
+                (i for i, c in enumerate(st.session_state["courses"])
+                 if c["course_id"] == current_course_id),
+                0,
+            ),
+            key="sidebar_course_switcher",
+        )
+
+        # If user selects a different course
+        if selected_course["course_id"] != current_course_id:
+
+            # --- Reset practice state safely ---
+            st.session_state["active_course_id"] = selected_course["course_id"]
+            st.session_state["active_lesson_id"] = None
+            st.session_state["lesson_started"] = False
+            st.session_state["q_index"] = 0
+            st.session_state["show_feedback"] = False
+            st.session_state["current_input"] = ""
+
+            # Optional: clear practice-specific cached data
+            st.session_state.pop("practice_words", None)
+
+            st.rerun()
 
     if st.session_state.get("lesson_started"):
         render_practice_mode(
