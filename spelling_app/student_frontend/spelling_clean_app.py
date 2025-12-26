@@ -602,28 +602,29 @@ def render_practice_page():
         st.caption(" • ".join(info_bits))
 
 
-    if practice_mode == "Weak Words":
-        # Weak Words counter should reflect only weak words in this lesson
-        lesson_id = st.session_state.get("active_lesson_id")
+    if practice_mode != "Daily-5":
+        if practice_mode == "Weak Words":
+            # Weak Words counter should reflect only weak words in this lesson
+            lesson_id = st.session_state.get("active_lesson_id")
 
-        weak_words_for_lesson = [
-            w for w in practice_words
-            if w.get("lesson_id") == lesson_id
-        ]
+            weak_words_for_lesson = [
+                w for w in practice_words
+                if w.get("lesson_id") == lesson_id
+            ]
 
-        total_weak_words = len(weak_words_for_lesson)
-        st.session_state["q_index"] = current_index
+            total_weak_words = len(weak_words_for_lesson)
+            st.session_state["q_index"] = current_index
 
-        st.caption(f"{st.session_state['q_index'] + 1} / {total_weak_words}")
-    else:
-        st.markdown(
-            f"""
-            <div style="font-size:14px; opacity:0.8; margin-bottom:6px;">
-                Q {current_index + 1} / {total_words}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            st.caption(f"{st.session_state['q_index'] + 1} / {total_weak_words}")
+        else:
+            st.markdown(
+                f"""
+                <div style="font-size:14px; opacity:0.8; margin-bottom:6px;">
+                    Q {current_index + 1} / {total_words}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.markdown(
         f"""
