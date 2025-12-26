@@ -786,7 +786,14 @@ def render_practice_page():
         # advance progress
         st.session_state.question_number += 1
 
-        st.session_state.practice_index += 1
+        if is_weak_mode:
+            if st.session_state[index_key] < total_words - 1:
+                st.session_state[index_key] += 1
+            else:
+                st.success("🎉 You’ve practiced all weak words for this lesson!")
+                return
+        else:
+            st.session_state.practice_index += 1
 
         # reset per-word state
         st.session_state.submitted = False
@@ -1402,9 +1409,15 @@ def render_practice_mode(lesson_id: int, course_id: int):
         return
 
     practice_words = words
+    is_weak_mode = practice_mode == "Weak Words"
+    index_key = "q_index" if is_weak_mode else "practice_index"
+
+    if index_key not in st.session_state:
+        st.session_state[index_key] = 0
+
     total_words = len(practice_words)
-    practice_index = int(st.session_state.practice_index)
-    current_index = min(practice_index, total_words - 1)
+    practice_index = int(st.session_state[index_key])
+    current_index = min(practice_index, total_words - 1) if total_words else 0
     progress = (current_index + 1) / total_words if total_words else 0
 
     if progress < 0.3:
@@ -1415,9 +1428,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
         bar_color = "#22c55e"
 
     if practice_index >= total_words:
-        st.success("🎉 You finished all words!")
+        finish_message = (
+            "🎉 You’ve practiced all weak words for this lesson!"
+            if is_weak_mode
+            else "🎉 You finished all words!"
+        )
+        st.success(finish_message)
         if st.button("Restart practice"):
-            st.session_state.practice_index = 0
+            st.session_state[index_key] = 0
             st.session_state.current_wid = None
             st.session_state.current_word_pick = None
             st.session_state.word_state = "editing"
@@ -1426,7 +1444,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         return
 
     if st.session_state.current_wid is None:
-        current = practice_words[st.session_state.practice_index]
+        current = practice_words[st.session_state[index_key]]
         st.session_state.current_wid = current["word_id"]
         st.session_state.current_word_pick = current
         st.session_state.start_time = time.time()
@@ -1442,7 +1460,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     st.subheader("Spell the word:")
 
-    if practice_mode == "Weak Words":
+    if is_weak_mode:
         # Weak Words counter should reflect only weak words in this lesson
         lesson_id = st.session_state.get("active_lesson_id")
 
