@@ -109,21 +109,17 @@ def _ensure_hint_state():
 def _weak_words_for_user(user_id: int, lesson_id: int):
     return fetch_all(
         """
-        WITH stats AS (
-            SELECT word_id,
-                   COUNT(*) AS total,
-                   SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS correct
+        WITH incorrect_words AS (
+            SELECT DISTINCT word_id
             FROM attempts
             WHERE user_id = :uid
               AND lesson_id = :lid
+              AND NOT is_correct
               AND attempt_type IN ('spelling', 'spelling_missing', 'spelling_daily')
-            GROUP BY word_id
-            HAVING COUNT(*) >= 2
-               AND (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::decimal / COUNT(*)) < 0.8
         )
         SELECT w.id, w.word, w.difficulty, w.pattern_hint, w.definition, w.sample_sentence, w.missing_letter_mask
         FROM spelling_words w
-        JOIN stats s ON s.word_id = w.id
+        JOIN incorrect_words iw ON iw.word_id = w.id
         WHERE w.lesson_id = :lid
         ORDER BY w.id
         """,
