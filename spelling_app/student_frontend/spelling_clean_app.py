@@ -485,7 +485,7 @@ def render_student_dashboard():
         c for c in courses if c["course_name"] == selected_course_name
     )
 
-    previous_course_id = st.session_state.get("selected_course_id")
+    previous_course_id = st.session_state.get("active_course_id")
     new_course_id = selected_course["course_id"]
 
     if previous_course_id != new_course_id:
@@ -493,7 +493,7 @@ def render_student_dashboard():
         st.session_state.selected_lesson_id = None
         st.session_state.prev_lesson_id = None
 
-    st.session_state.selected_course_id = new_course_id
+    st.session_state.active_course_id = new_course_id
     st.session_state.selected_level = None
     st.session_state.selected_lesson = None
 
@@ -539,7 +539,7 @@ def render_practice_page():
         )
         return
 
-    cid = st.session_state.get("selected_course_id")
+    cid = st.session_state.get("active_course_id")
     lesson_id = st.session_state.get("selected_lesson_id")
     lesson_name = st.session_state.get("selected_lesson")
 
@@ -1671,42 +1671,17 @@ def main():
         for c in courses
     }
 
-    # Remember last active course if set
-    last_course_id = st.session_state.get("selected_course_id")
-    course_ids = list(course_map.keys())
-    default_index = 0
-    if last_course_id in course_ids:
-        default_index = course_ids.index(last_course_id)
+    active_course_id = st.session_state.get("active_course_id")
 
-    prev_course_id = st.session_state.get("selected_course_id")
+    if active_course_id not in course_map:
+        # default to the first available course when none is active
+        active_course_id = courses[0]["course_id"]
+        st.session_state["active_course_id"] = active_course_id
 
-    selected_course_id = st.sidebar.selectbox(
-        "Course",
-        course_ids,
-        format_func=lambda cid: course_map[cid],
-        index=default_index,
-    )
-
-    # 🔴 CRITICAL: reset ALL lesson state if course changes
-    if prev_course_id != selected_course_id:
-        st.session_state.selected_course_id = selected_course_id
-
-        # HARD RESET lesson-related state
-        st.session_state.selected_lesson_id = None
-        st.session_state.selected_lesson = None
-        st.session_state.practice_index = 0
-        st.session_state.current_words = []
-        st.session_state.practice_complete = False
-        st.session_state.feedback = None
-
-        # Force rerun so UI reflects new course cleanly
-        st.rerun()
-
-    st.session_state.selected_course_id = selected_course_id
-    st.session_state.selected_course_title = course_map[selected_course_id]
+    st.session_state.selected_course_title = course_map[active_course_id]
 
     lessons = get_lessons_for_course(
-        st.session_state.selected_course_id,
+        active_course_id,
         user_id=st.session_state.user_id,
     )
 
@@ -1719,7 +1694,7 @@ def main():
     if not lessons:
         st.info("No lessons available in this course yet.")
         if st.button("Back to courses"):
-            st.session_state.selected_course_id = None
+            st.session_state.active_course_id = None
             st.experimental_rerun()
         return
 
