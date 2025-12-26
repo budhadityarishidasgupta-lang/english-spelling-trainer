@@ -207,17 +207,27 @@ def update_student_profile(
 # COURSE ENROLMENTS
 # ---------------------------------------------------------
 def get_student_courses(user_id: int) -> List[Dict[str, Any]]:
-    rows = fetch_all(
+    """
+    AUTHORITATIVE student course visibility.
+    Enrollment row existence = visibility.
+    """
+
+    sql = text(
         """
-        SELECT c.course_id, c.course_name, c.description
+        SELECT
+            c.course_id,
+            c.course_name,
+            c.description
         FROM spelling_enrollments e
-        JOIN spelling_courses c ON c.course_id = e.course_id
-        WHERE e.user_id = :uid
+        JOIN spelling_courses c
+          ON c.course_id = e.course_id
+        WHERE e.user_id = :user_id
         ORDER BY c.course_name
-        """,
-        {"uid": user_id},
+    """
     )
-    return _rows_to_dicts(rows)
+
+    with engine.connect() as conn:
+        return conn.execute(sql, {"user_id": user_id}).mappings().all()
 
 
 def assign_courses_to_student(user_id: int, course_ids: List[int]) -> None:
