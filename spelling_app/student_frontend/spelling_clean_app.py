@@ -35,7 +35,7 @@ from spelling_app.repository.student_repo import (
     get_resume_index_for_lesson,
     get_words_by_ids,
 )
-from spelling_app.services.spelling_service import get_daily_five_words
+from spelling_app.services.spelling_service import get_daily_five_words, get_weak_words
 from spelling_app.repository.student_repo import (
     get_lessons_for_course as repo_get_lessons_for_course,
     get_student_courses as repo_get_student_courses,
@@ -1300,9 +1300,56 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     render_mode_cards()
 
-    words = get_words_for_lesson(lesson_id)
+    active_lesson_id = st.session_state.get("active_lesson_id") or lesson_id
+
+    lesson_weak_words = []
+    if practice_mode == "Weak Words":
+        lesson_weak_words = [
+            w for w in get_weak_words(st.session_state["user_id"])
+            if w.get("lesson_id") == active_lesson_id
+        ]
+
+        weak_word_ids = [w["word_id"] for w in lesson_weak_words]
+
+        if weak_word_ids:
+            lesson_word_rows = get_words_by_ids(weak_word_ids)
+            lesson_word_lookup = {
+                w["word_id"]: w
+                for w in lesson_word_rows
+            }
+
+            ordered_weak_words = [
+                lesson_word_lookup[wid]
+                for wid in weak_word_ids
+                if wid in lesson_word_lookup
+            ]
+
+            for word in ordered_weak_words:
+                word.setdefault("lesson_id", active_lesson_id)
+        else:
+            ordered_weak_words = []
+
+        if st.session_state.get("weak_words_lesson_id") != active_lesson_id:
+            st.session_state.practice_index = 0
+            st.session_state.current_wid = None
+            st.session_state.current_word_pick = None
+
+        st.session_state.weak_words_lesson_id = active_lesson_id
+        st.session_state.practice_words = ordered_weak_words
+
+        if st.session_state.practice_index >= len(ordered_weak_words):
+            st.session_state.practice_index = 0
+
+        words = ordered_weak_words
+    else:
+        words = get_words_for_lesson(lesson_id)
 
     if not words:
+        if practice_mode == "Weak Words":
+            st.info("No weak words logged for this lesson yet.")
+            st.caption("Weak Words come from your incorrect attempts in this lesson.")
+            return
+
         # Explicit debug counts (prevents silent “nothing happens”)
         with engine.connect() as conn:
             c_items = conn.execute(
@@ -1327,15 +1374,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
     )
     stats_map = build_stats_map(signals_map)
     difficulty_map = build_difficulty_map(words, stats_map)
-    weak_word_ids = get_weak_word_ids(stats_map)
-
-    if practice_mode == "Weak Words":
-        filtered = [w for w in words if _word_id(w) in weak_word_ids]
-        words = filtered
-        if not filtered:
-            st.info("No weak words yet — great job!")
-            st.caption("Keep practising to see personalised review words here.")
-            return
+    weak_word_ids = (
+        {w["word_id"] for w in lesson_weak_words}
+        if practice_mode == "Weak Words"
+        else get_weak_word_ids(stats_map)
+    )
 
     if practice_mode == "Daily-5":
         daily_ids = get_daily_five_words(user_id)
