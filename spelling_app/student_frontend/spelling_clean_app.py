@@ -1203,10 +1203,12 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map: dict,
-                         weak_word_ids: set, selected_course_id: int, selected_lesson_id: int,
-                         selected_lesson_name: str):
+def render_practice_mode(lesson_id: int, course_id: int):
     import time
+
+    ensure_default_mode()
+    practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
+    st.session_state.practice_mode = practice_mode
 
     # --- SAFETY INITIALISATION ---
     st.session_state.setdefault("correct_streak", 0)
@@ -1237,7 +1239,6 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
 
     if "checked" not in st.session_state:
         st.session_state.checked = False
-
     # --- GUARANTEED session state initialization ---
     if "start_time" not in st.session_state:
         st.session_state.start_time = time.time()
@@ -1255,7 +1256,64 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
         st.session_state.current_word_pick = None
     # ------------------------------------------------
 
-    if mode == "Weak Words":
+    if st.session_state.get("practice_lesson_id") != lesson_id:
+        st.session_state.practice_index = 0
+        st.session_state.current_wid = None
+        st.session_state.current_word_pick = None
+        st.session_state.word_state = "editing"
+        st.session_state.practice_lesson_id = lesson_id
+
+    user_id = st.session_state.get("user_id")
+    lesson_name = st.session_state.get("active_lesson_name")
+
+    lessons = get_lessons_for_course(course_id, user_id=user_id) if course_id else []
+    lesson_lookup = {lesson["lesson_id"]: lesson for lesson in lessons}
+    lesson = lesson_lookup.get(lesson_id, {})
+
+    if not lesson_name:
+        lesson_name = lesson.get("lesson_name")
+
+    mastery = lesson.get("progress_pct", 0) or 0
+    xp_total, streak = get_xp_and_streak(user_id)
+    badge = compute_badge(xp_total, mastery)
+
+    if lesson_name:
+        st.header(f"{lesson_name}  {badge}")
+        st.progress(mastery / 100)
+        st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
+
+    render_mode_cards()
+
+    words = get_words_for_lesson(lesson_id)
+
+    if not words:
+        # Explicit debug counts (prevents silent “nothing happens”)
+        with engine.connect() as conn:
+            c_items = conn.execute(
+                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
+                {"lid": lesson_id},
+            ).scalar() or 0
+            c_words = conn.execute(
+                text("SELECT COUNT(*) FROM spelling_lesson_words WHERE lesson_id=:lid"),
+                {"lid": lesson_id},
+            ).scalar() or 0
+
+        st.error("No practice words are mapped to this lesson yet.")
+        st.caption(
+            f"lesson_id={lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_words={int(c_words)}"
+        )
+        return
+
+    signals_map = get_cached_word_signals(
+        user_id=user_id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+    )
+    stats_map = build_stats_map(signals_map)
+    difficulty_map = build_difficulty_map(words, stats_map)
+    weak_word_ids = get_weak_word_ids(stats_map)
+
+    if practice_mode == "Weak Words":
         filtered = [w for w in words if _word_id(w) in weak_word_ids]
         words = filtered
         if not filtered:
@@ -1263,8 +1321,7 @@ def render_practice_mode(mode: str, words: list, difficulty_map: dict, stats_map
             st.caption("Keep practising to see personalised review words here.")
             return
 
-    if mode == "Daily-5":
-        user_id = st.session_state.get("user_id")
+    if practice_mode == "Daily-5":
         daily_ids = get_daily_five_words(user_id)
         words = get_words_by_ids(daily_ids)
         st.session_state.practice_words = words
@@ -1567,6 +1624,13 @@ def main():
         st.caption("Your teacher will assign a course soon.")
         return
 
+    if st.session_state.get("lesson_started"):
+        render_practice_mode(
+            lesson_id=st.session_state["active_lesson_id"],
+            course_id=st.session_state["active_course_id"],
+        )
+        return
+
     course_map = {
         c.get("course_id") or c.get("col_0"): c.get("course_name") or c.get("col_1")
         for c in courses
@@ -1624,15 +1688,6 @@ def main():
             st.experimental_rerun()
         return
 
-    lesson_map = {l["lesson_name"]: l["lesson_id"] for l in lessons}
-    mastery_map = {l["lesson_name"]: l.get("progress_pct", 0) for l in lessons}
-
-    selected_lesson_id = st.session_state.get("selected_lesson_id")
-    if selected_lesson_id not in lesson_map.values():
-        st.session_state.selected_lesson_id = None
-        st.session_state.selected_lesson = None
-        st.session_state.prev_lesson_id = None
-
     st.markdown("### Lesson catalogue")
 
     header_cols = st.columns([3, 1, 1, 1])
@@ -1640,9 +1695,9 @@ def main():
     for col, label in zip(header_cols, headers):
         col.markdown(f"**{label}**")
 
-    for l in lessons:
-        progress = l.get("progress_pct", 0) or 0
-        word_count = l.get("word_count", "—")
+    for lesson in lessons:
+        progress = lesson.get("progress_pct", 0) or 0
+        word_count = lesson.get("word_count", "—")
 
         if progress >= 90:
             status = "Mastered"
@@ -1654,11 +1709,9 @@ def main():
             status = "Not started"
             status_color = "#6b7280"  # grey
 
-        action_label = "Start" if status == "Not started" else "Continue"
-
         row_cols = st.columns([3, 1, 1, 1])
         with row_cols[0]:
-            st.markdown(f"**{l['lesson_name']}**")
+            st.markdown(f"**{lesson['lesson_name']}**")
         with row_cols[1]:
             st.markdown(str(word_count))
         with row_cols[2]:
@@ -1667,124 +1720,21 @@ def main():
                 unsafe_allow_html=True,
             )
         with row_cols[3]:
-            if st.button(action_label, key=f"start_{l['lesson_id']}", use_container_width=True):
+            if st.button("Start", key=f"start_{lesson['lesson_id']}"):
 
-                # --- REQUIRED practice-entry flags (UNIFIED) ---
+                # SINGLE PRACTICE ENTRY CONTRACT (ALL COURSES)
                 st.session_state["mode"] = "Practice"
-                st.session_state["practice_mode"] = "Practice"
-                st.session_state["active_lesson_id"] = l["lesson_id"]
-                st.session_state["active_lesson_name"] = l["lesson_name"]
-                st.session_state["active_course_id"] = l["course_id"]
-
-                # --- Reset practice state ---
-                st.session_state["q_index"] = 0
-                st.session_state["show_feedback"] = False
-                st.session_state["current_input"] = ""
-
-                # --- CRITICAL: mark lesson as started ---
                 st.session_state["lesson_started"] = True
+                st.session_state["active_lesson_id"] = lesson["lesson_id"]
+                st.session_state["active_course_id"] = lesson["course_id"]
+                st.session_state["active_lesson_name"] = lesson["lesson_name"]
 
-                # Preserve existing selection + resume behavior
-                st.session_state.selected_lesson_id = l["lesson_id"]
-                st.session_state.selected_lesson = l["lesson_name"]
-                reset_practice_state()
-                student_id = st.session_state.get("student_id") or st.session_state.get("user_id")
-                resume_index = 0
-                if student_id is not None:
-                    resume_index = get_resume_index_for_lesson(
-                        student_id=student_id,
-                        lesson_id=l["lesson_id"],
-                    )
-                st.session_state["q_index"] = resume_index
-                st.session_state.practice_index = resume_index
-                st.session_state.prev_lesson_id = l["lesson_id"]
+                # Reset practice state
+                st.session_state["q_index"] = 0
+                st.session_state["current_input"] = ""
+                st.session_state["show_feedback"] = False
 
                 st.rerun()
-
-    selected_lesson_id = st.session_state.get("selected_lesson_id")
-    if not selected_lesson_id:
-        st.info("Select a lesson from the catalogue to begin.")
-        return
-
-    selected_lesson_name = next(
-        (name for name, lid in lesson_map.items() if lid == selected_lesson_id),
-        None,
-    )
-
-    if not selected_lesson_name:
-        st.info("Select a lesson from the catalogue to begin.")
-        return
-
-    st.session_state.selected_lesson = selected_lesson_name
-    st.session_state.selected_lesson_id = selected_lesson_id
-
-    selected_lesson = next(
-        (lesson for lesson in lessons if lesson["lesson_id"] == selected_lesson_id),
-        {},
-    )
-
-    if st.session_state.get("prev_lesson_id") != selected_lesson_id:
-        reset_practice_state()
-        st.session_state.prev_lesson_id = selected_lesson_id
-
-    # ---------------------------------------------
-    # FETCH WORDS FOR THIS LESSON
-    # ---------------------------------------------
-    words = get_words_for_lesson(selected_lesson_id)
-
-    if not words:
-        # Explicit debug counts (prevents silent “nothing happens”)
-        with engine.connect() as conn:
-            c_items = conn.execute(
-                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
-                {"lid": selected_lesson_id},
-            ).scalar() or 0
-            c_words = conn.execute(
-                text("SELECT COUNT(*) FROM spelling_lesson_words WHERE lesson_id=:lid"),
-                {"lid": selected_lesson_id},
-            ).scalar() or 0
-
-        st.error("No practice words are mapped to this lesson yet.")
-        st.caption(f"lesson_id={selected_lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_words={int(c_words)}")
-
-        if st.button("Back to lesson catalogue", use_container_width=True):
-            st.session_state.selected_lesson_id = None
-            st.session_state.selected_lesson = None
-            st.experimental_rerun()
-        return
-
-    signals_map = get_cached_word_signals(
-        user_id=st.session_state["user_id"],
-        course_id=selected_course_id,
-        lesson_id=selected_lesson_id,
-    )
-    stats_map = build_stats_map(signals_map)
-    difficulty_map = build_difficulty_map(words, stats_map)
-    weak_word_ids = get_weak_word_ids(stats_map)
-
-    mastery = mastery_map[selected_lesson_name]
-    xp_total, streak = get_xp_and_streak(st.session_state["user_id"])
-    badge = compute_badge(xp_total, mastery)
-
-    st.header(f"{selected_lesson_name}  {badge}")
-    st.progress(mastery / 100)
-    st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
-
-    render_mode_cards()
-
-    practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
-    st.session_state.practice_mode = practice_mode
-    render_practice_mode(
-        mode=practice_mode,
-        words=words,
-        difficulty_map=difficulty_map,
-        stats_map=stats_map,
-        weak_word_ids=weak_word_ids,
-        selected_course_id=selected_course_id,
-        selected_lesson_id=selected_lesson_id,
-        selected_lesson_name=selected_lesson_name,
-    )
-    return
 
 
 if __name__ == "__main__":
