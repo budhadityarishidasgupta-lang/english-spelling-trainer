@@ -155,6 +155,7 @@ def initialize_session_state(st_module):
 def reset_practice_state():
     """Centralised reset for all practice state fields."""
     st.session_state.practice_index = 0
+    st.session_state["q_index"] = 0
     st.session_state.current_word = None
     st.session_state.current_wid = None
     st.session_state.current_word_pick = None
@@ -1281,6 +1282,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     if st.session_state.get("practice_lesson_id") != lesson_id:
         st.session_state.practice_index = 0
+        st.session_state["q_index"] = 0
         st.session_state.current_wid = None
         st.session_state.current_word_pick = None
         st.session_state.word_state = "editing"
@@ -1338,6 +1340,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         if st.session_state.get("weak_words_lesson_id") != active_lesson_id:
             st.session_state.practice_index = 0
+            st.session_state["q_index"] = 0
             st.session_state.current_wid = None
             st.session_state.current_word_pick = None
 
