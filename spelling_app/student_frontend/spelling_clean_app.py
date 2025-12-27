@@ -582,10 +582,6 @@ def render_mode_cards():
         if st.button("🧠 Weak Words", use_container_width=True):
             st.session_state.mode = "Weak Words"
 
-    with c3:
-        if st.button("📆 Daily-5", use_container_width=True):
-            st.session_state.mode = "Daily-5"
-
 
 def render_daily5_prompt():
     st.markdown("### 🎯 Daily 5 Ready")
