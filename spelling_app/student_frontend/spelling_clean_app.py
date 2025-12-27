@@ -42,6 +42,7 @@ from spelling_app.repository.student_repo import (
     get_lessons_for_course as repo_get_lessons_for_course,
     get_student_courses as repo_get_student_courses,
 )
+from spelling_app.repository.spelling_help_text_repo import get_help_text
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -125,6 +126,19 @@ def row_to_dict(row):
     return {}
 
 
+def fetch_daily5_help_text(db):
+    row = get_help_text(db, "daily5_intro")
+    if row and row.body:
+        return row.title, row.body
+
+    # Fallback (shown only if admin has not configured text yet)
+    return (
+        "Why start with Daily 5?",
+        "Daily 5 helps warm up your spelling skills and prepares your brain for today’s practice. "
+        "It takes just a couple of minutes and makes learning easier.",
+    )
+
+
 def inject_student_css():
     st.markdown(
         """
@@ -167,6 +181,13 @@ def inject_student_css():
             padding: 1rem;
             border-radius: 8px;
             margin-top: 1rem;
+        }
+        .daily5-help-box {
+            background-color: rgba(126, 211, 33, 0.12);
+            padding: 0.9rem 1rem;
+            border-radius: 8px;
+            margin: 0.8rem 0 1.2rem 0;
+            font-size: 0.95rem;
         }
         </style>
         """,
@@ -548,6 +569,19 @@ def render_mode_cards():
 def render_daily5_prompt():
     st.markdown("### 🎯 Daily 5 Ready")
     st.markdown("Warm up with 5 quick spelling questions before practice.")
+
+    with engine.connect() as db:
+        title, body = fetch_daily5_help_text(db)
+
+    st.markdown(
+        f"""
+        <div class="daily5-help-box">
+            <strong>{title}</strong><br>
+            {body}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2)
 
