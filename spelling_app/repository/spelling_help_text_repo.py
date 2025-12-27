@@ -1,3 +1,5 @@
+from sqlalchemy import text
+
 from shared.db import fetch_all
 
 
@@ -14,24 +16,14 @@ def _to_dict(row):
         return {}
 
 
-def get_help_text(help_key: str):
-    rows = fetch_all(
-        """
-        SELECT id, help_key, title, body, updated_at
+def get_help_text(db, help_key):
+    query = """
+        SELECT help_key, title, body
         FROM spelling_help_texts
         WHERE help_key = :help_key
-        LIMIT 1;
-        """,
-        {"help_key": help_key},
-    )
-
-    if isinstance(rows, dict):
-        return rows
-
-    if not rows:
-        return {}
-
-    return _to_dict(rows[0])
+    """
+    result = db.execute(text(query), {"help_key": help_key})
+    return result.fetchone()
 
 
 def upsert_help_text(help_key: str, title: str, body: str):
