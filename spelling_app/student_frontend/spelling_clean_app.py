@@ -1732,6 +1732,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     )
 
     answer_submitted = st.session_state.word_state == "submitted"
+    st.session_state.answer_submitted = answer_submitted
 
     if not answer_submitted:
         st.markdown(
@@ -1875,11 +1876,16 @@ def render_practice_mode(lesson_id: int, course_id: int):
     if st.session_state.word_state == "submitted" and st.session_state.get("action_lock"):
         st.session_state.action_lock = False
 
-    if st.session_state.word_state == "submitted":
+    if "next_disabled" not in st.session_state:
+        st.session_state.next_disabled = False
+
+    if st.session_state.answer_submitted:
         next_col, _ = st.columns([1, 1])
 
         with next_col:
-            if st.button("➡️ Next", key=f"next_{wid}", disabled=st.session_state.get("action_lock", False)):
+            if st.button("➡️ Next", key=f"next_{wid}", disabled=st.session_state.next_disabled):
+
+                st.session_state.next_disabled = True
 
                 st.session_state.action_lock = True
                 st.session_state.practice_index += 1
@@ -1898,6 +1904,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.session_state.current_word_pick = None
                 st.session_state.result_processed = False
                 st.session_state.action_lock = False
+
+                st.session_state.next_disabled = False
 
                 st.experimental_rerun()
 
