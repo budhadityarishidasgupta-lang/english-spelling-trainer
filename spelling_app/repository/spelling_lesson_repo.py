@@ -280,3 +280,44 @@ def get_daily5_words_for_student(db, user_id, limit=5):
     )
 
     return result.fetchall()
+
+
+# ============================================================
+# WEAK WORDS FOR A LESSON
+# ============================================================
+
+
+def get_weak_words_for_lesson(db, user_id, lesson_id):
+    """
+    Fetch weak words for a specific lesson.
+    A word is weak if there exists at least one incorrect attempt
+    by the user for this lesson.
+
+    Attempts are append-only; no deletion or overwriting.
+    """
+
+    query = """
+        SELECT DISTINCT
+            w.word_id,
+            w.word,
+            w.pattern,
+            w.pattern_code,
+            w.example_sentence
+        FROM spelling_attempts a
+        JOIN spelling_words w
+          ON a.word_id = w.word_id
+        WHERE a.user_id = :user_id
+          AND a.lesson_id = :lesson_id
+          AND a.is_correct = FALSE
+        ORDER BY a.attempted_at DESC
+    """
+
+    result = db.execute(
+        text(query),
+        {
+            "user_id": user_id,
+            "lesson_id": lesson_id,
+        },
+    )
+
+    return result.fetchall()
