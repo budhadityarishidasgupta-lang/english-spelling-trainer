@@ -134,6 +134,22 @@ def inject_student_css():
             background: #111;
             border-radius: 8px;
         }
+        .practice-word, .practice-answer {
+            font-size:26px;
+            font-weight:700;
+            letter-spacing:6px;
+            background:#111827;
+            padding:16px 20px;
+            border-radius:14px;
+            margin-bottom:18px;
+            text-align:center;
+        }
+        .example-box {
+            background-color: rgba(255, 215, 0, 0.12);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1600,23 +1616,18 @@ def render_practice_mode(lesson_id: int, course_id: int):
         max_blanks=blanks_count,
     )
 
-    st.markdown(
-        f"""
-        <div style="
-            font-size:26px;
-            font-weight:700;
-            letter-spacing:6px;
-            background:#111827;
-            padding:16px 20px;
-            border-radius:14px;
-            margin-bottom:18px;
-            text-align:center;
-        ">
-            {masked_word}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    answer_submitted = st.session_state.word_state == "submitted"
+
+    if not answer_submitted:
+        st.markdown(
+            f"<div class='practice-word'>{masked_word}</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"<div class='practice-answer'>{target_word}</div>",
+            unsafe_allow_html=True,
+        )
 
     st.caption(f"Difficulty: {blanks_count} blanks")
 
@@ -1632,35 +1643,56 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.session_state.checked = False
         st.session_state.correct = False
 
-    user_input = st.text_input(
-        "Type the complete word",
-        key=f"input_{wid}",
-        disabled=(st.session_state.word_state == "submitted"),
-    )
-
     action_col, _ = st.columns([1, 1])
 
-    if st.session_state.word_state == "editing":
-        with action_col:
-            if st.button("✅ Submit", key=f"submit_{wid}"):
-                is_correct = user_input.lower() == target_word.lower()
+    if not answer_submitted:
+        user_input = st.text_input(
+            "Type the complete word",
+            key=f"input_{wid}",
+        )
 
-                time_taken = int(time.time() - st.session_state.start_time)
-                blanks_count = masked_word.count("_")
+        if st.session_state.word_state == "editing":
+            with action_col:
+                if st.button("✅ Submit", key=f"submit_{wid}"):
+                    is_correct = user_input.lower() == target_word.lower()
 
-                record_attempt(
-                    user_id=st.session_state.user_id,
-                    word_id=wid,
-                    correct=is_correct,
-                    time_taken=time_taken,
-                    blanks_count=blanks_count,
-                    wrong_letters_count=0 if is_correct else 1,
+                    time_taken = int(time.time() - st.session_state.start_time)
+                    blanks_count = masked_word.count("_")
+
+                    record_attempt(
+                        user_id=st.session_state.user_id,
+                        word_id=wid,
+                        correct=is_correct,
+                        time_taken=time_taken,
+                        blanks_count=blanks_count,
+                        wrong_letters_count=0 if is_correct else 1,
+                    )
+
+                    st.session_state.last_result_correct = is_correct
+                    st.session_state.word_state = "submitted"
+
+                    st.experimental_rerun()
+
+    if answer_submitted:
+        is_correct = st.session_state.get("last_result_correct", False)
+
+        if is_correct:
+            st.success("✅ Correct!")
+        else:
+            st.error(f"❌ Not quite right — the correct answer is “{target_word}”")
+
+        example_sentence = st.session_state.get("current_example_sentence")
+        if example_sentence:
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div class="example-box">
+                        📘 <strong>Example sentence:</strong><br>
+                        {example_sentence}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-
-                st.session_state.last_result_correct = is_correct
-                st.session_state.word_state = "submitted"
-
-                st.experimental_rerun()
 
     if (
         st.session_state.word_state == "submitted"
@@ -1711,20 +1743,6 @@ def render_practice_mode(lesson_id: int, course_id: int):
             award_badge("Perfect Run", "🏆")
 
         st.session_state.result_processed = True
-
-    if st.session_state.word_state == "submitted":
-        example_sentence = st.session_state.get("current_example_sentence")
-
-        if st.session_state.last_result_correct:
-            st.success(
-                "🏆 Fantastic work! ⭐ You earned 10 XP\n\n"
-                f"📘 Example sentence: \"{example_sentence}\""
-            )
-        else:
-            st.warning(
-                "😅 Try again!\n\n"
-                f"📘 Example sentence: \"{example_sentence}\""
-            )
 
     if st.session_state.word_state == "submitted":
         with action_col:
