@@ -595,17 +595,18 @@ def render_daily5_prompt():
         title, body = fetch_daily5_help_text(db)
 
     title = title or "Daily 5"
-    body = body or "Warm up with 5 quick spelling questions before practice."
+    help_body = body or "Warm up with 5 quick spelling questions before practice."
 
-    st.markdown(
-        f"""
-        <div class="daily5-help-box">
-            <strong>{title}</strong><br>
-            {body}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if help_body:
+        st.markdown(
+            f"""
+            <div class="daily5-help-box">
+                <strong>{title}</strong><br>
+                {help_body}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     col1, col2 = st.columns(2)
 
@@ -1812,16 +1813,15 @@ def render_practice_mode(lesson_id: int, course_id: int):
         example_sentence = st.session_state.get("current_example_sentence")
         if example_sentence:
             safe_example = escape(str(example_sentence))
-            with st.container():
-                st.markdown(
-                    f"""
-                    <div class="example-box">
-                        📘 <strong>Example sentence:</strong><br>
-                        {safe_example}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f"""
+                <div class="example-box">
+                    📘 <strong>Example sentence:</strong><br>
+                    {safe_example}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     if (
         st.session_state.word_state == "submitted"
