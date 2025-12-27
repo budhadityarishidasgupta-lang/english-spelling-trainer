@@ -1930,10 +1930,19 @@ def main():
 
     # LOGGED IN
     st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
-    
-    
+
+
     if st.sidebar.button("Logout"):
         logout(st)
+        # Session hard reset on logout (hardening)
+        for key in [
+            "practice_mode",
+            "answer_submitted",
+            "daily5_active",
+            "daily5_words",
+            "daily5_index",
+        ]:
+            st.session_state.pop(key, None)
         st.experimental_rerun()
 
     user_id = st.session_state.get("user_id")
