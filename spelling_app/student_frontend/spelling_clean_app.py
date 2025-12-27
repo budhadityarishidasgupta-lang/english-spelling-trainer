@@ -152,6 +152,22 @@ def initialize_session_state(st_module):
                 st_module.session_state[key] = None
 
 
+def init_daily5_state():
+    if "daily5_last_shown_date" not in st.session_state:
+        st.session_state.daily5_last_shown_date = None
+
+    if "daily5_active" not in st.session_state:
+        st.session_state.daily5_active = False
+
+    if "practice_mode" not in st.session_state:
+        st.session_state.practice_mode = "lesson"
+
+
+def should_show_daily5_today():
+    today = date.today().isoformat()
+    return st.session_state.daily5_last_shown_date != today
+
+
 def reset_practice_state():
     """Centralised reset for all practice state fields."""
     st.session_state.practice_index = 0
@@ -1682,6 +1698,7 @@ def main():
 
     inject_student_css()
     initialize_session_state(st)
+    init_daily5_state()
 
     if "mode" not in st.session_state:
         st.session_state.mode = "Practice"
