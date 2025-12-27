@@ -478,6 +478,27 @@ def render_mode_cards():
             st.session_state.mode = "Daily-5"
 
 
+def render_daily5_prompt():
+    st.markdown("### 🎯 Daily 5 Ready")
+    st.markdown("Warm up with 5 quick spelling questions before practice.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("▶️ Start Daily 5", use_container_width=True):
+            st.session_state.daily5_active = True
+            st.session_state.practice_mode = "daily5"
+            st.session_state.daily5_last_shown_date = date.today().isoformat()
+            st.experimental_rerun()
+
+    with col2:
+        if st.button("⏭️ Skip for Today", use_container_width=True):
+            st.session_state.daily5_last_shown_date = date.today().isoformat()
+            st.session_state.daily5_active = False
+            st.session_state.practice_mode = "lesson"
+            st.experimental_rerun()
+
+
 ###########################################################
 #  DASHBOARD: CHOOSE COURSE
 ###########################################################
@@ -1724,7 +1745,11 @@ def main():
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
-        
+
+    if should_show_daily5_today() and not st.session_state.daily5_active:
+        with st.container():
+            render_daily5_prompt()
+        st.stop()
 
     st.sidebar.markdown("### 📘 Course")
 
