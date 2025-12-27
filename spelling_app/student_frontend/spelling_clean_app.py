@@ -128,8 +128,13 @@ def row_to_dict(row):
 
 def fetch_daily5_help_text(db):
     row = get_help_text(db, "daily5_intro")
-    if row and row.body:
-        return row.title, row.body
+    if row:
+        mapping = getattr(row, "_mapping", row)
+        title = mapping.get("title") if isinstance(mapping, dict) else getattr(row, "title", None)
+        body = mapping.get("body") if isinstance(mapping, dict) else getattr(row, "body", None)
+
+        if body:
+            return title or "Daily 5", body
 
     # Fallback (shown only if admin has not configured text yet)
     return (
@@ -314,7 +319,23 @@ def check_login(st_module, email: str, password: str) -> bool:
 
 
 def logout(st_module):
-    for key in SESSION_KEYS:
+    cleanup_keys = SESSION_KEYS + [
+        "daily5_active",
+        "daily5_words",
+        "daily5_index",
+        "daily5_last_shown_date",
+        "practice_mode",
+        "current_wid",
+        "current_word_pick",
+        "word_state",
+        "result_processed",
+        "hint_level",
+        "hint_used",
+        "current_example_sentence",
+        "action_lock",
+    ]
+
+    for key in cleanup_keys:
         if key in st_module.session_state:
             del st_module.session_state[key]
     initialize_session_state(st_module)
@@ -572,6 +593,9 @@ def render_daily5_prompt():
 
     with engine.connect() as db:
         title, body = fetch_daily5_help_text(db)
+
+    title = title or "Daily 5"
+    body = body or "Warm up with 5 quick spelling questions before practice."
 
     st.markdown(
         f"""
@@ -838,12 +862,20 @@ def render_practice_page():
     action_col, _ = st.columns([1, 1])
     submit_clicked = False
     next_clicked = False
+    if st.session_state.get("submitted") and st.session_state.get("action_lock"):
+        st.session_state.action_lock = False
+    action_lock = st.session_state.get("action_lock", False)
 
     if not st.session_state.submitted:
         with action_col:
-            submit_clicked = st.button("✅ Submit", use_container_width=True)
+            submit_clicked = st.button(
+                "✅ Submit",
+                use_container_width=True,
+                disabled=action_lock,
+            )
 
-    if submit_clicked:
+    if submit_clicked and not action_lock:
+        st.session_state.action_lock = True
         start = st.session_state.get("start_time", time.time())
         time_taken = int(time.time() - start)
 
@@ -919,9 +951,14 @@ def render_practice_page():
 
     if st.session_state.submitted:
         with action_col:
-            next_clicked = st.button("➡️ Next", use_container_width=True)
+            next_clicked = st.button(
+                "➡️ Next",
+                use_container_width=True,
+                disabled=action_lock,
+            )
 
-    if next_clicked:
+    if next_clicked and not action_lock:
+        st.session_state.action_lock = True
         # advance progress
         st.session_state.question_number += 1
 
@@ -944,6 +981,8 @@ def render_practice_page():
         st.session_state.hint_used = False
         st.session_state.wrong_attempts = 0
         st.session_state.user_input = ""
+
+        st.session_state.action_lock = False
 
         # clear input
         st.session_state[f"answer_{word_id}"] = ""
@@ -1578,12 +1617,12 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         if st.session_state.daily5_index >= len(daily5_words):
             st.success("🎉 Daily 5 complete!")
-            st.session_state.daily5_active = False
-            st.session_state.practice_mode = "lesson"
 
-            # Clean up
+            # Daily 5 cleanup (hardening)
             st.session_state.pop("daily5_words", None)
             st.session_state.pop("daily5_index", None)
+            st.session_state.daily5_active = False
+            st.session_state.practice_mode = "lesson"
 
             st.experimental_rerun()
         else:
@@ -1594,6 +1633,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_wid = current["word_id"]
             st.session_state.current_word_pick = current
             st.session_state.start_time = time.time()
+            st.session_state.action_lock = False
     else:
         if practice_index >= total_words:
             finish_message = (
@@ -1616,6 +1656,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_wid = current["word_id"]
             st.session_state.current_word_pick = current
             st.session_state.start_time = time.time()
+            st.session_state.action_lock = False
         else:
             current = st.session_state.get("current_word_pick") or practice_words[current_index]
             st.session_state.current_word_pick = current
@@ -1726,29 +1767,31 @@ def render_practice_mode(lesson_id: int, course_id: int):
             key=f"input_{wid}",
         )
 
-        if st.session_state.word_state == "editing":
-            submit_col, _ = st.columns([1, 1])
+    if st.session_state.word_state == "editing":
+        submit_col, _ = st.columns([1, 1])
+        submit_disabled = st.session_state.get("action_lock", False)
 
-            with submit_col:
-                if st.button("✅ Submit", key=f"submit_{wid}"):
-                    is_correct = user_input.lower() == target_word.lower()
+        with submit_col:
+            if st.button("✅ Submit", key=f"submit_{wid}", disabled=submit_disabled):
+                st.session_state.action_lock = True
+                is_correct = user_input.lower() == target_word.lower()
 
-                    time_taken = int(time.time() - st.session_state.start_time)
-                    blanks_count = masked_word.count("_")
+                time_taken = int(time.time() - st.session_state.start_time)
+                blanks_count = masked_word.count("_")
 
-                    record_attempt(
-                        user_id=st.session_state.user_id,
-                        word_id=wid,
-                        correct=is_correct,
-                        time_taken=time_taken,
-                        blanks_count=blanks_count,
-                        wrong_letters_count=0 if is_correct else 1,
-                    )
+                record_attempt(
+                    user_id=st.session_state.user_id,
+                    word_id=wid,
+                    correct=is_correct,
+                    time_taken=time_taken,
+                    blanks_count=blanks_count,
+                    wrong_letters_count=0 if is_correct else 1,
+                )
 
-                    st.session_state.last_result_correct = is_correct
-                    st.session_state.word_state = "submitted"
+                st.session_state.last_result_correct = is_correct
+                st.session_state.word_state = "submitted"
 
-                    st.experimental_rerun()
+                st.experimental_rerun()
 
     if answer_submitted:
         is_correct = st.session_state.get("last_result_correct", False)
@@ -1760,12 +1803,13 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         example_sentence = st.session_state.get("current_example_sentence")
         if example_sentence:
+            safe_example = escape(str(example_sentence))
             with st.container():
                 st.markdown(
                     f"""
                     <div class="example-box">
                         📘 <strong>Example sentence:</strong><br>
-                        {example_sentence}
+                        {safe_example}
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -1821,12 +1865,16 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         st.session_state.result_processed = True
 
+    if st.session_state.word_state == "submitted" and st.session_state.get("action_lock"):
+        st.session_state.action_lock = False
+
     if st.session_state.word_state == "submitted":
         next_col, _ = st.columns([1, 1])
 
         with next_col:
-            if st.button("➡️ Next", key=f"next_{wid}"):
+            if st.button("➡️ Next", key=f"next_{wid}", disabled=st.session_state.get("action_lock", False)):
 
+                st.session_state.action_lock = True
                 st.session_state.practice_index += 1
                 if st.session_state.practice_mode == "daily5":
                     st.session_state.daily5_index += 1
@@ -1842,6 +1890,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.session_state.current_wid = None
                 st.session_state.current_word_pick = None
                 st.session_state.result_processed = False
+                st.session_state.action_lock = False
 
                 st.experimental_rerun()
 
@@ -1859,6 +1908,8 @@ def main():
     inject_student_css()
     initialize_session_state(st)
     init_daily5_state()
+    if "action_lock" not in st.session_state:
+        st.session_state.action_lock = False
 
     if "mode" not in st.session_state:
         st.session_state.mode = "Practice"
