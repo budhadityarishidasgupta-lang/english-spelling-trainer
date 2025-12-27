@@ -593,7 +593,7 @@ def render_mode_selector_sidebar():
         st.experimental_rerun()
 
 
-def render_mode_cards():
+def render_mode_cards(db, user_id, selected_lesson_id):
     st.markdown("### 🎯 What would you like to do today?")
     c1, c2, c3 = st.columns(3)
 
@@ -602,10 +602,27 @@ def render_mode_cards():
             st.session_state.mode = "Practice"
 
     with c2:
-        if st.button("🧠 Weak Words", use_container_width=True):
+        has_weak_words = False
+        weak_preview = get_weak_words_for_lesson(
+            db=db,
+            user_id=user_id,
+            lesson_id=selected_lesson_id,
+        )
+
+        if weak_preview:
+            has_weak_words = True
+
+        if st.button(
+            "🧠 Weak Words",
+            use_container_width=True,
+            disabled=not has_weak_words,
+        ):
             st.session_state.practice_mode = "weak_words"
             st.session_state.answer_submitted = False
             st.experimental_rerun()
+
+        if not has_weak_words:
+            st.caption("No weak words for this lesson yet 👍")
 
 
 def render_daily5_prompt():
@@ -1506,7 +1523,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.progress(mastery / 100)
         st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
 
-    render_mode_cards()
+    selected_lesson_id = st.session_state.get("selected_lesson_id") or active_lesson_id
+
+    with engine.connect() as db:
+        render_mode_cards(
+            db=db,
+            user_id=user_id,
+            selected_lesson_id=selected_lesson_id,
+        )
 
     active_lesson_id = st.session_state.get("active_lesson_id") or lesson_id
 
@@ -2019,6 +2043,20 @@ def main():
 
         if st.session_state.practice_mode == "weak_words" and selected_lesson_id:
             init_weak_words(db, user_id, selected_lesson_id)
+
+            if (
+                st.session_state.practice_mode == "weak_words"
+                and not st.session_state.weak_words
+            ):
+                st.info("🎉 You have no weak words in this lesson!")
+                st.caption("Great job — you’ve corrected everything so far.")
+
+                # Exit Weak Words mode cleanly
+                st.session_state.practice_mode = "lesson"
+                st.session_state.pop("weak_words", None)
+                st.session_state.pop("weak_index", None)
+
+                st.experimental_rerun()
 
     if should_show_daily5_today() and not st.session_state.daily5_active:
         with st.container():
