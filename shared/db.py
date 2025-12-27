@@ -61,6 +61,29 @@ engine = create_engine(
 )
 
 
+# --------------------------------------------------------------------
+# Ensure required spelling tables exist
+# --------------------------------------------------------------------
+def ensure_spelling_help_texts_table(engine):
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS spelling_help_texts (
+                    id SERIAL PRIMARY KEY,
+                    help_key TEXT UNIQUE NOT NULL,
+                    title TEXT,
+                    body TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+
+ensure_spelling_help_texts_table(engine)
+
+
 
 
 # --------------------------------------------------------------------
