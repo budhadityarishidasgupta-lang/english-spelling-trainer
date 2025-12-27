@@ -1686,8 +1686,6 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.session_state.checked = False
         st.session_state.correct = False
 
-    action_col, _ = st.columns([1, 1])
-
     if not answer_submitted:
         user_input = st.text_input(
             "Type the complete word",
@@ -1695,7 +1693,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
         )
 
         if st.session_state.word_state == "editing":
-            with action_col:
+            submit_col, _ = st.columns([1, 1])
+
+            with submit_col:
                 if st.button("✅ Submit", key=f"submit_{wid}"):
                     is_correct = user_input.lower() == target_word.lower()
 
@@ -1788,7 +1788,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.session_state.result_processed = True
 
     if st.session_state.word_state == "submitted":
-        with action_col:
+        next_col, _ = st.columns([1, 1])
+
+        with next_col:
             if st.button("➡️ Next", key=f"next_{wid}"):
 
                 st.session_state.practice_index += 1
