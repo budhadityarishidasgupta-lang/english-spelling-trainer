@@ -1768,30 +1768,37 @@ def render_practice_mode(lesson_id: int, course_id: int):
         )
 
     if st.session_state.word_state == "editing":
+        if "submit_disabled" not in st.session_state:
+            st.session_state.submit_disabled = False
+
         submit_col, _ = st.columns([1, 1])
-        submit_disabled = st.session_state.get("action_lock", False)
 
         with submit_col:
-            if st.button("✅ Submit", key=f"submit_{wid}", disabled=submit_disabled):
-                st.session_state.action_lock = True
-                is_correct = user_input.lower() == target_word.lower()
+            if not answer_submitted:
+                if st.button(
+                    "✅ Submit", key=f"submit_{wid}", disabled=st.session_state.submit_disabled
+                ):
+                    st.session_state.submit_disabled = True
+                    st.session_state.action_lock = True
+                    is_correct = user_input.lower() == target_word.lower()
 
-                time_taken = int(time.time() - st.session_state.start_time)
-                blanks_count = masked_word.count("_")
+                    time_taken = int(time.time() - st.session_state.start_time)
+                    blanks_count = masked_word.count("_")
 
-                record_attempt(
-                    user_id=st.session_state.user_id,
-                    word_id=wid,
-                    correct=is_correct,
-                    time_taken=time_taken,
-                    blanks_count=blanks_count,
-                    wrong_letters_count=0 if is_correct else 1,
-                )
+                    record_attempt(
+                        user_id=st.session_state.user_id,
+                        word_id=wid,
+                        correct=is_correct,
+                        time_taken=time_taken,
+                        blanks_count=blanks_count,
+                        wrong_letters_count=0 if is_correct else 1,
+                    )
 
-                st.session_state.last_result_correct = is_correct
-                st.session_state.word_state = "submitted"
+                    st.session_state.last_result_correct = is_correct
+                    st.session_state.word_state = "submitted"
+                    st.session_state.submit_disabled = False
 
-                st.experimental_rerun()
+                    st.experimental_rerun()
 
     if answer_submitted:
         is_correct = st.session_state.get("last_result_correct", False)
