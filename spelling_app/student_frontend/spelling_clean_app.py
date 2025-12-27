@@ -32,7 +32,10 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
-from spelling_app.repository.spelling_lesson_repo import get_daily5_words_for_student
+from spelling_app.repository.spelling_lesson_repo import (
+    get_daily5_words_for_student,
+    get_weak_words_for_lesson,
+)
 from spelling_app.repository.student_repo import (
     get_resume_index_for_lesson,
     get_words_by_ids,
@@ -93,6 +96,8 @@ PRACTICE_MODES = [
     "Daily 5",    # daily set (to be implemented)
     "Test",       # timed quiz (to be implemented)
 ]
+
+VALID_PRACTICE_MODES = ["lesson", "daily5", "weak_words"]
 
 SESSION_KEYS = [
     "is_logged_in",
@@ -220,7 +225,10 @@ def init_daily5_state():
     if "daily5_active" not in st.session_state:
         st.session_state.daily5_active = False
 
-    if "practice_mode" not in st.session_state:
+    if (
+        "practice_mode" not in st.session_state
+        or st.session_state.practice_mode not in VALID_PRACTICE_MODES
+    ):
         st.session_state.practice_mode = "lesson"
 
 
@@ -232,6 +240,16 @@ def init_daily5_words(db, user_id):
             limit=5,
         )
         st.session_state.daily5_index = 0
+
+
+def init_weak_words(db, user_id, lesson_id):
+    if "weak_words" not in st.session_state:
+        st.session_state.weak_words = get_weak_words_for_lesson(
+            db=db,
+            user_id=user_id,
+            lesson_id=lesson_id,
+        )
+        st.session_state.weak_index = 0
 
 
 def should_show_daily5_today():
@@ -546,8 +564,13 @@ def ensure_default_mode():
     """
     Ensure we always have a valid practice_mode in session.
     """
-    if "practice_mode" not in st.session_state or st.session_state.practice_mode not in PRACTICE_MODES:
-        st.session_state.practice_mode = "Practice"
+    if "practice_mode" not in st.session_state:
+        st.session_state.practice_mode = "lesson"
+    elif (
+        st.session_state.practice_mode not in PRACTICE_MODES
+        and st.session_state.practice_mode not in VALID_PRACTICE_MODES
+    ):
+        st.session_state.practice_mode = "lesson"
 
 
 def render_mode_selector_sidebar():
@@ -580,7 +603,9 @@ def render_mode_cards():
 
     with c2:
         if st.button("🧠 Weak Words", use_container_width=True):
-            st.session_state.mode = "Weak Words"
+            st.session_state.practice_mode = "weak_words"
+            st.session_state.answer_submitted = False
+            st.experimental_rerun()
 
 
 def render_daily5_prompt():
@@ -1585,7 +1610,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.caption("Try another lesson.")
         return
 
-    if st.session_state.practice_mode == "daily5":
+    if st.session_state.practice_mode == "weak_words":
+        practice_words = st.session_state.get("weak_words", [])
+        is_weak_mode = True
+        index_key = "weak_index"
+    elif st.session_state.practice_mode == "daily5":
         practice_words = st.session_state.get("daily5_words", [])
         is_weak_mode = False
         index_key = "daily5_index"
@@ -1609,7 +1638,26 @@ def render_practice_mode(lesson_id: int, course_id: int):
     else:
         bar_color = "#22c55e"
 
-    if st.session_state.practice_mode == "daily5":
+    if st.session_state.practice_mode == "weak_words":
+        if st.session_state.weak_index >= len(st.session_state.weak_words):
+            st.info("🎉 No more weak words in this lesson!")
+            st.session_state.practice_mode = "lesson"
+
+            # Cleanup
+            st.session_state.pop("weak_words", None)
+            st.session_state.pop("weak_index", None)
+
+            st.experimental_rerun()
+        else:
+            word_row = st.session_state.weak_words[
+                st.session_state.weak_index
+            ]
+            current = row_to_dict(word_row)
+            st.session_state.current_wid = current["word_id"]
+            st.session_state.current_word_pick = current
+            st.session_state.start_time = time.time()
+            st.session_state.action_lock = False
+    elif st.session_state.practice_mode == "daily5":
         daily5_words = st.session_state.get("daily5_words", [])
 
         if st.session_state.daily5_index >= len(daily5_words):
@@ -1665,6 +1713,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
     st.session_state["last_word_id"] = wid
 
     st.subheader("Spell the word:")
+
+    if st.session_state.practice_mode == "weak_words":
+        st.caption("Weak Words — fix the words you missed")
 
     if is_weak_mode:
         # Weak Words counter should reflect only weak words in this lesson
@@ -1887,6 +1938,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.session_state.practice_index += 1
                 if st.session_state.practice_mode == "daily5":
                     st.session_state.daily5_index += 1
+                if st.session_state.practice_mode == "weak_words":
+                    st.session_state.weak_index += 1
                 st.session_state.word_state = "editing"
                 st.session_state.start_time = time.time()
 
@@ -1961,6 +2014,11 @@ def main():
     with engine.connect() as db:
         if st.session_state.practice_mode == "daily5" and st.session_state.daily5_active:
             init_daily5_words(db, user_id)
+
+        selected_lesson_id = st.session_state.get("selected_lesson_id")
+
+        if st.session_state.practice_mode == "weak_words" and selected_lesson_id:
+            init_weak_words(db, user_id, selected_lesson_id)
 
     if should_show_daily5_today() and not st.session_state.daily5_active:
         with st.container():
