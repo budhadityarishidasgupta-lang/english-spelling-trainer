@@ -31,6 +31,7 @@ from spelling_app.repository.student_pending_repo import create_pending_registra
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
+from spelling_app.repository.spelling_lesson_repo import get_daily5_words_for_student
 from spelling_app.repository.student_repo import (
     get_resume_index_for_lesson,
     get_words_by_ids,
@@ -161,6 +162,16 @@ def init_daily5_state():
 
     if "practice_mode" not in st.session_state:
         st.session_state.practice_mode = "lesson"
+
+
+def init_daily5_words(db, user_id):
+    if "daily5_words" not in st.session_state:
+        st.session_state.daily5_words = get_daily5_words_for_student(
+            db=db,
+            user_id=user_id,
+            limit=5,
+        )
+        st.session_state.daily5_index = 0
 
 
 def should_show_daily5_today():
@@ -1448,9 +1459,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.caption("Try another lesson.")
         return
 
-    practice_words = words
-    is_weak_mode = practice_mode == "Weak Words"
-    index_key = "q_index" if is_weak_mode else "practice_index"
+    if st.session_state.practice_mode == "daily5":
+        practice_words = st.session_state.get("daily5_words", [])
+        is_weak_mode = False
+        index_key = "daily5_index"
+    else:
+        practice_words = words
+        is_weak_mode = practice_mode == "Weak Words"
+        index_key = "q_index" if is_weak_mode else "practice_index"
 
     if index_key not in st.session_state:
         st.session_state[index_key] = 0
@@ -1467,30 +1483,52 @@ def render_practice_mode(lesson_id: int, course_id: int):
     else:
         bar_color = "#22c55e"
 
-    if practice_index >= total_words:
-        finish_message = (
-            "🎉 You’ve practiced all weak words for this lesson!"
-            if is_weak_mode
-            else "🎉 You finished all words!"
-        )
-        st.success(finish_message)
-        if st.button("Restart practice"):
-            st.session_state[index_key] = 0
-            st.session_state.current_wid = None
-            st.session_state.current_word_pick = None
-            st.session_state.word_state = "editing"
-            st.session_state.start_time = time.time()
-            st.experimental_rerun()
-        return
+    if st.session_state.practice_mode == "daily5":
+        daily5_words = st.session_state.get("daily5_words", [])
 
-    if st.session_state.current_wid is None:
-        current = practice_words[st.session_state[index_key]]
-        st.session_state.current_wid = current["word_id"]
-        st.session_state.current_word_pick = current
-        st.session_state.start_time = time.time()
+        if st.session_state.daily5_index >= len(daily5_words):
+            st.success("🎉 Daily 5 complete!")
+            st.session_state.daily5_active = False
+            st.session_state.practice_mode = "lesson"
+
+            # Clean up
+            st.session_state.pop("daily5_words", None)
+            st.session_state.pop("daily5_index", None)
+
+            st.experimental_rerun()
+        else:
+            word_row = daily5_words[
+                st.session_state.daily5_index
+            ]
+            current = row_to_dict(word_row)
+            st.session_state.current_wid = current["word_id"]
+            st.session_state.current_word_pick = current
+            st.session_state.start_time = time.time()
     else:
-        current = st.session_state.get("current_word_pick") or practice_words[current_index]
-        st.session_state.current_word_pick = current
+        if practice_index >= total_words:
+            finish_message = (
+                "🎉 You’ve practiced all weak words for this lesson!"
+                if is_weak_mode
+                else "🎉 You finished all words!"
+            )
+            st.success(finish_message)
+            if st.button("Restart practice"):
+                st.session_state[index_key] = 0
+                st.session_state.current_wid = None
+                st.session_state.current_word_pick = None
+                st.session_state.word_state = "editing"
+                st.session_state.start_time = time.time()
+                st.experimental_rerun()
+            return
+
+        if st.session_state.current_wid is None:
+            current = practice_words[st.session_state[index_key]]
+            st.session_state.current_wid = current["word_id"]
+            st.session_state.current_word_pick = current
+            st.session_state.start_time = time.time()
+        else:
+            current = st.session_state.get("current_word_pick") or practice_words[current_index]
+            st.session_state.current_word_pick = current
 
     st.session_state.current_example_sentence = current.get("example_sentence")
 
@@ -1514,6 +1552,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         st.caption(f"{st.session_state['q_index'] + 1} / {total_weak_words}")
     else:
+        if st.session_state.practice_mode == "daily5":
+            st.caption(f"Daily 5 — {st.session_state.get('daily5_index', 0) + 1} / 5")
         st.markdown(
             f"""
             <div style="font-size:14px; opacity:0.8; margin-bottom:6px;">
@@ -1691,6 +1731,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
             if st.button("➡️ Next", key=f"next_{wid}"):
 
                 st.session_state.practice_index += 1
+                if st.session_state.practice_mode == "daily5":
+                    st.session_state.daily5_index += 1
                 st.session_state.word_state = "editing"
                 st.session_state.start_time = time.time()
 
@@ -1745,6 +1787,12 @@ def main():
     if st.sidebar.button("Logout"):
         logout(st)
         st.experimental_rerun()
+
+    user_id = st.session_state.get("user_id")
+
+    with engine.connect() as db:
+        if st.session_state.practice_mode == "daily5" and st.session_state.daily5_active:
+            init_daily5_words(db, user_id)
 
     if should_show_daily5_today() and not st.session_state.daily5_active:
         with st.container():
