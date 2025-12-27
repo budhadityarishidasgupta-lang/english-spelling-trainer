@@ -11,16 +11,16 @@ PROJECT_ROOT = "/opt/render/project/src"
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from shared.db import fetch_all
+from shared.db import engine, fetch_all
+from spellings_admin_clean.spelling_help_text_repo import (
+    get_help_text,
+    upsert_help_text,
+)
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
 from spelling_app.repository.spelling_course_repo import archive_course
 from spelling_app.repository.spelling_lesson_repo import (
     archive_lesson,
     get_lessons_for_course,
-)
-from spelling_app.repository.spelling_help_text_repo import (
-    get_help_text,
-    upsert_help_text,
 )
 from spelling_app.repository.student_pending_repo import (
     approve_pending_registration,
@@ -376,59 +376,33 @@ def render_student_management():
                         st.experimental_rerun()
 
 
-def render_help_texts():
-    st.header("Help Texts (Daily 5)")
-    st.caption("Store and edit help text used by the Daily 5 experience.")
+def render_help_texts_page(db):
+    st.header("🛠️ Help Texts")
+    st.caption("Manage instructional messages shown to students")
 
-    if "help_key_value" not in st.session_state:
-        st.session_state.help_key_value = "daily5_intro"
-    if "help_title_value" not in st.session_state:
-        st.session_state.help_title_value = ""
-    if "help_body_value" not in st.session_state:
-        st.session_state.help_body_value = ""
+    st.subheader("Daily 5 Help Text")
 
-    st.text_input("Help Text Key", key="help_key_value")
+    existing = get_help_text(db, "daily5_intro")
 
-    cols = st.columns([1, 1])
-    with cols[0]:
-        if st.button("Load existing text"):
-            existing = get_help_text(st.session_state.help_key_value)
-            if isinstance(existing, dict) and existing.get("error"):
-                st.error(existing.get("error"))
-            elif existing:
-                st.session_state.help_title_value = existing.get("title", "")
-                st.session_state.help_body_value = existing.get("body", "")
-                st.success("Loaded saved help text.")
-            else:
-                st.session_state.help_title_value = ""
-                st.session_state.help_body_value = ""
-                st.info("No saved text found; start a new entry.")
-
-    st.text_input("Title (optional)", key="help_title_value")
-    st.text_area(
-        "Body (Markdown supported)",
-        key="help_body_value",
-        height=240,
+    title = st.text_input(
+        "Title (optional)",
+        value=existing.title if existing else "Daily 5 — Why it matters",
     )
 
-    if st.button("Save Help Text"):
-        help_key = st.session_state.help_key_value.strip()
-        body = st.session_state.help_body_value.strip()
-        title = st.session_state.help_title_value.strip()
+    body = st.text_area(
+        "Help text (Markdown supported)",
+        height=220,
+        value=existing.body if existing else "",
+    )
 
-        if not help_key:
-            st.error("Help key is required.")
-        elif not body:
-            st.error("Body is required.")
-        else:
-            result = upsert_help_text(help_key, title, body)
-
-            if isinstance(result, dict) and result.get("error"):
-                st.error(result.get("error"))
-            elif result:
-                st.success("Help text saved.")
-            else:
-                st.warning("No changes were saved.")
+    if st.button("💾 Save"):
+        upsert_help_text(
+            db=db,
+            help_key="daily5_intro",
+            title=title,
+            body=body,
+        )
+        st.success("Daily 5 help text saved successfully.")
 
 
 def main():
@@ -437,18 +411,40 @@ def main():
         layout="wide",
     )
 
+    if "admin_page" not in st.session_state:
+        st.session_state.admin_page = "course_management"
+
+    admin_options = ["Course Management", "Students", "Help Texts"]
+    default_index = 0
+    if st.session_state.admin_page == "students":
+        default_index = admin_options.index("Students")
+    elif st.session_state.admin_page == "help_texts":
+        default_index = admin_options.index("Help Texts")
+
     admin_section = st.sidebar.radio(
         "Admin Sections",
-        ["Course Management", "Students", "Help Texts"],
-        index=0,
+        admin_options,
+        index=default_index,
     )
 
     if admin_section == "Course Management":
-        render_course_management()
+        st.session_state.admin_page = "course_management"
     elif admin_section == "Students":
-        render_student_management()
+        st.session_state.admin_page = "students"
     elif admin_section == "Help Texts":
-        render_help_texts()
+        st.session_state.admin_page = "help_texts"
+
+    st.sidebar.markdown("### 🛠️ Content")
+    if st.sidebar.button("Help Texts"):
+        st.session_state.admin_page = "help_texts"
+
+    if st.session_state.admin_page == "course_management":
+        render_course_management()
+    elif st.session_state.admin_page == "students":
+        render_student_management()
+    elif st.session_state.admin_page == "help_texts":
+        with engine.connect() as db:
+            render_help_texts_page(db)
 
 
 if __name__ == "__main__":
