@@ -1,6 +1,7 @@
 # spelling_app/repository/spelling_lesson_repo.py
 
 from shared.db import execute, fetch_all
+from sqlalchemy import text
 
 
 def _to_dict(row):
@@ -247,3 +248,31 @@ def get_lesson_words(course_id: int, lesson_id: int):
     for r in _to_list(rows):
         out.append(_to_dict(r))
     return out
+
+
+def get_daily5_words_for_student(db, user_id, limit=5):
+    """
+    Fetch Daily 5 words for a student based on enrolled courses.
+    No lesson filtering. Randomized selection.
+    """
+
+    query = """
+        SELECT DISTINCT w.word_id,
+                        w.word,
+                        w.pattern,
+                        w.pattern_code,
+                        w.example_sentence
+        FROM spelling_words w
+        JOIN spelling_enrollments e
+          ON w.course_id = e.course_id
+        WHERE e.user_id = :user_id
+        ORDER BY RANDOM()
+        LIMIT :limit
+    """
+
+    result = db.execute(
+        text(query),
+        {"user_id": user_id, "limit": limit},
+    )
+
+    return result.fetchall()
