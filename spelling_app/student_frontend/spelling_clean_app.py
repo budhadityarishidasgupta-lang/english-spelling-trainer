@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from dotenv import load_dotenv
 from html import escape
+import html
 load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
@@ -144,6 +145,23 @@ def inject_student_css():
             margin-bottom:18px;
             text-align:center;
         }
+        .letter-span {
+            display: inline-block;
+            padding: 0 0.02em;
+            border-radius: 6px;
+        }
+
+        .letter-ok {
+            color: #7ED321;
+        }
+
+        .letter-bad {
+            color: #ff5c5c;
+        }
+
+        .letter-neutral {
+            color: inherit;
+        }
         .example-box {
             background-color: rgba(255, 215, 0, 0.12);
             padding: 1rem;
@@ -198,6 +216,28 @@ def should_show_daily5_today():
 def reset_practice_state():
     """Centralised reset for all practice state fields."""
     st.session_state.practice_index = 0
+
+
+def render_letter_highlight_html(correct_word: str, user_answer: str) -> str:
+    """UI-only: render correct_word with per-letter classes based on user_answer positional match."""
+    if correct_word is None:
+        correct_word = ""
+    if user_answer is None:
+        user_answer = ""
+
+    cw_display = str(correct_word)
+    ua_value = str(user_answer)
+
+    cw = cw_display.lower()
+    ua = ua_value.lower()
+
+    spans = []
+    for i, ch in enumerate(cw_display):
+        user_ch = ua[i] if i < len(ua) else None
+        cls = "letter-ok" if (user_ch is not None and user_ch == cw[i]) else "letter-bad"
+        spans.append(f"<span class='letter-span {cls}'>{html.escape(ch)}</span>")
+
+    return "".join(spans)
     st.session_state["q_index"] = 0
     st.session_state.current_word = None
     st.session_state.current_wid = None
@@ -1624,8 +1664,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
             unsafe_allow_html=True,
         )
     else:
+        highlight_html = render_letter_highlight_html(
+            target_word, st.session_state.get(f"input_{wid}", "")
+        )
         st.markdown(
-            f"<div class='practice-answer'>{target_word}</div>",
+            f"<div class='practice-answer'>{highlight_html}</div>",
             unsafe_allow_html=True,
         )
 
