@@ -84,6 +84,27 @@ def ensure_spelling_help_texts_table(engine):
 ensure_spelling_help_texts_table(engine)
 
 
+def ensure_spelling_content_blocks_table(engine):
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS spelling_content_blocks (
+                    id SERIAL PRIMARY KEY,
+                    block_key TEXT UNIQUE NOT NULL,
+                    title TEXT,
+                    body TEXT,
+                    media_data TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+
+ensure_spelling_content_blocks_table(engine)
+
+
 
 
 # --------------------------------------------------------------------
