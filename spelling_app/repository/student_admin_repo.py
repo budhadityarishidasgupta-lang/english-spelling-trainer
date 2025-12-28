@@ -1,10 +1,9 @@
 from datetime import date
-from passlib.hash import bcrypt
 
 from sqlalchemy import text
 
 from shared.db import execute, fetch_all
-from spelling_app.services.user_service import hash_password
+from spelling_app.repository.student_pending_repo import _hash_password as hash_password
 
 
 # ---------------------------------------
@@ -31,15 +30,6 @@ def _extract_user_id(row):
             return row[0]
         except Exception:
             return None
-
-
-# ---------------------------------------
-# Utility: Password hashing
-# ---------------------------------------
-
-def hash_password(password: str) -> str:
-    """Use bcrypt (compatible with the existing login system)."""
-    return bcrypt.hash(password)
 
 
 # ---------------------------------------
