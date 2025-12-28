@@ -1,6 +1,8 @@
 from datetime import date
 from passlib.hash import bcrypt
 
+from sqlalchemy import text
+
 from shared.db import execute, fetch_all
 from spelling_app.services.user_service import hash_password
 
@@ -86,6 +88,47 @@ def create_student_user(name: str, email: str):
             return {"error": f"Unknown row structure: {row}"}
 
     return {"error": f"Unexpected execute() return type: {type(result)} -> {result}"}
+
+
+def get_user_by_email(email: str):
+    """Fetch a single user by email (case-insensitive)."""
+    rows = fetch_all(
+        """
+        SELECT user_id, name, email, is_active
+        FROM users
+        WHERE LOWER(email) = LOWER(:email)
+        LIMIT 1;
+        """,
+        {"email": email},
+    )
+
+    if isinstance(rows, dict):
+        return None
+
+    if not rows:
+        return None
+
+    row = rows[0]
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+    if isinstance(row, dict):
+        return row
+    try:
+        return dict(row)
+    except Exception:
+        return None
+
+
+def enable_student_user(user_id: int):
+    """Ensure a student account is active."""
+    sql = text(
+        """
+        UPDATE users
+        SET is_active = TRUE
+        WHERE user_id = :uid
+        """
+    )
+    return execute(sql, {"uid": user_id})
 
 
 # ---------------------------------------
