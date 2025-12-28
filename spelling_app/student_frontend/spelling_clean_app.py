@@ -184,22 +184,27 @@ def get_landing_content(db):
 
 
 def render_paypal_hosted_button():
-    paypal_client_id = os.getenv("PAYPAL_CLIENT_ID")
+    if st.session_state.get("paypal_rendered"):
+        return
 
-    if not paypal_client_id:
+    client_id = os.getenv("PAYPAL_CLIENT_ID")
+    merchant_id = os.getenv("PAYPAL_MERCHANT_ID")
+
+    if not client_id or not merchant_id:
         st.error("Payment system unavailable. Please contact support.")
         return
 
     paypal_html = f"""
     <div style="max-width:360px;margin:auto;">
       <script
-        src="https://www.paypal.com/sdk/js?client-id={paypal_client_id}&components=hosted-buttons&currency=GBP">
+        src="https://www.paypal.com/sdk/js?client-id={client_id}&merchant-id={merchant_id}&components=hosted-buttons&disable-funding=venmo&currency=GBP">
       </script>
 
       <div id="paypal-container-QAN2QNPSJPQ88"></div>
 
       <script>
-        if (window.paypal) {{
+        if (window.paypal && !window.__wordsprintPaypalLoaded) {{
+          window.__wordsprintPaypalLoaded = true;
           paypal.HostedButtons({{
             hostedButtonId: "QAN2QNPSJPQ88"
           }}).render("#paypal-container-QAN2QNPSJPQ88");
@@ -207,7 +212,9 @@ def render_paypal_hosted_button():
       </script>
     </div>
     """
+
     components.html(paypal_html, height=220)
+    st.session_state["paypal_rendered"] = True
 
 
 def inject_student_css():
@@ -285,6 +292,10 @@ def inject_student_css():
             margin-top: 0.6rem;
             font-size: 0.9rem;
             opacity: 0.9;
+        }
+        /* Hide PayPal non-blocking warning banner */
+        [role="alert"][data-testid*="paypal"] {
+            display: none !important;
         }
         </style>
         """,
