@@ -18,6 +18,7 @@ import time
 import random
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
 
@@ -173,6 +174,33 @@ def get_landing_content(db):
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
     return banner_data, tagline_text, value_text, register_text, support_text
+
+
+def render_paypal_hosted_button():
+    paypal_client_id = os.getenv("PAYPAL_CLIENT_ID")
+
+    if not paypal_client_id:
+        st.error("Payment system unavailable. Please contact support.")
+        return
+
+    paypal_html = f"""
+    <div style="max-width:360px;margin:auto;">
+      <script
+        src="https://www.paypal.com/sdk/js?client-id={paypal_client_id}&components=hosted-buttons&currency=GBP">
+      </script>
+
+      <div id="paypal-container-QAN2QNPSJPQ88"></div>
+
+      <script>
+        if (window.paypal) {{
+          paypal.HostedButtons({{
+            hostedButtonId: "QAN2QNPSJPQ88"
+          }}).render("#paypal-container-QAN2QNPSJPQ88");
+        }}
+      </script>
+    </div>
+    """
+    components.html(paypal_html, height=220)
 
 
 def inject_student_css():
@@ -2099,12 +2127,8 @@ def main():
                 unsafe_allow_html=True,
             )
 
-            # PayPal placeholder (to be replaced later)
-            st.markdown(
-                "<div class='paypal-placeholder'>🧾 <strong>Checkout</strong><br>"
-                "PayPal secure payment module will appear here.</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("### Secure Checkout")
+            render_paypal_hosted_button()
 
             st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
             st.caption("Enter your details below. An admin will approve your account shortly.")
