@@ -177,7 +177,11 @@ def get_landing_content(db):
     banner_data = banner.media_data if banner and banner.media_data else None
     tagline_text = (tagline.body if tagline and tagline.body else "Building confidence, one step at a time.")
     value_text = (value.body if value and value.body else "• Daily practice that adapts\n• Fix weak areas automatically\n• Clear progress for parents")
-    register_text = (register.body if register and register.body else "One-time access: £14.99\nSecure checkout via PayPal.")
+    register_text = (
+        register.body
+        if register and register.body
+        else "One-time access to WordSprint learning apps\nSecure checkout via PayPal."
+    )
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
     return banner_data, tagline_text, value_text, register_text, support_text
