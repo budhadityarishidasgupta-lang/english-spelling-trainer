@@ -4,6 +4,7 @@
 # -------------------------------------------------
 
 import sys
+import base64
 import streamlit as st
 
 # ---- Force project root for Render ----
@@ -21,6 +22,11 @@ from spelling_app.repository.spelling_course_repo import archive_course
 from spelling_app.repository.spelling_lesson_repo import (
     archive_lesson,
     get_lessons_for_course,
+)
+from spelling_app.repository.spelling_content_repo import (
+    get_content_block,
+    upsert_content_block,
+    delete_content_block,
 )
 from spelling_app.repository.student_pending_repo import (
     approve_pending_registration,
@@ -405,6 +411,109 @@ def render_help_texts_page(db):
         st.success("Daily 5 help text saved successfully.")
 
 
+def render_text_block_editor(db, block_key, label, placeholder=""):
+    existing = get_content_block(db, block_key)
+
+    body = st.text_area(
+        label,
+        value=existing.body if existing else "",
+        height=160,
+        placeholder=placeholder,
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button(f"💾 Save {label}", key=f"save_{block_key}"):
+            upsert_content_block(
+                db,
+                block_key=block_key,
+                body=body,
+            )
+            st.success(f"{label} saved.")
+
+    with col2:
+        if existing and st.button(f"🗑️ Delete {label}", key=f"delete_{block_key}"):
+            delete_content_block(db, block_key)
+            st.success(f"{label} deleted.")
+
+    if body:
+        st.markdown("**Preview:**")
+        st.markdown(body)
+
+
+def render_branding_landing_page(db):
+    st.header("🎨 Branding & Landing Page")
+    st.caption("Edit content shown on the Spelling app front page.")
+
+    st.divider()
+
+    # ---------------------------
+    # Banner Image (Data URI)
+    # ---------------------------
+    st.subheader("Landing Banner")
+
+    existing_banner = get_content_block(db, "landing_banner")
+
+    if existing_banner and existing_banner.media_data:
+        st.image(existing_banner.media_data, use_column_width=True)
+
+    uploaded = st.file_uploader(
+        "Upload banner image (PNG/JPG)",
+        type=["png", "jpg", "jpeg"],
+    )
+
+    if uploaded:
+        encoded = base64.b64encode(uploaded.read()).decode("utf-8")
+        data_uri = f"data:{uploaded.type};base64,{encoded}"
+
+        if st.button("💾 Save Banner"):
+            upsert_content_block(
+                db,
+                block_key="landing_banner",
+                media_data=data_uri,
+            )
+            st.success("Banner updated.")
+            st.experimental_rerun()
+
+    if existing_banner and st.button("🗑️ Delete Banner"):
+        delete_content_block(db, "landing_banner")
+        st.success("Banner removed.")
+        st.experimental_rerun()
+
+    st.divider()
+
+    st.subheader("Landing Page Text")
+
+    render_text_block_editor(
+        db,
+        block_key="landing_tagline",
+        label="Tagline",
+        placeholder="Elevate your vocabulary",
+    )
+
+    render_text_block_editor(
+        db,
+        block_key="landing_value",
+        label="Value Proposition",
+        placeholder="• Daily practice that adapts\n• Fix weak areas automatically\n• Clear progress for parents",
+    )
+
+    render_text_block_editor(
+        db,
+        block_key="landing_register",
+        label="Registration Section",
+        placeholder="One-time access: £14.99\nSecure checkout via PayPal",
+    )
+
+    render_text_block_editor(
+        db,
+        block_key="landing_support",
+        label="Help & Support",
+        placeholder="Contact us at support@wordsprint.app",
+    )
+
+
 def main():
     st.set_page_config(
         page_title="WordSprint – Spelling Admin",
@@ -434,9 +543,12 @@ def main():
     elif admin_section == "Help Texts":
         st.session_state.admin_page = "help_texts"
 
-    st.sidebar.markdown("### 🛠️ Content")
+    st.sidebar.markdown("### 🧩 Content")
     if st.sidebar.button("Help Texts"):
         st.session_state.admin_page = "help_texts"
+
+    if st.sidebar.button("Branding & Landing"):
+        st.session_state.admin_page = "branding_landing"
 
     if st.session_state.admin_page == "course_management":
         render_course_management()
@@ -445,6 +557,9 @@ def main():
     elif st.session_state.admin_page == "help_texts":
         with engine.connect() as db:
             render_help_texts_page(db)
+    elif st.session_state.admin_page == "branding_landing":
+        with engine.connect() as db:
+            render_branding_landing_page(db)
 
 
 if __name__ == "__main__":
