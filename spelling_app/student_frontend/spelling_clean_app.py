@@ -46,6 +46,7 @@ from spelling_app.repository.student_repo import (
     get_student_courses as repo_get_student_courses,
 )
 from spelling_app.repository.spelling_help_text_repo import get_help_text
+from spelling_app.repository.spelling_content_repo import get_content_block
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -149,6 +150,31 @@ def fetch_daily5_help_text(db):
     )
 
 
+def _get_block(db, key):
+    row = get_content_block(db, key)
+    if not row:
+        return None
+    # row fields: block_key, title, body, media_data
+    return row
+
+
+def get_landing_content(db):
+    banner = _get_block(db, "landing_banner")
+    tagline = _get_block(db, "landing_tagline")
+    value = _get_block(db, "landing_value")
+    register = _get_block(db, "landing_register")
+    support = _get_block(db, "landing_support")
+
+    # Safe fallbacks
+    banner_data = banner.media_data if banner and banner.media_data else None
+    tagline_text = (tagline.body if tagline and tagline.body else "Building confidence, one step at a time.")
+    value_text = (value.body if value and value.body else "• Daily practice that adapts\n• Fix weak areas automatically\n• Clear progress for parents")
+    register_text = (register.body if register and register.body else "One-time access: £14.99\nSecure checkout via PayPal.")
+    support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
+
+    return banner_data, tagline_text, value_text, register_text, support_text
+
+
 def inject_student_css():
     st.markdown(
         """
@@ -198,6 +224,32 @@ def inject_student_css():
             border-radius: 8px;
             margin: 0.8rem 0 1.2rem 0;
             font-size: 0.95rem;
+        }
+        .landing-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 1rem;
+            margin: 0.8rem 0;
+        }
+
+        .landing-muted {
+            opacity: 0.85;
+            font-size: 0.95rem;
+        }
+
+        .landing-cta {
+            margin-top: 0.6rem;
+        }
+
+        .paypal-placeholder {
+            background: rgba(0,0,0,0.18);
+            border: 1px dashed rgba(255,255,255,0.18);
+            border-radius: 12px;
+            padding: 0.9rem;
+            margin-top: 0.6rem;
+            font-size: 0.9rem;
+            opacity: 0.9;
         }
         </style>
         """,
@@ -2006,13 +2058,81 @@ def main():
 
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
-        tab_login, tab_register = st.tabs(["Login", "New Registration"])
+        with engine.connect() as db:
+            banner_data, tagline_text, value_text, register_text, support_text = get_landing_content(db)
 
-        with tab_login:
-            render_login_page()
+        # Branding
+        if banner_data:
+            st.image(banner_data, use_column_width=True)
 
-        with tab_register:
-            render_registration_page()
+        st.markdown(
+            f"<div class='landing-card'><div class='landing-muted' style='text-align:center;'>{tagline_text}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+        # Value proposition
+        st.markdown(
+            f"<div class='landing-card'><strong>Why WordSprint?</strong><br><br>{value_text.replace(chr(10), '<br>')}</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
+        st.subheader("Login")
+
+        with st.form("login_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Login")
+
+            if submitted:
+                if check_login(st, email, password):
+                    st.success("Login successful!")
+                    st.experimental_rerun()
+                else:
+                    st.error("Invalid email or password.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("➕ New to WordSprint? Create an account"):
+            st.markdown(
+                f"<div class='landing-card'><strong>Registration</strong><br><br>{register_text.replace(chr(10), '<br>')}</div>",
+                unsafe_allow_html=True,
+            )
+
+            # PayPal placeholder (to be replaced later)
+            st.markdown(
+                "<div class='paypal-placeholder'>🧾 <strong>Checkout</strong><br>"
+                "PayPal secure payment module will appear here.</div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
+            st.caption("Enter your details below. An admin will approve your account shortly.")
+
+            name = st.text_input("Full name")
+            email = st.text_input("Email address")
+
+            if st.button("Submit registration"):
+                if not name.strip() or not email.strip():
+                    st.error("Both name and email are required.")
+                    return
+
+                result = create_pending_registration(name.strip(), email.strip())
+
+                if isinstance(result, dict) and result.get("error"):
+                    st.error(result["error"])
+                else:
+                    st.success(
+                        "Registration submitted! "
+                        "Once approved, you can log in using the default password: Learn123!"
+                    )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("Need help?"):
+            st.markdown(
+                f"<div class='landing-card'>{support_text.replace(chr(10), '<br>')}</div>",
+                unsafe_allow_html=True,
+            )
 
         return  # stop here when logged out
 
