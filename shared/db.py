@@ -105,6 +105,27 @@ def ensure_spelling_content_blocks_table(engine):
 ensure_spelling_content_blocks_table(engine)
 
 
+def ensure_spelling_payments_table(engine):
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS spelling_payments (
+                    id SERIAL PRIMARY KEY,
+                    user_email TEXT NOT NULL,
+                    paypal_payment_id TEXT UNIQUE NOT NULL,
+                    paypal_button_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+
+ensure_spelling_payments_table(engine)
+
+
 
 
 # --------------------------------------------------------------------
