@@ -48,6 +48,13 @@ from spelling_app.repository.student_repo import (
 )
 from spelling_app.repository.spelling_help_text_repo import get_help_text
 from spelling_app.repository.spelling_content_repo import get_content_block
+from spelling_app.repository.spelling_payment_repo import payment_exists, record_payment
+from spelling_app.repository.student_admin_repo import (
+    create_student_user,
+    enable_student_user,
+    get_user_by_email,
+)
+from spelling_app.utils.paypal_verify import verify_paypal_payment_id
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -2127,14 +2134,72 @@ def main():
                 unsafe_allow_html=True,
             )
 
-            st.markdown("### Secure Checkout")
-            render_paypal_hosted_button()
-
             st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
             st.caption("Enter your details below. An admin will approve your account shortly.")
 
             name = st.text_input("Full name")
             email = st.text_input("Email address")
+
+            st.markdown("### Secure Checkout")
+            render_paypal_hosted_button()
+
+            st.markdown("### Activate Access")
+            st.caption(
+                "After payment, paste the Transaction/Order ID from your PayPal receipt email to activate access."
+            )
+
+            activation_email = email
+            pasted_id = st.text_input("PayPal Transaction / Order ID", key="activation_paypal_id")
+
+            activate_disabled = st.session_state.get("activation_processing", False)
+            if st.button("✅ Activate Access", disabled=activate_disabled):
+                st.session_state.activation_processing = True
+                try:
+                    email_value = (activation_email or "").strip()
+                    payment_id = (pasted_id or "").strip()
+
+                    if not email_value or not payment_id:
+                        st.error("Email and PayPal Transaction / Order ID are required.")
+                    else:
+                        with engine.connect() as db:
+                            if payment_exists(db, payment_id):
+                                st.warning("This payment ID was already used. Contact support.")
+                            else:
+                                verification = verify_paypal_payment_id(payment_id)
+
+                                if not verification.get("verified") or verification.get("status") != "COMPLETED":
+                                    st.error("Could not verify payment. Double-check the ID.")
+                                else:
+                                    record_payment(
+                                        db,
+                                        user_email=email_value,
+                                        paypal_payment_id=payment_id,
+                                        paypal_button_id=os.getenv("PAYPAL_HOSTED_BUTTON_ID", ""),
+                                        status=verification.get("status", "COMPLETED"),
+                                    )
+
+                                    existing_user = get_user_by_email(email_value)
+                                    if existing_user:
+                                        if not existing_user.get("is_active", False):
+                                            enable_student_user(existing_user.get("user_id"))
+                                    else:
+                                        created_user = create_student_user(
+                                            name.strip() or email_value,
+                                            email_value,
+                                        )
+                                        if isinstance(created_user, dict) and created_user.get("error"):
+                                            st.error("Could not create your account. Please contact support.")
+                                            return
+
+                                    st.success("✅ Payment verified — your account is now active.")
+                                    st.info("Please log in now.")
+                                    st.caption(
+                                        "PP2-3 COMPLETE — activation flow verifies PayPal ID server-side + unlocks user + replay protected."
+                                    )
+                except Exception:
+                    st.error("Something went wrong during activation. Please try again or contact support.")
+                finally:
+                    st.session_state.activation_processing = False
 
             if st.button("Submit registration"):
                 if not name.strip() or not email.strip():
