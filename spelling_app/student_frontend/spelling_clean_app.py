@@ -629,7 +629,7 @@ def render_login_page():
 ###########################################################
 
 
-def submit_registration(db):
+def submit_registration():
     full_name = st.session_state.get("reg_full_name", "").strip()
     email = st.session_state.get("reg_email", "").strip()
     paypal_txn_id = st.session_state.get("reg_paypal_txn", "").strip()
@@ -644,7 +644,6 @@ def submit_registration(db):
         return
 
     create_pending_registration(
-        db=db,
         full_name=full_name,
         email=email,
         paypal_txn_id=paypal_txn_id,
@@ -2172,16 +2171,14 @@ def main():
                 "After payment, paste the Transaction/Order ID from your PayPal receipt email and submit once."
             )
 
-            with engine.connect() as db:
-                st.text_input("Full name", key="reg_full_name")
-                st.text_input("Email address", key="reg_email")
-                st.text_input("PayPal Transaction / Order ID", key="reg_paypal_txn")
+            st.text_input("Full name", key="reg_full_name")
+            st.text_input("Email address", key="reg_email")
+            st.text_input("PayPal Transaction / Order ID", key="reg_paypal_txn")
 
-                st.button(
-                    "Submit registration",
-                    on_click=submit_registration,
-                    args=(db,),
-                )
+            st.button(
+                "Submit registration",
+                on_click=submit_registration,
+            )
             st.markdown("</div>", unsafe_allow_html=True)
 
         with st.expander("Need help?"):
