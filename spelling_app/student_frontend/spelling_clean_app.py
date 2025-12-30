@@ -1599,6 +1599,8 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
 def render_practice_mode(lesson_id: int, course_id: int):
     import time
 
+    active_lesson_id = st.session_state.get("active_lesson_id")
+
     ensure_default_mode()
     practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
     st.session_state.practice_mode = practice_mode
@@ -1676,7 +1678,10 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.progress(mastery / 100)
         st.caption(f"Mastery: {mastery}% | XP: {xp_total} | Streak: {streak} days")
 
-    selected_lesson_id = st.session_state.get("selected_lesson_id") or active_lesson_id
+    selected_lesson_id = (
+        st.session_state.get("selected_lesson_id")
+        or st.session_state.get("active_lesson_id")
+    )
 
     with engine.connect() as db:
         render_mode_cards(
@@ -1686,6 +1691,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         )
 
     active_lesson_id = st.session_state.get("active_lesson_id") or lesson_id
+    st.session_state.active_lesson_id = active_lesson_id
 
     lesson_weak_words = []
     if practice_mode == "Weak Words":
