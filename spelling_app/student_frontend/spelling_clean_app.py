@@ -629,7 +629,7 @@ def render_login_page():
 ###########################################################
 
 
-def submit_registration():
+def submit_registration(db):
     full_name = st.session_state.get("reg_full_name", "").strip()
     email = st.session_state.get("reg_email", "").strip()
     paypal_txn_id = st.session_state.get("reg_paypal_txn", "").strip()
@@ -2179,6 +2179,7 @@ def main():
             st.button(
                 "Submit registration",
                 on_click=submit_registration,
+                args=(db,),
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
