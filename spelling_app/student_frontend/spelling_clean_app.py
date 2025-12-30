@@ -1599,6 +1599,13 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
 def render_practice_mode(lesson_id: int, course_id: int):
     import time
 
+    # --- Session state guards for Weak Words ---
+    if "weak_words" not in st.session_state:
+        st.session_state.weak_words = []
+
+    if "weak_index" not in st.session_state:
+        st.session_state.weak_index = 0
+
     active_lesson_id = st.session_state.get("active_lesson_id")
 
     ensure_default_mode()
