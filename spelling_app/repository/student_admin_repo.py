@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy.sql import text
 
-from shared.db import engine, execute, fetch_all
+from shared.db import execute, fetch_all
 from spelling_app.repository.student_pending_repo import _hash_password as hash_password
 
 
@@ -249,20 +249,21 @@ def unassign_student_from_class(class_id: int, student_id: int):
     )
 
 
-def create_pending_registration(full_name: str, email: str, paypal_txn_id: str):
+def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: str):
     """
     Create a pending student registration after PayPal payment.
-    Uses its own transaction context to avoid closed-connection errors.
+    Writes to spelling_pending_registrations (correct namespaced table).
     """
 
     query = """
-        INSERT INTO student_pending_registrations
+        INSERT INTO spelling_pending_registrations
             (full_name, email, paypal_txn_id, status)
         VALUES
             (:full_name, :email, :paypal_txn_id, 'pending')
     """
 
-    # IMPORTANT: open a fresh transaction
+    engine = db.engine
+
     with engine.begin() as conn:
         conn.execute(
             text(query),
