@@ -36,6 +36,7 @@ from spelling_app.repository.attempt_repo import get_word_difficulty_signals
 from spelling_app.repository.spelling_lesson_repo import (
     get_daily5_words_for_student,
     get_weak_words_for_lesson,
+    get_lesson_word_counts,
 )
 from spelling_app.repository.student_repo import (
     get_resume_index_for_lesson,
@@ -2380,6 +2381,9 @@ def main():
         user_id=st.session_state.user_id,
     )
 
+    with engine.connect() as db:
+        lesson_word_counts = get_lesson_word_counts(db, active_course_id)
+
     # Guard: selected lesson must belong to this course
     if st.session_state.get("selected_lesson_id"):
         valid_lesson_ids = {l["lesson_id"] for l in lessons}
@@ -2402,7 +2406,7 @@ def main():
 
     for lesson in lessons:
         progress = lesson.get("progress_pct", 0) or 0
-        word_count = lesson.get("word_count", "—")
+        word_count = lesson_word_counts.get(lesson["lesson_id"], 0)
 
         if progress >= 90:
             status = "Mastered"

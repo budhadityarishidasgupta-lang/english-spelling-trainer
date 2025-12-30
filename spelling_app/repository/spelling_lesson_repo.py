@@ -321,3 +321,22 @@ def get_weak_words_for_lesson(db, user_id, lesson_id):
     )
 
     return result.fetchall()
+
+
+def get_lesson_word_counts(db, course_id: int) -> dict[int, int]:
+    """
+    Returns a mapping of lesson_id -> word_count for a given course.
+    Read-only aggregation.
+    """
+    query = """
+        SELECT
+            l.lesson_id,
+            COUNT(lw.word_id) AS word_count
+        FROM spelling_lessons l
+        LEFT JOIN spelling_lesson_words lw
+            ON l.lesson_id = lw.lesson_id
+        WHERE l.course_id = :course_id
+        GROUP BY l.lesson_id
+    """
+    result = db.execute(text(query), {"course_id": course_id}).fetchall()
+    return {row.lesson_id: row.word_count for row in result}
