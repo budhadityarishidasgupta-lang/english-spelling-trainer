@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import text
+from sqlalchemy.sql import text
 
 from shared.db import execute, fetch_all
 from spelling_app.repository.student_pending_repo import _hash_password as hash_password
@@ -247,3 +247,27 @@ def unassign_student_from_class(class_id: int, student_id: int):
         """,
         {"cid": class_id, "sid": student_id},
     )
+
+
+def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: str):
+    """
+    Create a pending student registration after PayPal payment.
+    Admin will later approve and assign courses.
+    """
+
+    query = """
+        INSERT INTO student_pending_registrations
+            (full_name, email, paypal_txn_id, status)
+        VALUES
+            (:full_name, :email, :paypal_txn_id, 'pending')
+    """
+
+    db.execute(
+        text(query),
+        {
+            "full_name": full_name,
+            "email": email,
+            "paypal_txn_id": paypal_txn_id,
+        },
+    )
+    db.commit()
