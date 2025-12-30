@@ -311,7 +311,6 @@ def get_weak_words_for_lesson(db, user_id, lesson_id):
         WHERE a.user_id = :user_id
           AND lw.lesson_id = :lesson_id
           AND a.correct = FALSE
-        ORDER BY a.attempted_at DESC
     """
 
     result = db.execute(
