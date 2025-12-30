@@ -644,6 +644,7 @@ def submit_registration():
         return
 
     create_pending_registration(
+        db,
         full_name=full_name,
         email=email,
         paypal_txn_id=paypal_txn_id,
