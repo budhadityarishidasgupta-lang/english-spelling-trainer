@@ -252,7 +252,7 @@ def unassign_student_from_class(class_id: int, student_id: int):
 def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: str):
     """
     Create a pending student registration after PayPal payment.
-    Admin will later approve and assign courses.
+    Uses its own transaction context to avoid closed-connection errors.
     """
 
     query = """
@@ -262,12 +262,13 @@ def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: s
             (:full_name, :email, :paypal_txn_id, 'pending')
     """
 
-    db.execute(
-        text(query),
-        {
-            "full_name": full_name,
-            "email": email,
-            "paypal_txn_id": paypal_txn_id,
-        },
-    )
-    db.commit()
+    # IMPORTANT: open a fresh transaction
+    with db.begin():
+        db.execute(
+            text(query),
+            {
+                "full_name": full_name,
+                "email": email,
+                "paypal_txn_id": paypal_txn_id,
+            },
+        )
