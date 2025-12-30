@@ -29,7 +29,6 @@ load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
 from shared.db import engine, execute, fetch_all, safe_rows
-from spelling_app.repository.student_pending_repo import create_pending_registration
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
@@ -49,13 +48,7 @@ from spelling_app.repository.student_repo import (
 )
 from spelling_app.repository.spelling_help_text_repo import get_help_text
 from spelling_app.repository.spelling_content_repo import get_content_block
-from spelling_app.repository.spelling_payment_repo import payment_exists, record_payment
-from spelling_app.repository.student_admin_repo import (
-    create_student_user,
-    enable_student_user,
-    get_user_by_email,
-)
-from spelling_app.utils.paypal_verify import verify_paypal_payment_id
+from spelling_app.repository.student_admin_repo import create_pending_registration
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -632,81 +625,36 @@ def render_login_page():
 
 
 ###########################################################
-#  NEW REGISTRATION PAGE
+#  REGISTRATION SUBMIT HANDLER
 ###########################################################
 
-def render_registration_page():
-    st.header("New Student Registration")
 
-    st.caption("Enter your details below. An admin will approve your account shortly.")
+def submit_registration(db):
+    full_name = st.session_state.get("reg_full_name", "").strip()
+    email = st.session_state.get("reg_email", "").strip()
+    paypal_txn_id = st.session_state.get("reg_paypal_txn", "").strip()
 
-    name = st.text_input("Full name")
-    email = st.text_input("Email address")
+    if not full_name or not email or not paypal_txn_id:
+        st.error("Please complete payment and fill in all details.")
+        return
 
-    if st.button("Submit registration"):
-        if not name.strip() or not email.strip():
-            st.error("Both name and email are required.")
-            return
+    # Prevent duplicate submissions
+    if st.session_state.get("registration_submitted"):
+        st.info("Registration already submitted. Please wait for approval.")
+        return
 
-        result = create_pending_registration(name.strip(), email.strip())
+    create_pending_registration(
+        db=db,
+        full_name=full_name,
+        email=email,
+        paypal_txn_id=paypal_txn_id,
+    )
 
-        if isinstance(result, dict) and result.get("error"):
-            st.error(result["error"])
-        else:
-            st.success(
-                "Registration submitted! "
-                "Once approved, you can log in using the default password: Learn123!"
-            )
-
-
-def register_student(db, full_name: str, email: str):
-    return create_pending_registration(full_name.strip(), email.strip())
-
-
-def activate_access(db, email: str, paypal_txn_id: str, full_name: str | None = None):
-    try:
-        email_value = (email or "").strip()
-        payment_id = (paypal_txn_id or "").strip()
-
-        if not email_value or not payment_id:
-            st.error("Email and PayPal Transaction / Order ID are required.")
-            return False
-
-        if payment_exists(db, payment_id):
-            st.warning("This payment ID was already used. Contact support.")
-            return False
-
-        verification = verify_paypal_payment_id(payment_id)
-
-        if not verification.get("verified") or verification.get("status") != "COMPLETED":
-            st.error("Could not verify payment. Double-check the ID.")
-            return False
-
-        record_payment(
-            db,
-            user_email=email_value,
-            paypal_payment_id=payment_id,
-            paypal_button_id=os.getenv("PAYPAL_HOSTED_BUTTON_ID", ""),
-            status=verification.get("status", "COMPLETED"),
-        )
-
-        existing_user = get_user_by_email(email_value)
-        if existing_user:
-            if not existing_user.get("is_active", False):
-                enable_student_user(existing_user.get("user_id"))
-        else:
-            created_user = create_student_user(
-                (full_name or "").strip() or email_value,
-                email_value,
-            )
-            if isinstance(created_user, dict) and created_user.get("error"):
-                st.error("Could not create your account. Please contact support.")
-                return False
-    except Exception:
-        st.error("Something went wrong during activation. Please try again or contact support.")
-        return False
-
-    return True
+    st.session_state.registration_submitted = True
+    st.success(
+        "✅ Registration submitted successfully. "
+        "An admin will review and activate your account shortly."
+    )
 
 
 ###########################################################
@@ -2216,58 +2164,24 @@ def main():
             st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
             st.caption("Enter your details below. An admin will approve your account shortly.")
 
-            name = st.text_input("Full name")
-            email = st.text_input("Email address")
-
             st.markdown("### Secure Checkout")
             render_paypal_hosted_button()
 
-            st.markdown("### Activate Access")
+            st.markdown("### Submit your details")
             st.caption(
-                "After payment, paste the Transaction/Order ID from your PayPal receipt email to activate access."
+                "After payment, paste the Transaction/Order ID from your PayPal receipt email and submit once."
             )
 
-            if st.session_state.get("registration_complete"):
-                st.info("Registration already submitted.")
-                st.stop()
+            with engine.connect() as db:
+                st.text_input("Full name", key="reg_full_name")
+                st.text_input("Email address", key="reg_email")
+                st.text_input("PayPal Transaction / Order ID", key="reg_paypal_txn")
 
-            paypal_txn_id = st.text_input("PayPal Transaction / Order ID", key="activation_paypal_id")
-
-            if st.button("Submit registration"):
-                if not name.strip() or not email.strip():
-                    st.error("Please enter your name and email.")
-                elif not paypal_txn_id:
-                    st.error("Please enter your PayPal Transaction / Order ID.")
-                else:
-                    with engine.connect() as db:
-                        registration_result = register_student(
-                            db=db,
-                            full_name=name,
-                            email=email,
-                        )
-
-                        if isinstance(registration_result, dict) and registration_result.get("error"):
-                            st.error(registration_result["error"])
-                            return
-
-                        success = activate_access(
-                            db=db,
-                            email=email,
-                            paypal_txn_id=paypal_txn_id,
-                            full_name=name,
-                        )
-
-                    if success:
-                        st.success(
-                            "✅ Registration submitted successfully. "
-                            "Your access will be activated shortly."
-                        )
-                        st.session_state.registration_complete = True
-                    else:
-                        st.error(
-                            "We could not verify your payment yet. "
-                            "Please double-check the Transaction / Order ID."
-                        )
+                st.button(
+                    "Submit registration",
+                    on_click=submit_registration,
+                    args=(db,),
+                )
             st.markdown("</div>", unsafe_allow_html=True)
 
         with st.expander("Need help?"):
