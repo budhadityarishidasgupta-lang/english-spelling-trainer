@@ -18,7 +18,6 @@ import time
 import random
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
 
@@ -85,6 +84,12 @@ CELEBRATION_MESSAGES = [
     "👏 Great job — keep going!",
     "🏆 Fantastic work!",
 ]
+
+PAYPAL_SINGLE_BUTTON_URL = (
+    "https://www.paypal.com/cgi-bin/webscr"
+    "?cmd=_s-xclick"
+    "&hosted_button_id=QAN2QNPSJPQ88"
+)
 
 POINTS_PER_CORRECT = 10
 
@@ -179,42 +184,6 @@ def get_landing_content(db):
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
     return banner_data, tagline_text, value_text, register_text, support_text
-
-
-def render_paypal_hosted_button():
-    if st.session_state.get("paypal_rendered"):
-        return
-
-    client_id = os.getenv("PAYPAL_CLIENT_ID")
-    merchant_id = os.getenv("PAYPAL_MERCHANT_ID")
-
-    if not client_id or not merchant_id:
-        st.error("Payment system unavailable. Please contact support.")
-        return
-
-    paypal_html = f"""
-    <div style="max-width:360px;margin:auto;">
-      <script
-        src="https://www.paypal.com/sdk/js?client-id={client_id}&merchant-id={merchant_id}&components=hosted-buttons&disable-funding=venmo&currency=GBP">
-      </script>
-
-      <div id="paypal-container-QAN2QNPSJPQ88"></div>
-
-      <script>
-        if (window.paypal && !window.__wordsprintPaypalLoaded) {{
-          window.__wordsprintPaypalLoaded = true;
-          paypal.HostedButtons({{
-            hostedButtonId: "QAN2QNPSJPQ88"
-          }}).render("#paypal-container-QAN2QNPSJPQ88");
-        }}
-      </script>
-    </div>
-    """
-
-    components.html(paypal_html, height=220)
-    st.session_state["paypal_rendered"] = True
-
-
 def inject_student_css():
     st.markdown(
         """
@@ -2161,8 +2130,28 @@ def main():
 
             st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
 
-            st.markdown("### Secure Checkout")
-            render_paypal_hosted_button()
+            st.markdown("## Secure Checkout")
+
+            st.markdown(
+                f"""
+                <div style="text-align:center; margin: 20px 0;">
+                    <a href="{PAYPAL_SINGLE_BUTTON_URL}" target="_blank"
+                       style="
+                         display:inline-block;
+                         background-color:#ffc439;
+                         color:#111;
+                         font-weight:600;
+                         padding:14px 28px;
+                         border-radius:8px;
+                         text-decoration:none;
+                         font-size:16px;
+                       ">
+                       Buy Now with PayPal
+                    </a>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
             st.markdown("### Submit your details")
             st.caption(
