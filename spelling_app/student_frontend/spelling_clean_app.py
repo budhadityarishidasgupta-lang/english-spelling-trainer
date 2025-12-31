@@ -630,30 +630,26 @@ def render_login_page():
 
 
 def submit_registration(db):
-    full_name = st.session_state.get("reg_full_name", "").strip()
-    email = st.session_state.get("reg_email", "").strip()
-    paypal_txn_id = st.session_state.get("reg_paypal_txn", "").strip()
+    full_name = st.session_state.get("reg_full_name")
+    email = st.session_state.get("reg_email")
 
-    if not full_name or not email or not paypal_txn_id:
-        st.error("Please complete payment and fill in all details.")
+    if not full_name or not email:
+        st.error("Please enter both name and email.")
         return
 
-    # Prevent duplicate submissions
-    if st.session_state.get("registration_submitted"):
-        st.info("Registration already submitted. Please wait for approval.")
-        return
+    try:
+        create_pending_registration(
+            db,
+            student_name=full_name,
+            email=email,
+        )
 
-    create_pending_registration(
-        db,
-        student_name=full_name,
-        email=email,
-    )
+        # Mark registration as successful
+        st.session_state.registration_success = True
 
-    st.session_state.registration_submitted = True
-    st.success(
-        "✅ Registration submitted successfully. "
-        "An admin will review and activate your account shortly."
-    )
+    except Exception as e:
+        st.error("Registration failed. Please try again or contact support.")
+        st.exception(e)
 
 
 ###########################################################
@@ -2106,6 +2102,9 @@ def main():
         st.session_state["mode"] = "Practice"
         st.session_state["lesson_started"] = True
 
+    if "registration_success" not in st.session_state:
+        st.session_state.registration_success = False
+
     inject_student_css()
     initialize_session_state(st)
     init_daily5_state()
@@ -2161,25 +2160,35 @@ def main():
             )
 
             st.markdown("<div class='landing-card'>", unsafe_allow_html=True)
-            st.caption("Enter your details below. An admin will approve your account shortly.")
 
             st.markdown("### Secure Checkout")
             render_paypal_hosted_button()
 
             st.markdown("### Submit your details")
             st.caption(
-                "After payment, paste the Transaction/Order ID from your PayPal receipt email and submit once."
+                "After payment, enter your details once to complete registration."
             )
 
-            st.text_input("Full name", key="reg_full_name")
-            st.text_input("Email address", key="reg_email")
-            st.text_input("PayPal Transaction / Order ID", key="reg_paypal_txn")
+            if st.session_state.get("registration_success"):
+                st.success("✅ Registration submitted successfully!")
 
-            st.button(
-                "Submit registration",
-                on_click=submit_registration,
-                args=(db,),
-            )
+                st.markdown(
+                    """
+                    **What happens next?**
+                    - We’ve received your details  
+                    - Our team will verify your payment  
+                    - Your account will be activated shortly  
+
+                    You can safely close this page for now.
+                    """
+                )
+
+            else:
+                st.text_input("Full name", key="reg_full_name")
+                st.text_input("Email address", key="reg_email")
+
+                if st.button("Submit registration"):
+                    submit_registration(db)
             st.markdown("</div>", unsafe_allow_html=True)
 
         with st.expander("Need help?"):
