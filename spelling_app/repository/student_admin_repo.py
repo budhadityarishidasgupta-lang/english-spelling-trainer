@@ -249,17 +249,18 @@ def unassign_student_from_class(class_id: int, student_id: int):
     )
 
 
-def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: str):
+def create_pending_registration(db, student_name: str, email: str):
     """
-    Create a pending student registration after PayPal payment.
-    Writes to spelling_pending_registrations (correct namespaced table).
+    Create a pending student registration.
+    Schema-aligned with spelling_pending_registrations.
+    PayPal TXN is verified manually outside DB (v1).
     """
 
     query = """
         INSERT INTO spelling_pending_registrations
-            (full_name, email, paypal_txn_id, status)
+            (student_name, email)
         VALUES
-            (:full_name, :email, :paypal_txn_id, 'pending')
+            (:student_name, :email)
     """
 
     engine = db.engine
@@ -268,8 +269,7 @@ def create_pending_registration(db, full_name: str, email: str, paypal_txn_id: s
         conn.execute(
             text(query),
             {
-                "full_name": full_name,
+                "student_name": student_name,
                 "email": email,
-                "paypal_txn_id": paypal_txn_id,
             },
         )
