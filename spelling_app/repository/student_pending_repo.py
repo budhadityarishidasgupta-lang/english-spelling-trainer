@@ -3,6 +3,10 @@
 from typing import List, Dict, Optional
 
 from shared.db import fetch_all
+from spelling_app.repository.registration_repo import (
+    create_pending_registration as create_pending_registration_with_token,
+    generate_registration_token,
+)
 from passlib.hash import bcrypt
 
 
@@ -39,24 +43,22 @@ def _to_list(rows):
 # Pending registration CRUD
 # -------------------------
 
-def create_pending_registration(student_name: str, email: str) -> Dict:
+def create_pending_registration(student_name: str, email: str, token: str = None) -> Dict:
     """
     Create a pending registration entry.
     Returns dict with either {'id': ...} or {'error': '...'}.
     """
-    sql = """
-        INSERT INTO spelling_pending_registrations (student_name, email)
-        VALUES (:student_name, :email)
-        ON CONFLICT (email) DO NOTHING
-        RETURNING id;
-    """
+    reg_token = token or generate_registration_token()
 
-    rows = fetch_all(sql, {"student_name": student_name, "email": email})
+    rows = create_pending_registration_with_token(
+        student_name=student_name, email=email, token=reg_token
+    )
 
     if isinstance(rows, dict):  # DB error
         return rows
 
     rows = _to_list(rows)
+    
     if not rows:
         # ON CONFLICT path: email already exists either as pending or user
         return {"error": "A registration with this email already exists or is already a user."}

@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Request, HTTPException
 from sqlalchemy import text
 from shared.db import engine
+from spelling_app.repository.registration_repo import (
+    mark_registration_verified_by_token,
+)
 import datetime
 import os
 import requests
@@ -59,6 +62,7 @@ async def paypal_webhook(request: Request):
         return {"status": "ignored"}
 
     capture_id = resource.get("id")
+    registration_token = resource.get("custom_id")
     amount_info = resource.get("amount", {})
     amount = amount_info.get("value")
     currency = amount_info.get("currency_code")
@@ -66,6 +70,10 @@ async def paypal_webhook(request: Request):
 
     if not capture_id or status != "COMPLETED":
         raise HTTPException(status_code=400, detail="Invalid payment payload")
+
+    if not registration_token:
+        print("[paypal_webhook] Missing registration token; ignoring payment")
+        return {"status": "ignored", "reason": "missing_token"}
 
     with engine.begin() as conn:
         # Store payment
@@ -85,15 +93,11 @@ async def paypal_webhook(request: Request):
             }
         )
 
-        # Mark latest pending registration as payment verified
-        conn.execute(
-            text("""
-                UPDATE spelling_pending_registrations
-                SET payment_status = 'verified'
-                WHERE payment_status IS DISTINCT FROM 'verified'
-                ORDER BY requested_at DESC
-                LIMIT 1
-            """)
+
+    matched = mark_registration_verified_by_token(registration_token)
+    if not matched:
+        print(
+            f"[paypal_webhook] Registration token not found or already processed: {registration_token}"
         )
 
     return {"status": "verified"}
