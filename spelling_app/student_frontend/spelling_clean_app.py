@@ -85,11 +85,7 @@ CELEBRATION_MESSAGES = [
     "🏆 Fantastic work!",
 ]
 
-PAYPAL_SINGLE_BUTTON_URL = (
-    "https://www.paypal.com/cgi-bin/webscr"
-    "?cmd=_s-xclick"
-    "&hosted_button_id=QAN2QNPSJPQ88"
-)
+PAYPAL_CHECKOUT_URL = "https://www.paypal.com/ncp/payment/QAN2QNPSJPQ88"
 
 POINTS_PER_CORRECT = 10
 
@@ -251,19 +247,6 @@ def inject_student_css():
             margin-top: 0.6rem;
         }
 
-        .paypal-placeholder {
-            background: rgba(0,0,0,0.18);
-            border: 1px dashed rgba(255,255,255,0.18);
-            border-radius: 12px;
-            padding: 0.9rem;
-            margin-top: 0.6rem;
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-        /* Hide PayPal non-blocking warning banner */
-        [role="alert"][data-testid*="paypal"] {
-            display: none !important;
-        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -2134,10 +2117,13 @@ def main():
 
             st.markdown(
                 f"""
-                <div style="text-align:center; margin: 20px 0;">
-                    <a href="{PAYPAL_SINGLE_BUTTON_URL}" target="_blank"
+                <div style="text-align:center; margin: 24px 0;">
+                    <a href="{PAYPAL_CHECKOUT_URL}" target="_blank"
                        style="
-                         display:inline-block;
+                         display:inline-flex;
+                         align-items:center;
+                         justify-content:center;
+                         gap:10px;
                          background-color:#ffc439;
                          color:#111;
                          font-weight:600;
@@ -2145,7 +2131,11 @@ def main():
                          border-radius:8px;
                          text-decoration:none;
                          font-size:16px;
+                         box-shadow:0 4px 10px rgba(0,0,0,0.25);
                        ">
+                       <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
+                            alt="PayPal"
+                            style="height:22px;">
                        Buy Now with PayPal
                     </a>
                 </div>
