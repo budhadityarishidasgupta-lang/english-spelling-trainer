@@ -28,10 +28,10 @@ from spelling_app.repository.spelling_content_repo import (
     upsert_content_block,
     delete_content_block,
 )
-from spelling_app.repository.student_pending_repo import (
-    approve_pending_registration,
-    delete_pending_registration,
-    list_pending_registrations,
+from spellings_admin_clean.spelling_pending_registration_repo import (
+    ensure_pending_registration_payment_status_column,
+    list_spelling_pending_registrations,
+    mark_registration_approved,
 )
 
 
@@ -343,43 +343,45 @@ def render_student_management():
                     st.experimental_rerun()
 
     st.subheader("Pending Registrations")
-    pending_rows = list_pending_registrations()
 
-    if not pending_rows:
-        st.info("No pending registrations.")
-    else:
-        for pending in pending_rows:
-            cols = st.columns([2, 3, 2, 2, 2])
-            cols[0].write(pending.get("student_name"))
-            cols[1].write(pending.get("email"))
-            cols[2].write(pending.get("requested_at"))
+    with engine.connect() as db:
+        ensure_pending_registration_payment_status_column(db)
 
-            with cols[3]:
+        verified_only = st.toggle("Show only payment-verified", value=False)
+
+        rows = list_spelling_pending_registrations(db, verified_only=verified_only)
+
+        if not rows:
+            st.info("No pending registrations found.")
+            return
+
+        for r in rows:
+            payment_status = (r.get("payment_status") or "unverified").lower()
+            is_verified = payment_status == "verified"
+
+            left, mid, right = st.columns([5, 2, 2])
+
+            with left:
+                st.markdown(f"**{r['student_name']}**  \n{r['email']}")
+                st.caption(f"Requested: {r['requested_at']}")
+
+            with mid:
+                if is_verified:
+                    st.success("✅ Verified")
+                else:
+                    st.warning("⏳ Unverified")
+
+            with right:
+                approve_disabled = not is_verified
                 if st.button(
                     "Approve",
-                    key=f"approve_{pending.get('id')}",
+                    key=f"approve_{r['id']}",
+                    disabled=approve_disabled,
+                    help="Payment must be verified before approval." if approve_disabled else None,
                 ):
-                    result = approve_pending_registration(pending.get("id"))
-                    if result.get("error"):
-                        st.error(result["error"])
-                    else:
-                        st.success("Registration approved and student created.")
-                        st.experimental_rerun()
-
-            with cols[4]:
-                confirm_reject = st.checkbox(
-                    "Confirm", key=f"reject_confirm_{pending.get('id')}"
-                )
-                if st.button(
-                    "Reject",
-                    key=f"reject_{pending.get('id')}",
-                ):
-                    if not confirm_reject:
-                        st.warning("Confirm rejection before proceeding.")
-                    else:
-                        delete_pending_registration(pending.get("id"))
-                        st.success("Pending registration rejected.")
-                        st.experimental_rerun()
+                    mark_registration_approved(db, r["id"])
+                    st.success("Approved. You can now assign courses / enable access.")
+                    st.rerun()
 
 
 def render_help_texts_page(db):
