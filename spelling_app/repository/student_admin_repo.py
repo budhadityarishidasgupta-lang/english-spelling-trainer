@@ -4,6 +4,10 @@ from sqlalchemy.sql import text
 
 from shared.db import execute, fetch_all
 from spelling_app.repository.student_pending_repo import _hash_password as hash_password
+from spelling_app.repository.registration_repo import (
+    create_pending_registration as create_pending_registration_with_token,
+    generate_registration_token,
+)
 
 
 # ---------------------------------------
@@ -249,27 +253,15 @@ def unassign_student_from_class(class_id: int, student_id: int):
     )
 
 
-def create_pending_registration(db, student_name: str, email: str):
+def create_pending_registration(db, student_name: str, email: str, token: str = None):
     """
     Create a pending student registration.
     Schema-aligned with spelling_pending_registrations.
     PayPal TXN is verified manually outside DB (v1).
     """
 
-    query = """
-        INSERT INTO spelling_pending_registrations
-            (student_name, email)
-        VALUES
-            (:student_name, :email)
-    """
+    reg_token = token or generate_registration_token()
 
-    engine = db.engine
-
-    with engine.begin() as conn:
-        conn.execute(
-            text(query),
-            {
-                "student_name": student_name,
-                "email": email,
-            },
-        )
+    return create_pending_registration_with_token(
+        student_name=student_name, email=email, token=reg_token
+    )

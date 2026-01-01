@@ -16,13 +16,44 @@ def ensure_pending_registration_payment_status_column(db):
     db.commit()
 
 
+def ensure_pending_registration_token_column(db):
+    """Add registration_token for deterministic payment matching."""
+    db.execute(text(
+        """
+        ALTER TABLE spelling_pending_registrations
+        ADD COLUMN IF NOT EXISTS registration_token TEXT
+        """
+    ))
+    db.execute(text(
+        """
+        UPDATE spelling_pending_registrations
+        SET registration_token = md5(random()::text || clock_timestamp()::text)
+        WHERE registration_token IS NULL
+        """
+    ))
+    db.execute(text(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS spelling_pending_registrations_registration_token_uidx
+        ON spelling_pending_registrations(registration_token)
+        """
+    ))
+    db.execute(text(
+        """
+        ALTER TABLE spelling_pending_registrations
+        ALTER COLUMN registration_token SET NOT NULL
+        """
+    ))
+    db.commit()
+
+
 def list_spelling_pending_registrations(db, verified_only: bool = False):
     """
     Returns rows: id, student_name, email, requested_at, payment_status
     """
     base = """
         SELECT id, student_name, email, requested_at,
-               COALESCE(payment_status, 'unverified') AS payment_status
+               COALESCE(payment_status, 'unverified') AS payment_status,
+               RIGHT(registration_token, 4) AS token_suffix
         FROM spelling_pending_registrations
     """
     if verified_only:

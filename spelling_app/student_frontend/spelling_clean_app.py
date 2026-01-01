@@ -47,7 +47,10 @@ from spelling_app.repository.student_repo import (
 )
 from spelling_app.repository.spelling_help_text_repo import get_help_text
 from spelling_app.repository.spelling_content_repo import get_content_block
-from spelling_app.repository.student_admin_repo import create_pending_registration
+from spelling_app.repository.registration_repo import (
+    create_pending_registration,
+    generate_registration_token,
+)
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -581,19 +584,24 @@ def render_login_page():
 ###########################################################
 
 
-def submit_registration(db):
+def submit_registration():
     full_name = st.session_state.get("reg_full_name")
     email = st.session_state.get("reg_email")
+    token = st.session_state.get("registration_token")
 
     if not full_name or not email:
         st.error("Please enter both name and email.")
         return
 
+    if not token:
+        token = generate_registration_token()
+        st.session_state.registration_token = token
+
     try:
         create_pending_registration(
-            db,
             student_name=full_name,
             email=email,
+            token=token,
         )
 
         # Mark registration as successful
@@ -2057,6 +2065,9 @@ def main():
     if "registration_success" not in st.session_state:
         st.session_state.registration_success = False
 
+    if "registration_token" not in st.session_state:
+        st.session_state.registration_token = generate_registration_token()
+
     inject_student_css()
     initialize_session_state(st)
     init_daily5_state()
@@ -2115,10 +2126,12 @@ def main():
 
             st.markdown("## Secure Checkout")
 
+            checkout_url = f"{PAYPAL_CHECKOUT_URL}?custom_id={st.session_state.get('registration_token')}"
+
             st.markdown(
                 f"""
                 <div style="text-align:center; margin: 24px 0;">
-                    <a href="{PAYPAL_CHECKOUT_URL}" target="_blank"
+                    <a href="{checkout_url}" target="_blank"
                        style="
                          display:inline-flex;
                          align-items:center;
@@ -2167,7 +2180,7 @@ def main():
                 st.text_input("Email address", key="reg_email")
 
                 if st.button("Submit registration"):
-                    submit_registration(db)
+                    submit_registration()
             st.markdown("</div>", unsafe_allow_html=True)
 
         with st.expander("Need help?"):

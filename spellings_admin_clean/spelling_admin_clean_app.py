@@ -30,6 +30,7 @@ from spelling_app.repository.spelling_content_repo import (
 )
 from spellings_admin_clean.spelling_pending_registration_repo import (
     ensure_pending_registration_payment_status_column,
+    ensure_pending_registration_token_column,
     list_spelling_pending_registrations,
     mark_registration_approved,
 )
@@ -346,6 +347,7 @@ def render_student_management():
 
     with engine.connect() as db:
         ensure_pending_registration_payment_status_column(db)
+        ensure_pending_registration_token_column(db)
 
         verified_only = st.toggle("Show only payment-verified", value=False)
 
@@ -364,6 +366,9 @@ def render_student_management():
             with left:
                 st.markdown(f"**{r['student_name']}**  \n{r['email']}")
                 st.caption(f"Requested: {r['requested_at']}")
+                token_suffix = r.get("token_suffix")
+                if token_suffix:
+                    st.caption(f"Token …{token_suffix}")
 
             with mid:
                 if is_verified:
