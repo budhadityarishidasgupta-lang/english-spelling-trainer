@@ -26,7 +26,6 @@ def insert_question(
     Insert a maths question into the database.
     Intended for admin CSV ingestion.
     """
-
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -72,7 +71,7 @@ def insert_question(
     conn.close()
 
 
-    def get_all_questions():
+def get_all_questions():
     """
     Fetch all maths questions.
     """
