@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS math_sessions (
+    id SERIAL PRIMARY KEY,
+    started_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP WITHOUT TIME ZONE,
+    total_questions INTEGER,
+    correct_count INTEGER
+);
