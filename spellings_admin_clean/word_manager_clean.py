@@ -205,16 +205,13 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         pattern = str(pattern_raw).strip() if pattern_raw else None
         pattern = pattern or None
 
-        pattern_code = _safe_int(row.get("pattern_code"))
-        level = _safe_int(row.get("level"))
+        pattern_code_raw = row.get("pattern_code")
+        pattern_code = _safe_int(pattern_code_raw)
+        lesson_name = (str(pattern_code_raw).strip() if pattern_code_raw is not None else None) or "Uncategorized"
 
-        raw_lesson_name = row.get("lesson_name")
-        lesson_name = str(raw_lesson_name).strip() if raw_lesson_name else None
+        level = _safe_int(row.get("difficulty") or row.get("level"))
 
-        if not lesson_name:
-            lesson_name = pattern or "General"
-
-        example_sentence_raw = row.get("example_sentence")
+        example_sentence_raw = row.get("example") or row.get("example_sentence")
         example_sentence = str(example_sentence_raw).strip() if example_sentence_raw else None
 
         # 1) LESSON (cached)

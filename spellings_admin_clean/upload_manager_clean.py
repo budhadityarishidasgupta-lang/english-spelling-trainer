@@ -25,6 +25,8 @@ from spellings_admin_clean.word_manager_clean import (
 REQUIRED_COLUMNS = [
     "word",
     "pattern_code",
+    "example",
+    "difficulty",
 ]
 
 
@@ -144,9 +146,9 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
             print(f"[WARN] Lesson creation failed for '{lesson_key}'. Skipping row.")
             continue
 
-        level = _safe_int(row.get("level"))
+        level = _safe_int(row.get("difficulty") or row.get("level"))
 
-        example_sentence_raw = row.get("example_sentence")
+        example_sentence_raw = row.get("example") or row.get("example_sentence")
         example_sentence = str(example_sentence_raw).strip() if example_sentence_raw is not None else None
 
         word_id = get_or_create_word(

@@ -244,7 +244,7 @@ def render_course_management():
     st.markdown("## Upload Spelling CSV")
 
     uploaded_file = st.file_uploader(
-        "Upload CSV (word, pattern, pattern_code, level, lesson_name, example_sentence)",
+        "Upload CSV (word, pattern_code, example, difficulty)",
         type=["csv"],
     )
 
