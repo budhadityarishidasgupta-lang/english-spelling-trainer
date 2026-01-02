@@ -18,6 +18,7 @@ def insert_question(
     difficulty: str,
     asset_type: str,
     asset_ref: str | None,
+    hint: str,
     solution: str,
 ):
     conn = get_db_connection()
@@ -38,9 +39,10 @@ def insert_question(
             difficulty,
             asset_type,
             asset_ref,
+            hint,
             solution
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (question_id) DO NOTHING
         """,
         (
@@ -56,6 +58,7 @@ def insert_question(
             difficulty,
             asset_type,
             asset_ref,
+            hint,
             solution,
         ),
     )
@@ -85,6 +88,7 @@ def get_all_questions():
             difficulty,
             asset_type,
             asset_ref,
+            hint,
             solution
         FROM math_questions
         ORDER BY id
