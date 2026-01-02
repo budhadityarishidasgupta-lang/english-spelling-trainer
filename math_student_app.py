@@ -39,14 +39,24 @@ else:
     st.subheader(f"Question {question_id}")
     st.write(stem)
 
-    st.radio(
+    selected = st.radio(
         "Choose an answer:",
-        options=[
-            f"A. {option_a}",
-            f"B. {option_b}",
-            f"C. {option_c}",
-            f"D. {option_d}",
-            f"E. {option_e}",
-        ],
+        options=["A", "B", "C", "D", "E"],
+        format_func=lambda x: {
+            "A": f"A. {option_a}",
+            "B": f"B. {option_b}",
+            "C": f"C. {option_c}",
+            "D": f"D. {option_d}",
+            "E": f"E. {option_e}",
+        }[x],
         index=None,
     )
+
+    if st.button("Submit"):
+        if selected is None:
+            st.warning("Please select an answer first.")
+        else:
+            if selected == correct_option:
+                st.success("✅ Correct!")
+            else:
+                st.error(f"❌ Incorrect. The correct answer is {correct_option}.")
