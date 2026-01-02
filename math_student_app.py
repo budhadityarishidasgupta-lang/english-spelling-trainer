@@ -27,6 +27,10 @@ if "math_session_id" not in st.session_state:
     st.session_state.correct_count = 0
     st.session_state.feedback = None
     st.session_state.answered = False
+    st.session_state.selected_option = None
+
+if "selected_option" not in st.session_state:
+    st.session_state.selected_option = None
 
 q = questions[st.session_state.q_index]
 
@@ -61,6 +65,8 @@ selected = st.radio(
         "E": f"E. {option_e}",
     }[x],
     index=None,
+    key="selected_option",
+    disabled=st.session_state.answered,
 )
 
 if st.button("Submit", disabled=st.session_state.answered):
@@ -88,6 +94,38 @@ if st.session_state.feedback is not None:
     else:
         st.error(f"❌ Incorrect. Correct answer: {correct_option}")
 
+    st.write(f"Correct answer: {correct_option}")
+
+    option_labels = {
+        "A": option_a,
+        "B": option_b,
+        "C": option_c,
+        "D": option_d,
+        "E": option_e,
+    }
+
+    st.markdown("### Answer options")
+    for opt, text in option_labels.items():
+        if opt == correct_option:
+            bg = "#e8f5e9"
+            color = "#1b5e20"
+            prefix = "✅"
+        elif st.session_state.selected_option == opt:
+            bg = "#ffebee"
+            color = "#b71c1c"
+            prefix = "⚠️"
+        else:
+            bg = "#f5f5f5"
+            color = "#424242"
+            prefix = ""
+
+        st.markdown(
+            f"<div style='padding: 10px; border-radius: 8px; margin-bottom: 8px; background-color: {bg}; color: {color}; border: 1px solid #e0e0e0;'>"
+            f"{prefix} <strong>{opt}.</strong> {text}"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
     if solution:
         if st.session_state.feedback:
             with st.expander("📘 See solution / explanation"):
@@ -97,6 +135,7 @@ if st.session_state.feedback is not None:
 
     if st.button("Next"):
         st.session_state.answered = False
+        st.session_state.selected_option = None
         st.session_state.q_index += 1
         st.session_state.feedback = None
 
