@@ -1,6 +1,8 @@
 import streamlit as st
 
 from math_app.repository.math_question_repo import get_all_questions
+from math_app.repository.math_session_repo import create_session
+from math_app.repository.math_attempt_repo import record_attempt
 
 st.set_page_config(
     page_title="WordSprint Maths",
@@ -12,6 +14,10 @@ st.title("🧮 WordSprint Maths")
 st.caption("Focused maths practice from past papers")
 
 st.markdown("---")
+
+# Create session once
+if "math_session_id" not in st.session_state:
+    st.session_state.math_session_id = create_session(total_questions=1)
 
 questions = get_all_questions()
 
@@ -56,7 +62,16 @@ else:
         if selected is None:
             st.warning("Please select an answer first.")
         else:
-            if selected == correct_option:
+            is_correct = selected == correct_option
+
+            record_attempt(
+                session_id=st.session_state.math_session_id,
+                question_id=_id,
+                selected_option=selected,
+                is_correct=is_correct,
+            )
+
+            if is_correct:
                 st.success("✅ Correct!")
             else:
                 st.error(f"❌ Incorrect. The correct answer is {correct_option}.")
