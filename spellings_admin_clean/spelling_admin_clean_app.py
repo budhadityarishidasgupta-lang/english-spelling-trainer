@@ -525,24 +525,28 @@ def render_branding_landing_page(db):
 
 
 def render_maintenance():
-    st.header("Maintenance")
+    st.divider()
+    st.header("🛠 Maintenance")
 
     courses = get_all_courses()
-    course_map = {c["course_name"]: c["course_id"] for c in courses}
 
-    if not course_map:
-        st.info("No courses available.")
-        return
+    if courses:
+        course_id = st.selectbox(
+            "Select course for consolidation",
+            options=[c["course_id"] for c in courses],
+            format_func=lambda cid: next(
+                c["course_name"] for c in courses if c["course_id"] == cid
+            ),
+        )
 
-    selected_course_name = st.selectbox("Course", list(course_map.keys()))
-    selected_course_id = course_map.get(selected_course_name)
+        if st.button("Consolidate legacy lessons into patterns"):
+            with st.spinner("Running consolidation..."):
+                stats = consolidate_legacy_lessons_into_patterns(course_id)
 
-    if st.button(
-        "Consolidate legacy lessons into patterns", disabled=not selected_course_id
-    ):
-        stats = consolidate_legacy_lessons_into_patterns(selected_course_id)
-        st.success("Consolidation complete.")
-        st.json(stats)
+            st.success("Consolidation completed")
+            st.json(stats)
+    else:
+        st.info("No courses available for maintenance.")
 
 
 def main():
