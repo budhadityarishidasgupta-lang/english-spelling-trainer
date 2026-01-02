@@ -1,28 +1,24 @@
 """
 Math Session Repository
-
-Handles creation and completion of maths practice sessions.
 """
 
-from shared.db import get_db
+from math_app.db import get_db_connection
 
 
 def create_session(total_questions: int) -> int:
-    """
-    Create a new maths session and return its ID.
-    """
-    conn = get_db()
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = """
+    cursor.execute(
+        """
         INSERT INTO math_sessions (total_questions)
         VALUES (%s)
         RETURNING id
-    """
+        """,
+        (total_questions,),
+    )
 
-    cursor.execute(query, (total_questions,))
     session_id = cursor.fetchone()[0]
-
     conn.commit()
     cursor.close()
     conn.close()
@@ -31,20 +27,18 @@ def create_session(total_questions: int) -> int:
 
 
 def end_session(session_id: int, correct_count: int):
-    """
-    Mark a maths session as completed.
-    """
-    conn = get_db()
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = """
+    cursor.execute(
+        """
         UPDATE math_sessions
         SET ended_at = CURRENT_TIMESTAMP,
             correct_count = %s
         WHERE id = %s
-    """
-
-    cursor.execute(query, (correct_count, session_id))
+        """,
+        (correct_count, session_id),
+    )
 
     conn.commit()
     cursor.close()
