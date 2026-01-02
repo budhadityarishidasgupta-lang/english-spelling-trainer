@@ -275,20 +275,21 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
     from sqlalchemy import text
 
-    sql = text(
+        sql = text(
+            """
+            SELECT
+                lesson_id,
+                lesson_name,
+                course_id,
+                sort_order,
+                is_active
+            FROM spelling_lessons
+            WHERE course_id = :course_id
+              AND is_active = TRUE
+              AND lesson_name NOT LIKE 'L4-%'
+            ORDER BY sort_order, lesson_id
         """
-        SELECT
-            lesson_id,
-            lesson_name,
-            course_id,
-            sort_order,
-            is_active
-        FROM spelling_lessons
-        WHERE course_id = :course_id
-          AND is_active = TRUE
-        ORDER BY sort_order, lesson_id
-    """
-    )
+        )
 
     with engine.connect() as conn:
         return conn.execute(sql, {"course_id": course_id}).mappings().all()
