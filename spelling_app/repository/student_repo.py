@@ -275,21 +275,21 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
     from sqlalchemy import text
 
-        sql = text(
-            """
-            SELECT
-                lesson_id,
-                lesson_name,
-                course_id,
-                sort_order,
-                is_active
-            FROM spelling_lessons
-            WHERE course_id = :course_id
-              AND is_active = TRUE
-              AND lesson_name NOT LIKE 'L4-%'
-            ORDER BY sort_order, lesson_id
+    sql = text(
         """
-        )
+        SELECT
+            lesson_id,
+            lesson_name,
+            course_id,
+            sort_order,
+            is_active
+        FROM spelling_lessons
+        WHERE course_id = :course_id
+          AND is_active = TRUE
+          AND lesson_name NOT LIKE 'L4-%'
+        ORDER BY sort_order, lesson_id
+        """
+    )
 
     with engine.connect() as conn:
         return conn.execute(sql, {"course_id": course_id}).mappings().all()
@@ -515,3 +515,38 @@ def get_daily_five_word_ids(user_id: int) -> List[int]:
                 seen.add(wid)
 
     return result
+
+
+def get_resume_index_for_lesson(user_id: int, lesson_id: int) -> int:
+    """
+    Returns the 0-based index of the next word to resume for a lesson.
+
+    Logic:
+    - Find the most recent *correct* attempt for this user + lesson
+    - Resume from the next word position
+    - If no correct attempts exist, start from index 0
+
+    This function must NOT modify any data.
+    """
+
+    rows = fetch_all(
+        """
+        SELECT lw.position
+        FROM spelling_attempts a
+        JOIN spelling_lesson_words lw ON lw.word_id = a.word_id
+        WHERE a.user_id = :uid
+          AND lw.lesson_id = :lid
+          AND a.correct = TRUE
+        ORDER BY a.id DESC
+        LIMIT 1
+        """,
+        {"uid": user_id, "lid": lesson_id},
+    )
+
+    if not rows:
+        return 0
+
+    row = rows[0]
+    position = row["position"] if hasattr(row, "_mapping") else row[0]
+
+    return position + 1
