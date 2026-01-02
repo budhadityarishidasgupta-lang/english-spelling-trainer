@@ -89,7 +89,10 @@ if st.session_state.feedback is not None:
         st.error(f"❌ Incorrect. Correct answer: {correct_option}")
 
     if solution:
-        with st.expander("📘 See solution / explanation"):
+        if st.session_state.feedback:
+            with st.expander("📘 See solution / explanation"):
+                st.write(solution)
+        else:
             st.write(solution)
 
     if st.button("Next"):
