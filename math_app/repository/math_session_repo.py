@@ -4,14 +4,14 @@ Math Session Repository
 Handles creation and completion of maths practice sessions.
 """
 
-from shared.db import get_connection
+from shared.db import get_db
 
 
 def create_session(total_questions: int) -> int:
     """
     Create a new maths session and return its ID.
     """
-    conn = get_connection()
+    conn = get_db()
     cursor = conn.cursor()
 
     query = """
@@ -34,7 +34,7 @@ def end_session(session_id: int, correct_count: int):
     """
     Mark a maths session as completed.
     """
-    conn = get_connection()
+    conn = get_db()
     cursor = conn.cursor()
 
     query = """
