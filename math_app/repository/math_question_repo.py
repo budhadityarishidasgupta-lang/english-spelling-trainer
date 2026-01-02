@@ -37,10 +37,10 @@ def insert_question(
             topic,
             difficulty,
             asset_type,
-            asset_ref
+            asset_ref,
             solution
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (question_id) DO NOTHING
         """,
         (
@@ -56,6 +56,7 @@ def insert_question(
             difficulty,
             asset_type,
             asset_ref,
+            solution,
         ),
     )
 
@@ -83,7 +84,8 @@ def get_all_questions():
             topic,
             difficulty,
             asset_type,
-            asset_ref
+            asset_ref,
+            solution
         FROM math_questions
         ORDER BY id
         """

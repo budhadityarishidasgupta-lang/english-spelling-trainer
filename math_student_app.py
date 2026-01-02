@@ -46,9 +46,6 @@ q = questions[st.session_state.q_index]
     asset_ref,
     solution,
 ) = q
-if solution:
-    with st.expander("📘 See solution / explanation"):
-        st.write(solution)
 
 st.subheader(f"Question {st.session_state.q_index + 1} of {len(questions)}")
 st.write(stem)
@@ -90,6 +87,10 @@ if st.session_state.feedback is not None:
         st.success("✅ Correct!")
     else:
         st.error(f"❌ Incorrect. Correct answer: {correct_option}")
+
+    if solution:
+        with st.expander("📘 See solution / explanation"):
+            st.write(solution)
 
     if st.button("Next"):
         st.session_state.answered = False
