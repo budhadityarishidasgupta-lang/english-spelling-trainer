@@ -26,6 +26,15 @@ if uploaded_file is not None:
         uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file, encoding="latin-1")
 
+        # 🔑 VERY IMPORTANT: normalize column names
+    df.columns = (
+        df.columns
+          .str.strip()
+          .str.lower()
+    )
+
+    st.write("Detected CSV columns:", df.columns.tolist())
+
     required_columns = {
         "question_id",
         "stem",
