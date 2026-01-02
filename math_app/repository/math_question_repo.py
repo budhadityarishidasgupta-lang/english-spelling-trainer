@@ -70,3 +70,38 @@ def insert_question(
     conn.commit()
     cursor.close()
     conn.close()
+
+
+    def get_all_questions():
+    """
+    Fetch all maths questions.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    query = """
+        SELECT
+            id,
+            question_id,
+            stem,
+            option_a,
+            option_b,
+            option_c,
+            option_d,
+            option_e,
+            correct_option,
+            topic,
+            difficulty,
+            asset_type,
+            asset_ref
+        FROM math_questions
+        ORDER BY id
+    """
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return rows
