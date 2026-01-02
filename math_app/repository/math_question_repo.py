@@ -1,12 +1,8 @@
 """
 Math Question Repository
-
-All database access for math_questions lives here.
-UI files must NEVER contain SQL.
 """
 
 from math_app.db import get_db_connection
-
 
 
 def insert_question(
@@ -23,14 +19,11 @@ def insert_question(
     asset_type: str,
     asset_ref: str | None,
 ):
-    """
-    Insert a maths question into the database.
-    Intended for admin CSV ingestion.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = """
+    cursor.execute(
+        """
         INSERT INTO math_questions (
             question_id,
             stem,
@@ -47,10 +40,7 @@ def insert_question(
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (question_id) DO NOTHING
-    """
-
-    cursor.execute(
-        query,
+        """,
         (
             question_id,
             stem,
@@ -64,7 +54,7 @@ def insert_question(
             difficulty,
             asset_type,
             asset_ref,
-        )
+        ),
     )
 
     conn.commit()
@@ -73,9 +63,6 @@ def insert_question(
 
 
 def get_all_questions():
-    """
-    Fetch all maths questions.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -101,8 +88,6 @@ def get_all_questions():
     )
 
     rows = cursor.fetchall()
-
     cursor.close()
     conn.close()
-
     return rows
