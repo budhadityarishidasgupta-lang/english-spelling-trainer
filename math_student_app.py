@@ -1,7 +1,7 @@
 import streamlit as st
 
 from math_app.repository.math_question_repo import get_all_questions
-from math_app.repository.math_session_repo import create_session
+from math_app.repository.math_session_repo import create_session, end_session
 from math_app.repository.math_attempt_repo import record_attempt
 
 st.set_page_config(
@@ -15,7 +15,6 @@ st.caption("Focused maths practice from past papers")
 
 st.markdown("---")
 
-# Load questions
 questions = get_all_questions()
 
 if not questions:
@@ -27,6 +26,7 @@ if "math_session_id" not in st.session_state:
     st.session_state.math_session_id = create_session(total_questions=len(questions))
     st.session_state.q_index = 0
     st.session_state.feedback = None
+    st.session_state.correct_count = 0
 
 q = questions[st.session_state.q_index]
 
@@ -62,7 +62,7 @@ selected = st.radio(
     index=None,
 )
 
-# Submit answer
+# Submit
 if st.button("Submit"):
     if selected is None:
         st.warning("Please select an answer first.")
@@ -76,22 +76,34 @@ if st.button("Submit"):
             is_correct=is_correct,
         )
 
+        if is_correct:
+            st.session_state.correct_count += 1
+
         st.session_state.feedback = is_correct
 
-# Feedback
+# Feedback + next
 if st.session_state.feedback is not None:
     if st.session_state.feedback:
         st.success("✅ Correct!")
     else:
         st.error(f"❌ Incorrect. The correct answer is {correct_option}.")
 
-    # Next question button
-    if st.button("Next Question"):
+    if st.button("Next"):
         st.session_state.q_index += 1
         st.session_state.feedback = None
 
+        # End of session
         if st.session_state.q_index >= len(questions):
-            st.success("🎉 You’ve completed the session!")
+            end_session(
+                session_id=st.session_state.math_session_id,
+                correct_count=st.session_state.correct_count
+            )
+
+            st.markdown("---")
+            st.success("🎉 Practice Complete!")
+            st.write(
+                f"Score: **{st.session_state.correct_count} / {len(questions)}**"
+            )
             st.stop()
 
         st.experimental_rerun()
