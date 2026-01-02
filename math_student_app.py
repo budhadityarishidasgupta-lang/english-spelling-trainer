@@ -21,17 +21,16 @@ if not questions:
     st.warning("No maths questions found. Please upload questions via Admin.")
     st.stop()
 
-# Session setup
 if "math_session_id" not in st.session_state:
-    st.session_state.math_session_id = create_session(total_questions=len(questions))
+    st.session_state.math_session_id = create_session(len(questions))
     st.session_state.q_index = 0
-    st.session_state.feedback = None
     st.session_state.correct_count = 0
+    st.session_state.feedback = None
 
 q = questions[st.session_state.q_index]
 
 (
-    _id,
+    qid,
     question_id,
     stem,
     option_a,
@@ -51,7 +50,7 @@ st.write(stem)
 
 selected = st.radio(
     "Choose an answer:",
-    options=["A", "B", "C", "D", "E"],
+    ["A", "B", "C", "D", "E"],
     format_func=lambda x: {
         "A": f"A. {option_a}",
         "B": f"B. {option_b}",
@@ -62,7 +61,6 @@ selected = st.radio(
     index=None,
 )
 
-# Submit
 if st.button("Submit"):
     if selected is None:
         st.warning("Please select an answer first.")
@@ -71,7 +69,7 @@ if st.button("Submit"):
 
         record_attempt(
             session_id=st.session_state.math_session_id,
-            question_id=_id,
+            question_id=qid,
             selected_option=selected,
             is_correct=is_correct,
         )
@@ -81,28 +79,26 @@ if st.button("Submit"):
 
         st.session_state.feedback = is_correct
 
-# Feedback + next
 if st.session_state.feedback is not None:
     if st.session_state.feedback:
         st.success("✅ Correct!")
     else:
-        st.error(f"❌ Incorrect. The correct answer is {correct_option}.")
+        st.error(f"❌ Incorrect. Correct answer: {correct_option}")
 
     if st.button("Next"):
         st.session_state.q_index += 1
         st.session_state.feedback = None
 
-        # End of session
         if st.session_state.q_index >= len(questions):
             end_session(
-                session_id=st.session_state.math_session_id,
-                correct_count=st.session_state.correct_count
+                st.session_state.math_session_id,
+                st.session_state.correct_count
             )
 
             st.markdown("---")
             st.success("🎉 Practice Complete!")
             st.write(
-                f"Score: **{st.session_state.correct_count} / {len(questions)}**"
+                f"Final Score: **{st.session_state.correct_count} / {len(questions)}**"
             )
             st.stop()
 
