@@ -21,6 +21,29 @@ def record_attempt(
     conn = get_connection()
     cursor = conn.cursor()
 
+    query = """
+        INSERT INTO math_attempts (
+            session_id,
+            question_id,
+            selected_option,
+            is_correct
+        )
+        VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(
+        query,
+        (session_id, question_id, selected_option, is_correct)
+    )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+
     # SQL will be added once math_attempts table exists
     raise NotImplementedError(
         "math_attempts table not created yet – repository wired but inactive"
