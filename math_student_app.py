@@ -48,11 +48,16 @@ q = questions[st.session_state.q_index]
     difficulty,
     asset_type,
     asset_ref,
+    hint,
     solution,
 ) = q
 
 st.subheader(f"Question {st.session_state.q_index + 1} of {len(questions)}")
 st.write(stem)
+
+if hint:
+    with st.expander("💡 Show hint"):
+        st.write(hint)
 
 option_labels = {
     "A": option_a,
