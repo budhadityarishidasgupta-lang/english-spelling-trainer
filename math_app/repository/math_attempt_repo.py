@@ -1,27 +1,21 @@
 """
 Math Attempt Repository
-
-All database writes for maths attempts live here.
-Attempts are append-only.
 """
 
-from shared.db import get_db
+from math_app.db import get_db_connection
 
 
 def record_attempt(
     session_id: int,
     question_id: int,
     selected_option: str,
-    is_correct: bool
+    is_correct: bool,
 ):
-    """
-    Record a single maths question attempt.
-    """
-
-    conn = get_db()
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = """
+    cursor.execute(
+        """
         INSERT INTO math_attempts (
             session_id,
             question_id,
@@ -29,22 +23,10 @@ def record_attempt(
             is_correct
         )
         VALUES (%s, %s, %s, %s)
-    """
-
-    cursor.execute(
-        query,
-        (session_id, question_id, selected_option, is_correct)
+        """,
+        (session_id, question_id, selected_option, is_correct),
     )
 
     conn.commit()
     cursor.close()
     conn.close()
-
-    
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # SQL will be added once math_attempts table exists
-    raise NotImplementedError(
-        "math_attempts table not created yet – repository wired but inactive"
-    )
