@@ -201,6 +201,8 @@ def get_lessons_for_course(course_id: int, include_archived: bool = False):
         """
     ]
 
+    query.append(" AND lesson_name !~ '^L[0-9]+-'")
+
     if not include_archived:
         query.append(" AND is_active = true")
 
@@ -335,7 +337,7 @@ def get_lesson_word_counts(db, course_id: int) -> dict[int, int]:
             ON l.lesson_id = lw.lesson_id
         WHERE l.course_id = :course_id
           AND l.is_active = TRUE
-          AND l.lesson_name NOT LIKE 'L4-%'
+          AND l.lesson_name !~ '^L[0-9]+-'
         GROUP BY l.lesson_id
     """
     result = db.execute(text(query), {"course_id": course_id}).fetchall()
