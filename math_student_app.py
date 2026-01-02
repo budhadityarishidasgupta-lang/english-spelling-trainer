@@ -44,7 +44,11 @@ q = questions[st.session_state.q_index]
     difficulty,
     asset_type,
     asset_ref,
+    solution,
 ) = q
+if solution:
+    with st.expander("📘 See solution / explanation"):
+        st.write(solution)
 
 st.subheader(f"Question {st.session_state.q_index + 1} of {len(questions)}")
 st.write(stem)
