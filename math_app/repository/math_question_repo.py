@@ -18,6 +18,7 @@ def insert_question(
     difficulty: str,
     asset_type: str,
     asset_ref: str | None,
+    solution: str,
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -37,6 +38,7 @@ def insert_question(
             difficulty,
             asset_type,
             asset_ref
+            solution
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (question_id) DO NOTHING
