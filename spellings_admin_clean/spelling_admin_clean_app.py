@@ -34,6 +34,9 @@ from spellings_admin_clean.spelling_pending_registration_repo import (
     list_spelling_pending_registrations,
     mark_registration_approved,
 )
+from spelling_app.repository.lesson_maintenance_repo import (
+    consolidate_legacy_lessons_into_patterns,
+)
 
 
 # -------------------------------------------------
@@ -521,6 +524,27 @@ def render_branding_landing_page(db):
     )
 
 
+def render_maintenance():
+    st.header("Maintenance")
+
+    courses = get_all_courses()
+    course_map = {c["course_name"]: c["course_id"] for c in courses}
+
+    if not course_map:
+        st.info("No courses available.")
+        return
+
+    selected_course_name = st.selectbox("Course", list(course_map.keys()))
+    selected_course_id = course_map.get(selected_course_name)
+
+    if st.button(
+        "Consolidate legacy lessons into patterns", disabled=not selected_course_id
+    ):
+        stats = consolidate_legacy_lessons_into_patterns(selected_course_id)
+        st.success("Consolidation complete.")
+        st.json(stats)
+
+
 def main():
     st.set_page_config(
         page_title="WordSprint – Spelling Admin",
@@ -530,12 +554,14 @@ def main():
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "course_management"
 
-    admin_options = ["Course Management", "Students", "Help Texts"]
+    admin_options = ["Course Management", "Students", "Help Texts", "Maintenance"]
     default_index = 0
     if st.session_state.admin_page == "students":
         default_index = admin_options.index("Students")
     elif st.session_state.admin_page == "help_texts":
         default_index = admin_options.index("Help Texts")
+    elif st.session_state.admin_page == "maintenance":
+        default_index = admin_options.index("Maintenance")
 
     admin_section = st.sidebar.radio(
         "Admin Sections",
@@ -549,6 +575,8 @@ def main():
         st.session_state.admin_page = "students"
     elif admin_section == "Help Texts":
         st.session_state.admin_page = "help_texts"
+    elif admin_section == "Maintenance":
+        st.session_state.admin_page = "maintenance"
 
     st.sidebar.markdown("### 🧩 Content")
     if st.sidebar.button("Help Texts"):
@@ -564,6 +592,8 @@ def main():
     elif st.session_state.admin_page == "help_texts":
         with engine.connect() as db:
             render_help_texts_page(db)
+    elif st.session_state.admin_page == "maintenance":
+        render_maintenance()
     elif st.session_state.admin_page == "branding_landing":
         with engine.connect() as db:
             render_branding_landing_page(db)
