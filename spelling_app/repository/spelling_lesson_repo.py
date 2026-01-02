@@ -334,6 +334,8 @@ def get_lesson_word_counts(db, course_id: int) -> dict[int, int]:
         LEFT JOIN spelling_lesson_words lw
             ON l.lesson_id = lw.lesson_id
         WHERE l.course_id = :course_id
+          AND l.is_active = TRUE
+          AND l.lesson_name NOT LIKE 'L4-%'
         GROUP BY l.lesson_id
     """
     result = db.execute(text(query), {"course_id": course_id}).fetchall()
