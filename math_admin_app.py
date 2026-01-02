@@ -22,6 +22,23 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
 
+    required_columns = {
+        "question_id",
+        "stem",
+        "option_a",
+        "option_b",
+        "option_c",
+        "option_d",
+        "option_e",
+        "correct_option",
+    }
+
+    missing = required_columns - set(df.columns)
+
+    if missing:
+        st.error(f"CSV is missing required columns: {', '.join(missing)}")
+        st.stop()
+
     st.write("Preview of uploaded data:")
     st.dataframe(df.head())
 
