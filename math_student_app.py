@@ -26,6 +26,7 @@ if "math_session_id" not in st.session_state:
     st.session_state.q_index = 0
     st.session_state.correct_count = 0
     st.session_state.feedback = None
+    st.session_state.answered = False
 
 q = questions[st.session_state.q_index]
 
@@ -61,7 +62,7 @@ selected = st.radio(
     index=None,
 )
 
-if st.button("Submit"):
+if st.button("Submit", disabled=st.session_state.answered):
     if selected is None:
         st.warning("Please select an answer first.")
     else:
@@ -78,6 +79,7 @@ if st.button("Submit"):
             st.session_state.correct_count += 1
 
         st.session_state.feedback = is_correct
+        st.session_state.answered = True
 
 if st.session_state.feedback is not None:
     if st.session_state.feedback:
@@ -86,6 +88,7 @@ if st.session_state.feedback is not None:
         st.error(f"❌ Incorrect. Correct answer: {correct_option}")
 
     if st.button("Next"):
+        st.session_state.answered = False
         st.session_state.q_index += 1
         st.session_state.feedback = None
 
