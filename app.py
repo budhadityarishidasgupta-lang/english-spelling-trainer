@@ -12,7 +12,9 @@ from spelling_app.admin_ui import render_spelling_admin
 
 
 def user_by_email(email):
-    sql = text("SELECT user_id, name, email, role, is_active FROM users WHERE email=:e")
+    sql = text(
+        "SELECT user_id, name, email, role, is_active FROM users WHERE email=:e"
+    )
     return engine.execute(sql, {"e": email}).mappings().first()
 
 
