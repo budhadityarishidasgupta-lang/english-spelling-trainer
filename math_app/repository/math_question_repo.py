@@ -5,7 +5,7 @@ All database access for math_questions lives here.
 UI files must NEVER contain SQL.
 """
 
-from shared.db import get_db
+from math_app.db import get_db_connection
 
 
 
@@ -27,7 +27,7 @@ def insert_question(
     Insert a maths question into the database.
     Intended for admin CSV ingestion.
     """
-    conn = get_db()
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     query = """
@@ -76,7 +76,7 @@ def get_all_questions():
     """
     Fetch all maths questions.
     """
-    conn = get_db()
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute(
