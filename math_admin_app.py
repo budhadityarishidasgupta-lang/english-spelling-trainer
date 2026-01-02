@@ -65,6 +65,8 @@ if uploaded_file is not None:
                 difficulty=row.get("difficulty", ""),
                 asset_type=row.get("asset_type", ""),
                 asset_ref=row.get("asset_ref", None),
+                solution=row.get("solution", ""),
             )
+
 
         st.success("Questions imported successfully!")
