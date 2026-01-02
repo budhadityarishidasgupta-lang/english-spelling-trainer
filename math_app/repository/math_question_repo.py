@@ -78,7 +78,8 @@ def get_all_questions():
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = """
+    cursor.execute(
+        """
         SELECT
             id,
             question_id,
@@ -95,9 +96,9 @@ def get_all_questions():
             asset_ref
         FROM math_questions
         ORDER BY id
-    """
+        """
+    )
 
-    cursor.execute(query)
     rows = cursor.fetchall()
 
     cursor.close()
