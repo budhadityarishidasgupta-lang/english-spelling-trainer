@@ -43,7 +43,20 @@ def insert_question(
             solution
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (question_id) DO NOTHING
+        ON CONFLICT (question_id) DO UPDATE SET
+            stem = COALESCE(NULLIF(TRIM(EXCLUDED.stem), ''), math_questions.stem),
+            option_a = COALESCE(NULLIF(TRIM(EXCLUDED.option_a), ''), math_questions.option_a),
+            option_b = COALESCE(NULLIF(TRIM(EXCLUDED.option_b), ''), math_questions.option_b),
+            option_c = COALESCE(NULLIF(TRIM(EXCLUDED.option_c), ''), math_questions.option_c),
+            option_d = COALESCE(NULLIF(TRIM(EXCLUDED.option_d), ''), math_questions.option_d),
+            option_e = COALESCE(NULLIF(TRIM(EXCLUDED.option_e), ''), math_questions.option_e),
+            correct_option = COALESCE(NULLIF(TRIM(EXCLUDED.correct_option), ''), math_questions.correct_option),
+            topic = COALESCE(NULLIF(TRIM(EXCLUDED.topic), ''), math_questions.topic),
+            difficulty = COALESCE(NULLIF(TRIM(EXCLUDED.difficulty), ''), math_questions.difficulty),
+            asset_type = COALESCE(NULLIF(TRIM(EXCLUDED.asset_type), ''), math_questions.asset_type),
+            asset_ref = COALESCE(NULLIF(TRIM(EXCLUDED.asset_ref), ''), math_questions.asset_ref),
+            hint = COALESCE(NULLIF(TRIM(EXCLUDED.hint), ''), math_questions.hint),
+            solution = COALESCE(NULLIF(TRIM(EXCLUDED.solution), ''), math_questions.solution)
         """,
         (
             question_id,
