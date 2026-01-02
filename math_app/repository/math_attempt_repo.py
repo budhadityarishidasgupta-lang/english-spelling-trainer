@@ -5,7 +5,7 @@ All database writes for maths attempts live here.
 Attempts are append-only.
 """
 
-from shared.db import get_connection
+from shared.db import get_db
 
 
 def record_attempt(
@@ -18,7 +18,7 @@ def record_attempt(
     Record a single maths question attempt.
     """
 
-    conn = get_connection()
+    conn = get_db()
     cursor = conn.cursor()
 
     query = """
@@ -41,7 +41,7 @@ def record_attempt(
     conn.close()
 
     
-    conn = get_connection()
+    conn = get_db()
     cursor = conn.cursor()
 
     # SQL will be added once math_attempts table exists
