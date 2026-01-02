@@ -48,6 +48,10 @@ if uploaded_file is not None:
 
     if st.button("Import Questions"):
         for _, row in df.iterrows():
+            correct_option_raw = str(row["correct_option"]).strip().upper()
+
+            correct_option = correct_option_raw[0] if correct_option_raw else ""
+
             insert_question(
                 question_id=row["question_id"],
                 stem=row["stem"],
@@ -56,7 +60,7 @@ if uploaded_file is not None:
                 option_c=row["option_c"],
                 option_d=row["option_d"],
                 option_e=row["option_e"],
-                correct_option=row["correct_option"],
+                correct_option=correct_option,
                 topic=row.get("topic", ""),
                 difficulty=row.get("difficulty", ""),
                 asset_type=row.get("asset_type", ""),
