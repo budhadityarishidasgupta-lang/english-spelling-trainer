@@ -22,7 +22,7 @@ def get_word_by_text(word: str, course_id: int) -> List[Dict[str, Any]]:
     rows = fetch_all(
         """
         SELECT word_id, word, pattern, pattern_code, level,
-               lesson_name, example_sentence, course_id
+               lesson_name, example_sentence, hint, course_id
         FROM spelling_words
         WHERE LOWER(word) = LOWER(:word)
           AND course_id = :cid
@@ -48,20 +48,21 @@ def insert_word(
     level: int | None,
     lesson_name: str | None,
     example_sentence: str | None,
+    hint: str | None,
     course_id: int,
 ):
     """
     Inserts a word with full metadata.
-    Ensures new schema fields (pattern, pattern_code, level, lesson_name, example_sentence)
+    Ensures new schema fields (pattern, pattern_code, level, lesson_name, example_sentence, hint)
     are correctly written to the DB.
     Returns new word_id.
     """
 
     sql = """
         INSERT INTO spelling_words
-            (word, course_id, pattern, pattern_code, level, lesson_name, example_sentence)
+            (word, course_id, pattern, pattern_code, level, lesson_name, example_sentence, hint)
         VALUES
-            (:word, :course_id, :pattern, :pattern_code, :level, :lesson_name, :example_sentence)
+            (:word, :course_id, :pattern, :pattern_code, :level, :lesson_name, :example_sentence, :hint)
         RETURNING word_id;
     """
 
@@ -75,6 +76,7 @@ def insert_word(
             "level": level,
             "lesson_name": lesson_name,
             "example_sentence": example_sentence,
+            "hint": hint,
         },
     )
 
@@ -100,7 +102,7 @@ def get_words_for_course(course_id: int) -> List[Dict[str, Any]]:
     rows = fetch_all(
         """
         SELECT word_id, word, pattern, pattern_code,
-               level, lesson_name, example_sentence, course_id
+               level, lesson_name, example_sentence, hint, course_id
         FROM spelling_words
         WHERE course_id = :cid
         ORDER BY level, pattern_code, word
@@ -122,6 +124,7 @@ def get_words_for_course(course_id: int) -> List[Dict[str, Any]]:
             "level": m.get("level"),
             "lesson_name": m.get("lesson_name"),
             "example_sentence": m.get("example_sentence"),
+            "hint": m.get("hint"),
             "course_id": m.get("course_id"),
         })
     return out
@@ -133,16 +136,20 @@ def get_words_for_course(course_id: int) -> List[Dict[str, Any]]:
 def insert_spelling_words_from_csv(course_id: int, rows: List[Dict[str, Any]]):
     sql = text("""
         INSERT INTO spelling_words
-            (course_id, word, pattern_code, level, pattern, lesson_name, example_sentence)
+            (course_id, word, pattern_code, level, pattern, lesson_name, example_sentence, hint)
         VALUES
-            (:course_id, :word, :pattern_code, :level, :pattern, :lesson_name, :example_sentence)
+            (:course_id, :word, :pattern_code, :level, :pattern, :lesson_name, :example_sentence, :hint)
         ON CONFLICT (word, course_id)
         DO UPDATE SET
             pattern          = EXCLUDED.pattern,
             pattern_code     = EXCLUDED.pattern_code,
             level            = EXCLUDED.level,
             lesson_name      = EXCLUDED.lesson_name,
-            example_sentence = EXCLUDED.example_sentence;
+            example_sentence = EXCLUDED.example_sentence,
+            hint             = COALESCE(
+                NULLIF(TRIM(EXCLUDED.hint), ''),
+                spelling_words.hint
+            );
     """)
 
     with engine.begin() as conn:
@@ -166,4 +173,5 @@ def insert_spelling_words_from_csv(course_id: int, rows: List[Dict[str, Any]]):
                 "level": level,
                 "lesson_name": (r.get("lesson_name") or "").strip() or None,
                 "example_sentence": (r.get("example_sentence") or "").strip() or None,
+                "hint": (r.get("hint") or "").strip() or None,
             })

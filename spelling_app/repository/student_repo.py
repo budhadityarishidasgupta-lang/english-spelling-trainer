@@ -305,12 +305,13 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
                    w.pattern_code,
                    w.level,
                    w.lesson_name,
-                   w.example_sentence
+                   w.example_sentence,
+                   w.hint
             FROM spelling_words w
             JOIN spelling_lesson_items li ON li.word_id = w.word_id
             WHERE li.lesson_id = :lesson_id
             ORDER BY w.word
-            """
+        """
         )
         rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
         if rows:
@@ -324,12 +325,13 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
                    w.pattern_code,
                    w.level,
                    w.lesson_name,
-                   w.example_sentence
+                   w.example_sentence,
+                   w.hint
             FROM spelling_words w
             JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
             WHERE lw.lesson_id = :lesson_id
             ORDER BY w.word
-            """
+        """
         )
         return _rows_to_dicts(
             conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
@@ -430,7 +432,8 @@ def get_words_by_ids(word_ids: List[int]) -> List[Dict[str, Any]]:
                pattern_code,
                level,
                lesson_name,
-               example_sentence
+               example_sentence,
+               hint
         FROM spelling_words
         WHERE word_id IN ({placeholders})
         ORDER BY CASE word_id {" ".join([f'WHEN :w{i} THEN {i}' for i in range(len(word_ids))])} END
