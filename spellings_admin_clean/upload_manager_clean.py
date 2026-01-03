@@ -137,7 +137,7 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
                 lesson_name=lesson_key,
             )
             lesson_cache[lesson_key] = lesson_info
-        
+
         lesson_id = lesson_info.get("lesson_id")
         if lesson_created:
             lessons_created += 1
@@ -151,6 +151,8 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         example_sentence_raw = row.get("example") or row.get("example_sentence")
         example_sentence = str(example_sentence_raw).strip() if example_sentence_raw is not None else None
 
+        hint = str(row.get("hint", "")).strip()
+
         word_id = get_or_create_word(
             word=word,
             pattern=pattern,
@@ -158,6 +160,7 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
             level=level,
             lesson_name=lesson_key,
             example_sentence=example_sentence,
+            hint=hint,
             course_id=course_id,
         )
 

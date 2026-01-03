@@ -449,7 +449,8 @@ def get_words_for_lesson(lesson_id: int):
                 w.pattern,
                 w.pattern_code,
                 w.level,
-                w.example_sentence
+                w.example_sentence,
+                w.hint
             FROM spelling_lesson_items sli
             JOIN spelling_words w ON w.word_id = sli.word_id
             WHERE sli.lesson_id = :lesson_id
@@ -468,7 +469,8 @@ def get_words_for_lesson(lesson_id: int):
                 w.pattern,
                 w.pattern_code,
                 w.level,
-                w.example_sentence
+                w.example_sentence,
+                w.hint
             FROM spelling_lesson_words slw
             JOIN spelling_words w ON w.word_id = slw.word_id
             WHERE slw.lesson_id = :lesson_id
@@ -849,6 +851,8 @@ def render_practice_page():
     level = current.get("level")
 
     st.session_state.current_example_sentence = current.get("example_sentence")
+    st.session_state.current_hint = current.get("hint")
+    st.session_state.current_hint = current.get("hint")
 
     info_bits = []
     if level is not None:
@@ -935,6 +939,11 @@ def render_practice_page():
     )
 
     st.caption(f"Difficulty: {blanks_count} blanks")
+
+    hint = st.session_state.get("current_hint")
+    if hint:
+        with st.expander("💡 Hint"):
+            st.write(hint)
 
     if st.session_state.get("current_wid") != word_id:
         st.session_state.current_wid = word_id
@@ -1800,6 +1809,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_word_pick = current
 
     st.session_state.current_example_sentence = current.get("example_sentence")
+    st.session_state.current_hint = current.get("hint")
 
     wid = st.session_state.current_wid
     target_word = current["word"]
@@ -1890,6 +1900,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
         )
 
     st.caption(f"Difficulty: {blanks_count} blanks")
+
+    hint = st.session_state.get("current_hint")
+    if hint:
+        with st.expander("💡 Hint"):
+            st.write(hint)
 
     if st.session_state.get("current_wid") != wid:
         st.session_state.current_wid = wid

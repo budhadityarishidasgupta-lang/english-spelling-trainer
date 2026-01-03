@@ -1,5 +1,5 @@
 import pandas as pd
-from shared.db import fetch_all, fetch_one, execute
+from shared.db import execute
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name_and_course,
     get_or_create_lesson as repo_get_or_create_lesson,
@@ -29,6 +29,7 @@ def get_or_create_word(
     lesson_name: str | None,
     course_id: int,
     example_sentence: str | None = None,
+    hint: str | None = None,
 ):
     """
     Creates a word if it doesn't exist.
@@ -37,42 +38,8 @@ def get_or_create_word(
     """
 
     normalized_example = example_sentence.strip() if example_sentence else None
+    normalized_hint = hint.strip() if hint else None
 
-    existing = fetch_one(
-        """
-        SELECT word_id, example_sentence
-        FROM spelling_words
-        WHERE LOWER(word) = LOWER(:word)
-          AND course_id = :course_id
-        """,
-        {"word": word, "course_id": course_id},
-    )
-
-    if existing:
-        existing_mapping = getattr(existing, "_mapping", existing)
-        word_id = existing_mapping.get("word_id")
-
-        # 🔑 BACKFILL example sentence if missing
-        db_example = existing_mapping.get("example_sentence")
-        db_example_normalized = db_example.strip() if isinstance(db_example, str) else None
-
-        if normalized_example and not db_example_normalized:
-            execute(
-                """
-                UPDATE spelling_words
-                SET example_sentence = :example_sentence
-                WHERE word_id = :id AND course_id = :course_id
-                """,
-                {
-                    "example_sentence": normalized_example,
-                    "id": word_id,
-                    "course_id": course_id,
-                },
-            )
-
-        return word_id
-
-    # 🆕 Create new word
     result = execute(
         """
         INSERT INTO spelling_words (
@@ -82,7 +49,8 @@ def get_or_create_word(
             pattern_code,
             level,
             lesson_name,
-            example_sentence
+            example_sentence,
+            hint
         )
         VALUES (
             :word,
@@ -91,8 +59,19 @@ def get_or_create_word(
             :pattern_code,
             :level,
             :lesson_name,
-            :example_sentence
+            :example_sentence,
+            :hint
         )
+        ON CONFLICT (word, course_id)
+        DO UPDATE SET
+            example_sentence = COALESCE(
+                NULLIF(TRIM(EXCLUDED.example_sentence), ''),
+                spelling_words.example_sentence
+            ),
+            hint = COALESCE(
+                NULLIF(TRIM(EXCLUDED.hint), ''),
+                spelling_words.hint
+            )
         RETURNING word_id
         """,
         {
@@ -103,6 +82,7 @@ def get_or_create_word(
             "level": level,
             "lesson_name": lesson_name,
             "example_sentence": normalized_example,
+            "hint": normalized_hint,
         },
     )
 
@@ -214,6 +194,8 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         example_sentence_raw = row.get("example") or row.get("example_sentence")
         example_sentence = str(example_sentence_raw).strip() if example_sentence_raw else None
 
+        hint = str(row.get("hint", "")).strip()
+
         # 1) LESSON (cached)
         if lesson_name not in lesson_cache:
             lesson_info = get_or_create_lesson(
@@ -238,6 +220,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             level=level,
             lesson_name=lesson_name,
             example_sentence=example_sentence,
+            hint=hint,
             course_id=course_id
         )
         if not word_id:

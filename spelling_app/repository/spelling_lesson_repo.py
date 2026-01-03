@@ -266,7 +266,8 @@ def get_daily5_words_for_student(db, user_id, limit=5):
                    w.word,
                    w.pattern,
                    w.pattern_code,
-                   w.example_sentence
+                   w.example_sentence,
+                   w.hint
             FROM spelling_words w
             JOIN spelling_enrollments e
               ON w.course_id = e.course_id
@@ -304,7 +305,8 @@ def get_weak_words_for_lesson(db, user_id, lesson_id):
             w.word,
             w.pattern,
             w.pattern_code,
-            w.example_sentence
+            w.example_sentence,
+            w.hint
         FROM spelling_attempts a
         JOIN spelling_words w
             ON a.word_id = w.word_id
