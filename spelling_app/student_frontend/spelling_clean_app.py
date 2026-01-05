@@ -35,6 +35,7 @@ from spelling_app.repository.spelling_lesson_repo import (
     get_daily5_words_for_student,
     get_weak_words_for_lesson,
 )
+from spelling_app.repository import student_repo
 from spelling_app.repository.student_repo import (
     get_resume_index_for_lesson,
     get_words_by_ids,
@@ -418,10 +419,19 @@ def get_student_courses(user_id: int):
 
 
 def get_lessons_for_course(course_id, user_id=None):
+    lesson_catalogue = student_repo.get_lesson_catalogue()
+    word_counts = {
+        entry.get("lesson_id"): entry.get("word_count", 0)
+        for entry in lesson_catalogue
+    }
+
     lessons = repo_get_lessons_for_course(course_id) or []
     lessons = [dict(l) for l in lessons]
 
     for lesson_data in lessons:
+        lesson_id = lesson_data.get("lesson_id")
+        lesson_data["word_count"] = word_counts.get(lesson_id, 0)
+
         if user_id is not None:
             mastery = get_lesson_mastery(
                 user_id=user_id,
