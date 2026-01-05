@@ -13,8 +13,10 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from spelling_app.repository.spelling_lesson_repo import (
-    get_lesson_by_name_and_course,
-    get_or_create_lesson as repo_get_or_create_lesson,
+    _get_next_sort_order,
+    create_spelling_lesson,
+    get_lesson_by_code,
+    get_lesson_by_name,
 )
 from spellings_admin_clean.word_manager_clean import (
     get_or_create_word,
@@ -55,31 +57,33 @@ def _safe_int(value):
         return None
 
 
-def _get_or_create_lesson(course_id: int, lesson_name: str):
-    existing = get_lesson_by_name_and_course(
-        lesson_name=lesson_name,
+def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | None = None):
+    lesson_key = lesson_name
+    row = {"lesson_code": lesson_code}
+
+    lesson_code_raw = row.get("lesson_code")
+    lesson_code = str(lesson_code_raw).strip() if lesson_code_raw else None
+
+    if lesson_code:
+        lesson = get_lesson_by_code(course_id, lesson_code)
+    else:
+        lesson = get_lesson_by_name(course_id, lesson_key)
+
+    if lesson:
+        return lesson, False
+
+    sort_order = _get_next_sort_order(course_id)
+    created_lesson = create_spelling_lesson(
         course_id=course_id,
+        lesson_name=lesson_key,
+        lesson_code=lesson_code,
+        sort_order=sort_order,
     )
 
-    if existing and isinstance(existing, dict):
-        return (
-            {
-                "lesson_id": existing.get("lesson_id"),
-                "course_id": existing.get("course_id"),
-                "lesson_name": existing.get("lesson_name"),
-            },
-            False,
-        )
+    if created_lesson:
+        return created_lesson, True
 
-    lesson_id = repo_get_or_create_lesson(
-        course_id=course_id,
-        lesson_name=lesson_name,
-    )
-
-    if lesson_id:
-        return ({"lesson_id": lesson_id, "course_id": course_id, "lesson_name": lesson_name}, True)
-
-    return ({"lesson_id": None, "course_id": course_id, "lesson_name": lesson_name}, False)
+    return {"lesson_id": None, "course_id": course_id, "lesson_name": lesson_key}, True
 
 
 def _read_csv_with_encoding_fallback(uploaded_file, **read_kwargs) -> pd.DataFrame:
@@ -144,6 +148,11 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         if lesson_name_str.lower() in ("", "nan", "none"):
             lesson_name_str = ""
 
+        lesson_code_raw = row.get("lesson_code")
+        lesson_code_str = str(lesson_code_raw).strip() if lesson_code_raw is not None else ""
+        if lesson_code_str.lower() in ("", "nan", "none"):
+            lesson_code_str = ""
+
         pattern_code_raw = row.get("pattern_code")
         pattern_code_str = str(pattern_code_raw).strip() if pattern_code_raw is not None else ""
         if pattern_code_str.lower() in ("", "nan", "none"):
@@ -152,15 +161,18 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
 
         lesson_key = lesson_name_str or pattern_code_str or "Uncategorized"
 
-        if lesson_key in lesson_cache:
-            lesson_info = lesson_cache[lesson_key]
+        cache_key = lesson_code_str or lesson_key
+
+        if cache_key in lesson_cache:
+            lesson_info = lesson_cache[cache_key]
             lesson_created = False
         else:
             lesson_info, lesson_created = _get_or_create_lesson(
                 course_id=course_id,
                 lesson_name=lesson_key,
+                lesson_code=lesson_code_str,
             )
-            lesson_cache[lesson_key] = lesson_info
+            lesson_cache[cache_key] = lesson_info
 
         lesson_id = lesson_info.get("lesson_id")
         if lesson_created:
