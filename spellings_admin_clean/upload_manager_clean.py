@@ -31,10 +31,12 @@ REQUIRED_COLUMNS = [
 
 
 def _normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
-    df.columns = [
-        str(c).strip().replace("\ufeff", "").lower()
-        for c in df.columns
-    ]
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace("\ufeff", "", regex=False)
+    )
     return df
 
 
@@ -72,13 +74,22 @@ def _get_or_create_lesson(course_id: int, lesson_name: str):
     return ({"lesson_id": None, "course_id": course_id, "lesson_name": lesson_name}, False)
 
 
+def _read_csv_with_encoding_fallback(uploaded_file, **read_kwargs) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(uploaded_file, encoding="utf-8", **read_kwargs)
+    except UnicodeDecodeError:
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, encoding="latin-1", **read_kwargs)
+
+    return _normalize_headers(df)
+
+
 def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
     try:
-        df_head = pd.read_csv(uploaded_file, nrows=0)
+        df_head = _read_csv_with_encoding_fallback(uploaded_file, nrows=0)
     except Exception as exc:
         return False, f"Could not read CSV: {exc}"
 
-    df_head = _normalize_headers(df_head)
     cols = list(df_head.columns)
 
     missing = [c for c in REQUIRED_COLUMNS if c not in cols]
@@ -102,11 +113,9 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
 
     # 2. Process CSV with pattern-based lessons
     try:
-        df = pd.read_csv(io.BytesIO(raw_bytes))
+        df = _read_csv_with_encoding_fallback(io.BytesIO(raw_bytes))
     except Exception as exc:
         return {"status": "error", "error": f"Could not read CSV: {exc}"}
-
-    df = _normalize_headers(df)
 
     words_added = 0
     lessons_created = 0
