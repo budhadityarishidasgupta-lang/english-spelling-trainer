@@ -268,6 +268,18 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
 # ---------------------------------------------------------
 # LESSONS
 # ---------------------------------------------------------
+def get_lesson_word_count(lesson_id: int) -> int:
+    row = fetch_all(
+        """
+        SELECT COUNT(*) AS cnt
+        FROM spelling_lesson_words
+        WHERE lesson_id = :lesson_id
+        """,
+        {"lesson_id": lesson_id},
+    )
+    return row[0]["cnt"] if row else 0
+
+
 def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     """
     AUTHORITATIVE lesson fetch.
@@ -292,7 +304,14 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     )
 
     with engine.connect() as conn:
-        return conn.execute(sql, {"course_id": course_id}).mappings().all()
+        lessons = conn.execute(sql, {"course_id": course_id}).mappings().all()
+
+    lessons_dict = [dict(lesson) for lesson in lessons]
+
+    for lesson in lessons_dict:
+        lesson["word_count"] = get_lesson_word_count(lesson["lesson_id"])
+
+    return lessons_dict
 
 
 def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
