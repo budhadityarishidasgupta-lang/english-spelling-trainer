@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from shared.db import engine, execute, fetch_all
+from shared.db import engine, execute, fetch_all, fetch_one
 
 
 def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
@@ -269,7 +269,16 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
 # LESSONS
 # ---------------------------------------------------------
 def get_lesson_word_count(lesson_id: int) -> int:
-    row = fetch_all(
+    """
+    Return number of words mapped to a lesson.
+
+    IMPORTANT:
+    - Must be content-based (spelling_lesson_words only)
+    - Must be safe for SQLAlchemy Row / tuple / dict
+    - Must work for BOTH Word Mastery and Pattern Words courses
+    """
+
+    row = fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM spelling_lesson_words
@@ -277,7 +286,23 @@ def get_lesson_word_count(lesson_id: int) -> int:
         """,
         {"lesson_id": lesson_id},
     )
-    return row[0]["cnt"] if row else 0
+
+    if row is None:
+        return 0
+
+    # SQLAlchemy Row
+    if hasattr(row, "_mapping"):
+        return int(row._mapping.get("cnt", 0) or 0)
+
+    # Dict fallback
+    if isinstance(row, dict):
+        return int(row.get("cnt", 0) or 0)
+
+    # Tuple fallback (COUNT(*) is first column)
+    if isinstance(row, tuple) and row:
+        return int(row[0] or 0)
+
+    return 0
 
 
 def get_lesson_catalogue() -> List[Dict[str, Any]]:
