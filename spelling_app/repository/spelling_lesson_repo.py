@@ -100,6 +100,29 @@ def create_lesson(lesson_name: str, course_id: int):
         return None
 
 
+def create_spelling_lesson(course_id: int, lesson_name: str, lesson_code: str | None, sort_order: int):
+    """Create a new spelling lesson with explicit sort order and optional code."""
+    rows = fetch_all(
+        """
+        INSERT INTO spelling_lessons (course_id, lesson_name, lesson_code, sort_order)
+        VALUES (:course_id, :lesson_name, :lesson_code, :sort_order)
+        RETURNING lesson_id, course_id, lesson_name, lesson_code;
+        """,
+        {
+            "course_id": course_id,
+            "lesson_name": lesson_name,
+            "lesson_code": lesson_code,
+            "sort_order": sort_order,
+        },
+    )
+
+    rows = _to_list(rows)
+    if not rows:
+        return None
+
+    return _to_dict(rows[0])
+
+
 def get_or_create_lesson(course_id: int, lesson_name: str):
     """Return an existing lesson_id or create a new lesson for the course."""
     rows = fetch_all(
@@ -344,3 +367,76 @@ def get_lesson_word_counts(db, course_id: int) -> dict[int, int]:
     """
     result = db.execute(text(query), {"course_id": course_id}).fetchall()
     return {row.lesson_id: row.word_count for row in result}
+# ============================================================
+# LESSON LOOKUP (CODE-FIRST)
+# ============================================================
+
+def get_lesson_by_code(course_id: int, lesson_code: str):
+    """Fetch a lesson by lesson_code within a course."""
+    rows = fetch_all(
+        """
+        SELECT
+            lesson_id,
+            lesson_name,
+            lesson_code,
+            course_id
+        FROM spelling_lessons
+        WHERE course_id = :course_id
+          AND LOWER(lesson_code) = LOWER(:lesson_code)
+        LIMIT 1;
+        """,
+        {"course_id": course_id, "lesson_code": lesson_code},
+    )
+
+    rows = _to_list(rows)
+    if not rows:
+        return None
+
+    return _to_dict(rows[0])
+
+
+def get_lesson_by_name(course_id: int, lesson_name: str):
+    """Fetch a lesson by lesson_name within a course."""
+    rows = fetch_all(
+        """
+        SELECT
+            lesson_id,
+            lesson_name,
+            lesson_code,
+            course_id
+        FROM spelling_lessons
+        WHERE course_id = :course_id
+          AND LOWER(lesson_name) = LOWER(:lesson_name)
+        LIMIT 1;
+        """,
+        {"course_id": course_id, "lesson_name": lesson_name},
+    )
+
+    rows = _to_list(rows)
+    if not rows:
+        return None
+
+    return _to_dict(rows[0])
+
+
+def _get_next_sort_order(course_id: int) -> int:
+    """Get the next sort order for a new lesson within the course."""
+    rows = fetch_all(
+        """
+        SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort
+        FROM spelling_lessons
+        WHERE course_id = :course_id;
+        """,
+        {"course_id": course_id},
+    )
+
+    rows = _to_list(rows)
+    if not rows:
+        return 1
+
+    row = _to_dict(rows[0])
+    return row.get("next_sort") or 1
+
+
+# ============================================================
+# LESSON LOOKUP
