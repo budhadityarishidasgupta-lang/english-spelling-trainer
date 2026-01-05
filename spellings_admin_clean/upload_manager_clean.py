@@ -42,7 +42,15 @@ def _normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 def _safe_int(value):
     try:
-        return int(value)
+        if value is None:
+            return None
+        s = str(value).strip()
+        if s.lower() in ("", "nan", "none"):
+            return None
+        # Handle "L1", "L2" style values
+        if len(s) > 1 and s[0].lower() == "l" and s[1:].isdigit():
+            return int(s[1:])
+        return int(s)
     except (TypeError, ValueError):
         return None
 
@@ -131,11 +139,18 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         pattern = str(pattern_raw).strip() if pattern_raw is not None else None
         pattern = pattern or None
 
-        pattern_code_raw = row.get("pattern_code", "")
-        pattern_code_str = str(pattern_code_raw).strip()
+        lesson_name_raw = row.get("lesson_name")
+        lesson_name_str = str(lesson_name_raw).strip() if lesson_name_raw is not None else ""
+        if lesson_name_str.lower() in ("", "nan", "none"):
+            lesson_name_str = ""
+
+        pattern_code_raw = row.get("pattern_code")
+        pattern_code_str = str(pattern_code_raw).strip() if pattern_code_raw is not None else ""
+        if pattern_code_str.lower() in ("", "nan", "none"):
+            pattern_code_str = ""
         pattern_code_value = _safe_int(pattern_code_raw)
 
-        lesson_key = pattern_code_str or "Uncategorized"
+        lesson_key = lesson_name_str or pattern_code_str or "Uncategorized"
 
         if lesson_key in lesson_cache:
             lesson_info = lesson_cache[lesson_key]
@@ -155,7 +170,8 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
             print(f"[WARN] Lesson creation failed for '{lesson_key}'. Skipping row.")
             continue
 
-        level = _safe_int(row.get("difficulty") or row.get("level"))
+        level_raw = row.get("level") if row.get("level") is not None else row.get("difficulty")
+        level = _safe_int(level_raw)
 
         example_sentence_raw = row.get("example") or row.get("example_sentence")
         example_sentence = str(example_sentence_raw).strip() if example_sentence_raw is not None else None
