@@ -1,5 +1,6 @@
 import pandas as pd
 from shared.db import execute
+from shared.db import safe_row
 from spelling_app.repository.spelling_lesson_repo import (
     get_lesson_by_name_and_course,
     get_or_create_lesson as repo_get_or_create_lesson,
@@ -54,7 +55,7 @@ def get_or_create_word(
         return None
 
     if isinstance(existing, list) and existing:
-        row = getattr(existing[0], "_mapping", existing[0])
+        row = safe_row(existing[0])
         return row.get("word_id")
 
     # 2) INSERT new word
@@ -102,7 +103,7 @@ def get_or_create_word(
         return None
 
     if isinstance(inserted, list) and inserted:
-        row = getattr(inserted[0], "_mapping", inserted[0])
+        row = safe_row(inserted[0])
         return row.get("word_id")
 
     return None
