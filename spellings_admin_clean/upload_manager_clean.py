@@ -191,6 +191,7 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         hint = str(row.get("hint", "")).strip()
 
         word_id = get_or_create_word(
+            course_id=course_id,  # FORCE admin-selected course
             word=word,
             pattern=pattern,
             pattern_code=pattern_code_value,
@@ -198,7 +199,6 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
             lesson_name=lesson_key,
             example_sentence=example_sentence,
             hint=hint,
-            course_id=course_id,
         )
 
         if not word_id:
