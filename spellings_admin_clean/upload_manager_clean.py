@@ -113,4 +113,14 @@ def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
 
 
 def process_spelling_csv(uploaded_file, course_id: int) -> dict:
-    return process_uploaded_csv(uploaded_file, course_id)
+    from spellings_admin_clean.word_manager_clean import process_uploaded_csv
+
+    result = process_uploaded_csv(uploaded_file, course_id)
+
+    # Enforce UI return contract
+    return {
+        "status": result.get("status", "success"),
+        "words_added": result.get("words_added", 0),
+        "lessons_created": result.get("lessons_created", 0),
+        "patterns": result.get("patterns", []),
+    }
