@@ -31,10 +31,11 @@ def get_or_create_word(
     course_id: int,
     example_sentence: str | None = None,
     hint: str | None = None,
+    return_created: bool = False,
 ):
     w = (word or "").strip()
     if not w:
-        return None
+        return (None, False) if return_created else None
 
     example_sentence = example_sentence.strip() if example_sentence else None
     hint = hint.strip() if hint else None
@@ -52,11 +53,12 @@ def get_or_create_word(
 
     if isinstance(existing, dict) and existing.get("error"):
         print(f"[DB-ERROR] SELECT spelling_words failed: {existing.get('error')}")
-        return None
+        return (None, False) if return_created else None
 
     if isinstance(existing, list) and existing:
         row = safe_row(existing[0])
-        return row.get("word_id")
+        word_id = row.get("word_id")
+        return (word_id, False) if return_created else word_id
 
     # 2) INSERT new word
     inserted = execute(
@@ -100,13 +102,14 @@ def get_or_create_word(
             f"[DB-ERROR] INSERT spelling_words failed "
             f"(word='{w}', course_id={course_id}): {inserted.get('error')}"
         )
-        return None
+        return (None, False) if return_created else None
 
     if isinstance(inserted, list) and inserted:
         row = safe_row(inserted[0])
-        return row.get("word_id")
+        word_id = row.get("word_id")
+        return (word_id, True) if return_created else word_id
 
-    return None
+    return (None, False) if return_created else None
 
 
 # ---------------------------
@@ -187,6 +190,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     words_added = 0
+    mappings_added = 0
     lessons_created = 0
     lessons_set = set()
     patterns_set = set()
@@ -231,7 +235,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             continue
 
         # 2) WORD
-        word_id = get_or_create_word(
+        word_id, created = get_or_create_word(
             word=word,
             pattern=pattern,
             pattern_code=pattern_code,
@@ -239,7 +243,8 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             lesson_name=lesson_name,
             example_sentence=example_sentence,
             hint=hint,
-            course_id=course_id
+            course_id=course_id,
+            return_created=True,
         )
         if not word_id:
             print(f"[WARN] Word creation failed for '{word}'.")
@@ -247,15 +252,18 @@ def process_uploaded_csv(uploaded_file, course_id: int):
 
         # 3) LINK WORD → LESSON
         link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
+        mappings_added += 1
 
         if pattern:
             patterns_set.add(pattern)
-        words_added += 1
+        if created:
+            words_added += 1
 
     return {
         "status": "success",
         "words_added": words_added,
         "lessons_created": lessons_created,
+        "mappings_added": mappings_added,
         "patterns": sorted(patterns_set),
     }
 
