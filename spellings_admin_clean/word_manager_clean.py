@@ -86,10 +86,18 @@ def get_or_create_word(
         },
     )
 
-    if isinstance(result, list) and result:
-        first_row = getattr(result[0], "_mapping", result[0])
-        return first_row.get("word_id")
+    # Handle INSERT ... RETURNING result
+    if isinstance(result, list) and len(result) > 0:
+        row = result[0]
+        # SQLAlchemy Row or tuple-safe extraction
+        if hasattr(row, "_mapping"):
+            return row._mapping.get("word_id")
+        try:
+            return row["word_id"]
+        except Exception:
+            return None
 
+    # Backward compatibility
     if isinstance(result, dict):
         return result.get("word_id")
 
