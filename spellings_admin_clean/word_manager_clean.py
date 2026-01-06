@@ -44,10 +44,9 @@ def get_or_create_word(
         SELECT word_id
         FROM spelling_words
         WHERE LOWER(word) = LOWER(:word)
-          AND course_id = :course_id
         LIMIT 1
         """,
-        {"word": w, "course_id": course_id},
+        {"word": w},
     )
 
     if isinstance(existing, dict) and existing.get("error"):
