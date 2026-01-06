@@ -131,6 +131,8 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
 
     words_added = 0
     lessons_created = 0
+    word_failures = 0
+    first_word_failure = None
     patterns_set = set()
     lesson_cache: dict[str, dict] = {}
 
@@ -202,7 +204,10 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         )
 
         if not word_id:
-            print(f"[WARN] Word creation failed for '{word}'.")
+            word_failures += 1
+            if first_word_failure is None:
+                first_word_failure = f"Word insert failed for '{word}'. Check Render logs for [DB-ERROR]."
+            print(f"[WARN] Word insert failed: {word}")
             continue
 
         link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
@@ -215,5 +220,7 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         "status": "success",
         "words_added": words_added,
         "lessons_created": lessons_created,
+        "word_failures": word_failures,
+        "first_word_failure": first_word_failure,
         "patterns": sorted(patterns_set),
     }
