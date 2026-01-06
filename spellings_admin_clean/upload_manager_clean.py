@@ -6,6 +6,7 @@
 import sys
 import io
 import pandas as pd
+from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
 # ---- Force project root for Render ----
 PROJECT_ROOT = "/opt/render/project/src"
@@ -112,115 +113,4 @@ def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
 
 
 def process_spelling_csv(uploaded_file, course_id: int) -> dict:
-    """
-    SINGLE ENTRYPOINT for admin CSV uploads.
-    """
-
-    raw_bytes = uploaded_file.getvalue()
-
-    # 1. Validate headers
-    ok, err = validate_csv_columns(io.BytesIO(raw_bytes))
-    if not ok:
-        return {"status": "error", "error": err}
-
-    # 2. Process CSV with pattern-based lessons
-    try:
-        df = _read_csv_with_encoding_fallback(io.BytesIO(raw_bytes))
-    except Exception as exc:
-        return {"status": "error", "error": f"Could not read CSV: {exc}"}
-
-    words_added = 0
-    lessons_created = 0
-    word_failures = 0
-    first_word_failure = None
-    patterns_set = set()
-    lesson_cache: dict[str, dict] = {}
-
-    for _, row in df.iterrows():
-        word = str(row.get("word", "")).strip()
-        if not word:
-            continue
-
-        pattern_raw = row.get("pattern")
-        pattern = str(pattern_raw).strip() if pattern_raw is not None else None
-        pattern = pattern or None
-
-        lesson_name_raw = row.get("lesson_name")
-        lesson_name_str = str(lesson_name_raw).strip() if lesson_name_raw is not None else ""
-        if lesson_name_str.lower() in ("", "nan", "none"):
-            lesson_name_str = ""
-
-        lesson_code_raw = row.get("lesson_code")
-        lesson_code_str = str(lesson_code_raw).strip() if lesson_code_raw is not None else ""
-        if lesson_code_str.lower() in ("", "nan", "none"):
-            lesson_code_str = ""
-
-        pattern_code_raw = row.get("pattern_code")
-        pattern_code_str = str(pattern_code_raw).strip() if pattern_code_raw is not None else ""
-        if pattern_code_str.lower() in ("", "nan", "none"):
-            pattern_code_str = ""
-        pattern_code_value = _safe_int(pattern_code_raw)
-
-        lesson_key = lesson_name_str or pattern_code_str or "Uncategorized"
-
-        cache_key = lesson_code_str or lesson_key
-
-        if cache_key in lesson_cache:
-            lesson = lesson_cache[cache_key]
-            lesson_created = False
-        else:
-            lesson, lesson_created = _get_or_create_lesson(
-                course_id=course_id,
-                lesson_name=lesson_key,
-                lesson_code=lesson_code_str,
-            )
-            lesson_cache[cache_key] = lesson
-
-        lesson_id = lesson.get("lesson_id")
-        if lesson_created:
-            lessons_created += 1
-
-        if not lesson_id:
-            print(f"[WARN] Lesson creation failed for '{lesson_key}'. Skipping row.")
-            continue
-
-        level_raw = row.get("level") if row.get("level") is not None else row.get("difficulty")
-        level = _safe_int(level_raw)
-
-        example_sentence_raw = row.get("example") or row.get("example_sentence")
-        example_sentence = str(example_sentence_raw).strip() if example_sentence_raw is not None else None
-
-        hint = str(row.get("hint", "")).strip()
-
-        word_id = get_or_create_word(
-            course_id=course_id,  # FORCE admin-selected course
-            word=word,
-            pattern=pattern,
-            pattern_code=pattern_code_value,
-            level=level,
-            lesson_name=lesson_key,
-            example_sentence=example_sentence,
-            hint=hint,
-        )
-
-        if not word_id:
-            word_failures += 1
-            if first_word_failure is None:
-                first_word_failure = f"Word insert failed for '{word}'. Check Render logs for [DB-ERROR]."
-            print(f"[WARN] Word insert failed: {word}")
-            continue
-
-        link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-
-        if pattern:
-            patterns_set.add(pattern)
-        words_added += 1
-
-    return {
-        "status": "success",
-        "words_added": words_added,
-        "lessons_created": lessons_created,
-        "word_failures": word_failures,
-        "first_word_failure": first_word_failure,
-        "patterns": sorted(patterns_set),
-    }
+    return process_uploaded_csv(uploaded_file, course_id)
