@@ -31,73 +31,35 @@ def get_or_create_word(
     example_sentence: str | None = None,
     hint: str | None = None,
 ):
-    """
-    Creates a word if it doesn't exist.
-    If it exists and example_sentence is missing, backfills it.
-    Always returns an integer word_id.
-    """
+    w = (word or "").strip()
+    if not w:
+        return None
 
-    normalized_example = example_sentence.strip() if example_sentence else None
-    normalized_hint = hint.strip() if hint else None
+    example_sentence = example_sentence.strip() if example_sentence else None
+    hint = hint.strip() if hint else None
 
-    # --------------------------------------------
-    # 1) Select-first (avoid ON CONFLICT dependency)
-    # --------------------------------------------
+    # 1) SELECT existing word
     existing = execute(
         """
-        SELECT word_id, example_sentence, hint
+        SELECT word_id
         FROM spelling_words
-        WHERE word = :word AND course_id = :course_id
+        WHERE LOWER(word) = LOWER(:word)
+          AND course_id = :course_id
         LIMIT 1
         """,
-        {"word": word.strip(), "course_id": course_id},
+        {"word": w, "course_id": course_id},
     )
 
-    def _extract_word_id(rows):
-        if not rows:
-            return None
-        r = rows[0]
-        if hasattr(r, "_mapping"):
-            return r._mapping.get("word_id")
-        if isinstance(r, dict):
-            return r.get("word_id")
-        try:
-            return r[0]
-        except Exception:
-            return None
+    if isinstance(existing, dict) and existing.get("error"):
+        print(f"[DB-ERROR] SELECT spelling_words failed: {existing.get('error')}")
+        return None
 
-    existing_word_id = _extract_word_id(existing if isinstance(existing, list) else [])
-    if existing_word_id:
-        # Optional backfill: only fill if incoming has value and DB is empty
-        upd = execute(
-            """
-            UPDATE spelling_words
-            SET
-              example_sentence = COALESCE(
-                NULLIF(TRIM(:example_sentence), ''),
-                example_sentence
-              ),
-              hint = COALESCE(
-                NULLIF(TRIM(:hint), ''),
-                hint
-              )
-            WHERE word_id = :word_id
-            """,
-            {
-                "word_id": existing_word_id,
-                "example_sentence": normalized_example,
-                "hint": normalized_hint,
-            },
-        )
-        # If update returns error dict, log it but still return the existing ID
-        if isinstance(upd, dict) and upd.get("error"):
-            print(f"[DB-ERROR] update spelling_words word_id={existing_word_id}: {upd.get('error')}")
-        return existing_word_id
+    if isinstance(existing, list) and existing:
+        row = getattr(existing[0], "_mapping", existing[0])
+        return row.get("word_id")
 
-    # -----------------------
-    # 2) Insert new word row
-    # -----------------------
-    insert_result = execute(
+    # 2) INSERT new word
+    inserted = execute(
         """
         INSERT INTO spelling_words (
             word,
@@ -122,25 +84,29 @@ def get_or_create_word(
         RETURNING word_id
         """,
         {
-            "word": word.strip(),
+            "word": w,
             "course_id": course_id,
-            "pattern": (pattern.strip() if isinstance(pattern, str) and pattern.strip() else None),
+            "pattern": pattern,
             "pattern_code": pattern_code,
             "level": level,
             "lesson_name": lesson_name,
-            "example_sentence": normalized_example,
-            "hint": normalized_hint,
+            "example_sentence": example_sentence,
+            "hint": hint,
         },
     )
 
-    # If DB error, log it explicitly (prevents silent 0-words uploads)
-    if isinstance(insert_result, dict) and insert_result.get("error"):
-        print(f"[DB-ERROR] insert spelling_words word='{word}' course_id={course_id}: {insert_result.get('error')}")
+    if isinstance(inserted, dict) and inserted.get("error"):
+        print(
+            f"[DB-ERROR] INSERT spelling_words failed "
+            f"(word='{w}', course_id={course_id}): {inserted.get('error')}"
+        )
         return None
 
-    # Extract word_id from SQLAlchemy rows safely
-    new_id = _extract_word_id(insert_result if isinstance(insert_result, list) else [])
-    return new_id
+    if isinstance(inserted, list) and inserted:
+        row = getattr(inserted[0], "_mapping", inserted[0])
+        return row.get("word_id")
+
+    return None
 
 
 # ---------------------------
