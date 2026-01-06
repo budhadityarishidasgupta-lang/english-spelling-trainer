@@ -40,7 +40,64 @@ def get_or_create_word(
     normalized_example = example_sentence.strip() if example_sentence else None
     normalized_hint = hint.strip() if hint else None
 
-    result = execute(
+    # --------------------------------------------
+    # 1) Select-first (avoid ON CONFLICT dependency)
+    # --------------------------------------------
+    existing = execute(
+        """
+        SELECT word_id, example_sentence, hint
+        FROM spelling_words
+        WHERE word = :word AND course_id = :course_id
+        LIMIT 1
+        """,
+        {"word": word.strip(), "course_id": course_id},
+    )
+
+    def _extract_word_id(rows):
+        if not rows:
+            return None
+        r = rows[0]
+        if hasattr(r, "_mapping"):
+            return r._mapping.get("word_id")
+        if isinstance(r, dict):
+            return r.get("word_id")
+        try:
+            return r[0]
+        except Exception:
+            return None
+
+    existing_word_id = _extract_word_id(existing if isinstance(existing, list) else [])
+    if existing_word_id:
+        # Optional backfill: only fill if incoming has value and DB is empty
+        upd = execute(
+            """
+            UPDATE spelling_words
+            SET
+              example_sentence = COALESCE(
+                NULLIF(TRIM(:example_sentence), ''),
+                example_sentence
+              ),
+              hint = COALESCE(
+                NULLIF(TRIM(:hint), ''),
+                hint
+              )
+            WHERE word_id = :word_id
+            """,
+            {
+                "word_id": existing_word_id,
+                "example_sentence": normalized_example,
+                "hint": normalized_hint,
+            },
+        )
+        # If update returns error dict, log it but still return the existing ID
+        if isinstance(upd, dict) and upd.get("error"):
+            print(f"[DB-ERROR] update spelling_words word_id={existing_word_id}: {upd.get('error')}")
+        return existing_word_id
+
+    # -----------------------
+    # 2) Insert new word row
+    # -----------------------
+    insert_result = execute(
         """
         INSERT INTO spelling_words (
             word,
@@ -62,22 +119,12 @@ def get_or_create_word(
             :example_sentence,
             :hint
         )
-        ON CONFLICT (word, course_id)
-        DO UPDATE SET
-            example_sentence = COALESCE(
-                NULLIF(TRIM(EXCLUDED.example_sentence), ''),
-                spelling_words.example_sentence
-            ),
-            hint = COALESCE(
-                NULLIF(TRIM(EXCLUDED.hint), ''),
-                spelling_words.hint
-            )
         RETURNING word_id
         """,
         {
             "word": word.strip(),
             "course_id": course_id,
-            "pattern": pattern,
+            "pattern": (pattern.strip() if isinstance(pattern, str) and pattern.strip() else None),
             "pattern_code": pattern_code,
             "level": level,
             "lesson_name": lesson_name,
@@ -86,22 +133,14 @@ def get_or_create_word(
         },
     )
 
-    # Handle INSERT ... RETURNING result
-    if isinstance(result, list) and len(result) > 0:
-        row = result[0]
-        # SQLAlchemy Row or tuple-safe extraction
-        if hasattr(row, "_mapping"):
-            return row._mapping.get("word_id")
-        try:
-            return row["word_id"]
-        except Exception:
-            return None
+    # If DB error, log it explicitly (prevents silent 0-words uploads)
+    if isinstance(insert_result, dict) and insert_result.get("error"):
+        print(f"[DB-ERROR] insert spelling_words word='{word}' course_id={course_id}: {insert_result.get('error')}")
+        return None
 
-    # Backward compatibility
-    if isinstance(result, dict):
-        return result.get("word_id")
-
-    return None
+    # Extract word_id from SQLAlchemy rows safely
+    new_id = _extract_word_id(insert_result if isinstance(insert_result, list) else [])
+    return new_id
 
 
 # ---------------------------
