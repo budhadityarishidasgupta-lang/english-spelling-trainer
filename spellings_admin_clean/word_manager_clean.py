@@ -187,6 +187,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     words_added = 0
+    lessons_created = 0
     lessons_set = set()
     patterns_set = set()
 
@@ -221,6 +222,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             lesson_id = lesson_info.get("lesson_id")
             lesson_cache[lesson_name] = lesson_id
             lessons_set.add(lesson_name)
+            lessons_created += 1
         else:
             lesson_id = lesson_cache[lesson_name]
 
@@ -251,10 +253,10 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         words_added += 1
 
     return {
-        "words_added": words_added,
-        "lessons_created": len(lessons_set),
-        "patterns": sorted(patterns_set),
         "status": "success",
+        "words_added": words_added,
+        "lessons_created": lessons_created,
+        "patterns": sorted(patterns_set),
     }
 
 
