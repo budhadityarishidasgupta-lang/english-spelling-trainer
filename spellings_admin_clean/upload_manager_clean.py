@@ -164,17 +164,17 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
         cache_key = lesson_code_str or lesson_key
 
         if cache_key in lesson_cache:
-            lesson_info = lesson_cache[cache_key]
+            lesson = lesson_cache[cache_key]
             lesson_created = False
         else:
-            lesson_info, lesson_created = _get_or_create_lesson(
+            lesson, lesson_created = _get_or_create_lesson(
                 course_id=course_id,
                 lesson_name=lesson_key,
                 lesson_code=lesson_code_str,
             )
-            lesson_cache[cache_key] = lesson_info
+            lesson_cache[cache_key] = lesson
 
-        lesson_id = lesson_info.get("lesson_id")
+        lesson_id = lesson.get("lesson_id")
         if lesson_created:
             lessons_created += 1
 
