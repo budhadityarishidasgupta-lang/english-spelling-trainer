@@ -180,23 +180,24 @@ def execute(query: str, params=None):
 
     Guaranteed to NEVER return a Result object.
     """
+    params = params or {}
+
     try:
         with engine.begin() as conn:
-            result = conn.execute(text(query), params or {})
+            result = conn.execute(text(query), params)
 
-            # SELECT → always rows
-            if query.strip().upper().startswith("SELECT"):
-                return result.fetchall()
+            sql_upper = query.strip().upper()
 
-            # INSERT/UPDATE/DELETE with RETURNING
-            if "RETURNING" in query.upper():
-                try:
-                    return result.fetchall()
-                except Exception:
-                    return []
+            # SELECT queries → return rows
+            if sql_upper.startswith("SELECT"):
+                return result.mappings().all()
 
-            # Non-returning write → simple dict
-            return {"rows_affected": result.rowcount}
+            # INSERT ... RETURNING → return rows
+            if "RETURNING" in sql_upper:
+                return result.mappings().all()
+
+            # UPDATE / DELETE → return affected row count
+            return result.rowcount
 
     except SQLAlchemyError as e:
         return {"error": str(e)}
