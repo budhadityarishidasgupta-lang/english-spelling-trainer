@@ -6,7 +6,6 @@
 import sys
 import io
 import pandas as pd
-from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
 # ---- Force project root for Render ----
 PROJECT_ROOT = "/opt/render/project/src"
@@ -119,7 +118,20 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
     assert course_id is not None, "course_id must be provided by Admin UI"
     print(f"[INGESTION] Using course_id={course_id}")
 
-    result = process_uploaded_csv(uploaded_file, course_id)
+    # Always work from a fresh in-memory buffer to avoid EOF / stream reuse bugs
+    raw_bytes = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
+
+    # Validate using fresh buffer
+    ok, err = validate_csv_columns(io.BytesIO(raw_bytes))
+    if not ok:
+        return {"status": "error", "error": err, "words_added": 0, "lessons_created": 0, "patterns": []}
+
+    # Process using fresh buffer (critical fix)
+    result = process_uploaded_csv(io.BytesIO(raw_bytes), course_id)
+
+    # If underlying returned an error, propagate it (don't mask as success)
+    if isinstance(result, dict) and result.get("error"):
+        return {"status": "error", "error": result["error"], "words_added": 0, "lessons_created": 0, "patterns": []}
 
     # Enforce UI return contract
     return {
