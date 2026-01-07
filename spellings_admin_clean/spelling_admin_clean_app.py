@@ -337,7 +337,6 @@ def render_course_management():
         if lessons_file is not None and st.button("Process Lessons CSV", key="process_lessons_csv"):
             df = _read_lesson_csv_with_encoding_fallback(lessons_file)
             required_columns = [
-                "lesson_code",
                 "lesson_name",
                 "course_id",
                 "description",
@@ -354,11 +353,6 @@ def render_course_management():
 
             for idx, row in df.iterrows():
                 row_num = idx + 1
-                lesson_code = str(row.get("lesson_code") or "").strip()
-                if not lesson_code:
-                    st.error(f"Row {row_num}: lesson_code is required.")
-                    st.stop()
-
                 course_id = _safe_int(row.get("course_id"))
                 if course_id is None:
                     st.error(f"Row {row_num}: course_id is required.")
@@ -375,7 +369,6 @@ def render_course_management():
 
                 lesson_id = upsert_lesson(
                     course_id=course_id,
-                    lesson_code=lesson_code,
                     lesson_name=lesson_name,
                     description=description,
                     difficulty=difficulty,

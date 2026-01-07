@@ -124,18 +124,16 @@ def _extract_lesson_id(row) -> int | None:
 
 def upsert_lesson(
     course_id: int,
-    lesson_code: str,
     lesson_name: str,
     description: str | None,
     difficulty: int | None,
 ) -> int:
     if course_id is None:
         raise ValueError("course_id is required")
-    if lesson_code is None or not str(lesson_code).strip():
-        raise ValueError("lesson_code is required")
 
-    lesson_code = str(lesson_code).strip()
     lesson_name = (lesson_name or "").strip()
+    if not lesson_name:
+        raise ValueError("lesson_name is required")
     description = description.strip() if isinstance(description, str) else description
 
     existing = fetch_all(
@@ -143,10 +141,10 @@ def upsert_lesson(
         SELECT lesson_id
         FROM spelling_lessons
         WHERE course_id = :course_id
-          AND lesson_code = :lesson_code
+          AND lesson_name = :lesson_name
         LIMIT 1;
         """,
-        {"course_id": course_id, "lesson_code": lesson_code},
+        {"course_id": course_id, "lesson_name": lesson_name},
     )
 
     if existing:
@@ -158,17 +156,17 @@ def upsert_lesson(
                 text(
                     """
                     UPDATE spelling_lessons
-                    SET lesson_name = :lesson_name,
-                        description = :description,
+                    SET description = :description,
                         difficulty = :difficulty
-                    WHERE lesson_id = :lesson_id
+                    WHERE course_id = :course_id
+                      AND lesson_name = :lesson_name
                     """
                 ),
                 {
                     "lesson_name": lesson_name,
                     "description": description,
                     "difficulty": difficulty,
-                    "lesson_id": lesson_id,
+                    "course_id": course_id,
                 },
             )
 
@@ -178,10 +176,10 @@ def upsert_lesson(
                     SELECT lesson_id
                     FROM spelling_lessons
                     WHERE course_id = :course_id
-                      AND lesson_code = :lesson_code
+                      AND lesson_name = :lesson_name
                     """
                 ),
-                {"course_id": course_id, "lesson_code": lesson_code},
+                {"course_id": course_id, "lesson_name": lesson_name},
             )
             lesson_id = _extract_lesson_id(result.fetchone())
     else:
@@ -191,14 +189,12 @@ def upsert_lesson(
                     """
                     INSERT INTO spelling_lessons (
                         course_id,
-                        lesson_code,
                         lesson_name,
                         description,
                         difficulty
                     )
                     VALUES (
                         :course_id,
-                        :lesson_code,
                         :lesson_name,
                         :description,
                         :difficulty
@@ -208,7 +204,6 @@ def upsert_lesson(
                 ),
                 {
                     "course_id": course_id,
-                    "lesson_code": lesson_code,
                     "lesson_name": lesson_name,
                     "description": description,
                     "difficulty": difficulty,
@@ -218,7 +213,7 @@ def upsert_lesson(
 
     if lesson_id is None:
         raise RuntimeError(
-            f"Lesson upsert failed for course_id={course_id}, lesson_code={lesson_code}"
+            f"Lesson upsert failed for course_id={course_id}, lesson_name={lesson_name}"
         )
 
     return lesson_id
