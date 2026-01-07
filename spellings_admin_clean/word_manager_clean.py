@@ -156,6 +156,20 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
     # Ensure core mapping exists for reporting / practice queries
     map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
 
+    existing = execute(
+        """
+        SELECT 1
+        FROM spelling_lesson_items
+        WHERE word_id = :word_id
+          AND lesson_id = :lesson_id
+        LIMIT 1;
+        """,
+        {"lesson_id": lesson_id, "word_id": word_id},
+    )
+    if isinstance(existing, list) and existing:
+        print(f"[LINK] word_id={word_id} → lesson_id={lesson_id} (already mapped)")
+        return
+
     execute(
         """
         INSERT INTO spelling_lesson_items (lesson_id, word_id, sort_order)
