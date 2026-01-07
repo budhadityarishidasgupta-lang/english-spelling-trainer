@@ -182,6 +182,8 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     Ensures student dashboard will show words for practice.
     """
     try:
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file)
     except Exception as exc:
         return {"error": f"Could not read CSV: {exc}"}
