@@ -153,16 +153,18 @@ def render_course_management():
     st.header("Course Management")
 
     courses = get_all_courses()
-    course_map = {c["course_name"]: c["course_id"] for c in courses}
+    course_options = {
+        f"{c['course_id']} — {c['course_name']}": c["course_id"] for c in courses
+    }
 
-    selected_course_name = None
+    selected_course_label = None
     selected_course_id = None
-    if course_map:
-        selected_course_name = st.selectbox(
+    if course_options:
+        selected_course_label = st.selectbox(
             "Existing Courses",
-            list(course_map.keys()),
+            list(course_options.keys()),
         )
-        selected_course_id = course_map.get(selected_course_name)
+        selected_course_id = course_options.get(selected_course_label)
     else:
         st.info("No courses yet.")
 
@@ -254,7 +256,11 @@ def render_course_management():
 
     if uploaded_file and selected_course_id:
         if st.button("Process CSV"):
-            result = process_spelling_csv(uploaded_file, selected_course_id)
+            st.info(f"Uploading into course_id={selected_course_id}")
+            result = process_spelling_csv(
+                uploaded_file,
+                course_id=selected_course_id,
+            )
 
             if result.get("status") == "error":
                 st.error(result.get("error"))
