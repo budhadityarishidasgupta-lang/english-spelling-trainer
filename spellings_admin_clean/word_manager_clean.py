@@ -184,7 +184,12 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     try:
         if hasattr(uploaded_file, "seek"):
             uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file)
+        try:
+            df = pd.read_csv(uploaded_file, encoding="utf-8")
+        except UnicodeDecodeError:
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+            df = pd.read_csv(uploaded_file, encoding="cp1252")
     except Exception as exc:
         return {"error": f"Could not read CSV: {exc}"}
 
