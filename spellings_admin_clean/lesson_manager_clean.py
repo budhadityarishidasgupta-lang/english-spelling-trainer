@@ -109,16 +109,17 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
     return word_ids
 
 
-def _extract_lesson_id(rows, action: str) -> int:
-    row = (
-        rows[0]._mapping
-        if rows and hasattr(rows[0], "_mapping")
-        else (rows[0] if rows else None)
-    )
-    lesson_id = row.get("lesson_id") if isinstance(row, dict) else None
-    if lesson_id is None:
-        raise RuntimeError(f"Failed to {action} lesson")
-    return lesson_id
+def _extract_lesson_id(row) -> int | None:
+    if row is None:
+        return None
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("lesson_id")
+    if isinstance(row, dict):
+        return row.get("lesson_id")
+    try:
+        return row["lesson_id"]
+    except (TypeError, KeyError):
+        return None
 
 
 def upsert_lesson(
@@ -149,55 +150,78 @@ def upsert_lesson(
     )
 
     if existing:
-        lesson_id = _extract_lesson_id(existing, "read")
+        existing_row = existing[0]._mapping if hasattr(existing[0], "_mapping") else existing[0]
+        lesson_id = _extract_lesson_id(existing_row)
 
-        updated = fetch_all(
-            """
-            UPDATE spelling_lessons
-            SET lesson_name = :lesson_name,
-                description = :description,
-                difficulty = :difficulty
-            WHERE lesson_id = :lesson_id
-            RETURNING lesson_id;
-            """,
-            {
-                "lesson_name": lesson_name,
-                "description": description,
-                "difficulty": difficulty,
-                "lesson_id": lesson_id,
-            },
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE spelling_lessons
+                    SET lesson_name = :lesson_name,
+                        description = :description,
+                        difficulty = :difficulty
+                    WHERE lesson_id = :lesson_id
+                    """
+                ),
+                {
+                    "lesson_name": lesson_name,
+                    "description": description,
+                    "difficulty": difficulty,
+                    "lesson_id": lesson_id,
+                },
+            )
+
+            result = conn.execute(
+                text(
+                    """
+                    SELECT lesson_id
+                    FROM spelling_lessons
+                    WHERE course_id = :course_id
+                      AND lesson_code = :lesson_code
+                    """
+                ),
+                {"course_id": course_id, "lesson_code": lesson_code},
+            )
+            lesson_id = _extract_lesson_id(result.fetchone())
+    else:
+        with engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO spelling_lessons (
+                        course_id,
+                        lesson_code,
+                        lesson_name,
+                        description,
+                        difficulty
+                    )
+                    VALUES (
+                        :course_id,
+                        :lesson_code,
+                        :lesson_name,
+                        :description,
+                        :difficulty
+                    )
+                    RETURNING lesson_id
+                    """
+                ),
+                {
+                    "course_id": course_id,
+                    "lesson_code": lesson_code,
+                    "lesson_name": lesson_name,
+                    "description": description,
+                    "difficulty": difficulty,
+                },
+            )
+            lesson_id = _extract_lesson_id(result.fetchone())
+
+    if lesson_id is None:
+        raise RuntimeError(
+            f"Lesson upsert failed for course_id={course_id}, lesson_code={lesson_code}"
         )
 
-        return _extract_lesson_id(updated, "update")
-
-    inserted = fetch_all(
-        """
-        INSERT INTO spelling_lessons (
-            course_id,
-            lesson_code,
-            lesson_name,
-            description,
-            difficulty
-        )
-        VALUES (
-            :course_id,
-            :lesson_code,
-            :lesson_name,
-            :description,
-            :difficulty
-        )
-        RETURNING lesson_id;
-        """,
-        {
-            "course_id": course_id,
-            "lesson_code": lesson_code,
-            "lesson_name": lesson_name,
-            "description": description,
-            "difficulty": difficulty,
-        },
-    )
-
-    return _extract_lesson_id(inserted, "insert")
+    return lesson_id
 
 
 def rebuild_lesson_mappings(lesson_id: int, word_ids: list[int]):
