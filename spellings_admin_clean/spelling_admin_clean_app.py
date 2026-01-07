@@ -5,6 +5,8 @@
 
 import sys
 import base64
+import io
+import pandas as pd
 import streamlit as st
 
 # ---- Force project root for Render ----
@@ -18,6 +20,11 @@ from spellings_admin_clean.spelling_help_text_repo import (
     upsert_help_text,
 )
 from spellings_admin_clean.upload_manager_clean import process_spelling_csv
+from spellings_admin_clean.lesson_manager_clean import (
+    get_matching_words,
+    rebuild_lesson_mappings,
+    upsert_lesson,
+)
 from spelling_app.repository.spelling_course_repo import archive_course
 from spelling_app.repository.spelling_lesson_repo import (
     archive_lesson,
@@ -93,6 +100,44 @@ def rename_course(course_id: int, new_name: str):
     )
     rows = rows_to_dicts(rows)
     return bool(rows)
+
+
+def _normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace("\ufeff", "", regex=False)
+    )
+    return df
+
+
+def _safe_int(value):
+    try:
+        if value is None:
+            return None
+        s = str(value).strip()
+        if s.lower() in ("", "nan", "none"):
+            return None
+        return int(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_lesson_csv_with_encoding_fallback(uploaded_file) -> pd.DataFrame:
+    raw_bytes = (
+        uploaded_file.getvalue()
+        if hasattr(uploaded_file, "getvalue")
+        else uploaded_file.read()
+    )
+    buffer = io.BytesIO(raw_bytes)
+    try:
+        df = pd.read_csv(buffer, encoding="utf-8")
+    except UnicodeDecodeError:
+        buffer.seek(0)
+        df = pd.read_csv(buffer, encoding="latin-1")
+
+    return _normalize_headers(df)
 
 
 def fetch_active_students():
@@ -243,37 +288,108 @@ def render_course_management():
                     else:
                         st.caption("Archived")
 
-    st.markdown("## Upload Spelling CSV")
+    words_tab, lessons_tab = st.tabs(["Words", "Lessons"])
 
-    uploaded_file = st.file_uploader(
-        "Upload CSV (word, pattern_code, example, difficulty)",
-        type=["csv"],
-    )
+    with words_tab:
+        st.markdown("## Upload Spelling CSV")
 
-    if uploaded_file and not selected_course_id:
-        st.warning("Please select or create a course first.")
-        return
+        uploaded_file = st.file_uploader(
+            "Upload CSV (word, pattern_code, example, difficulty)",
+            type=["csv"],
+            key="word_csv",
+        )
 
-    if uploaded_file and selected_course_id:
-        if st.button("Process CSV"):
-            st.info(f"Uploading into course_id={selected_course_id}")
-            result = process_spelling_csv(
-                uploaded_file,
-                course_id=selected_course_id,
-            )
+        if uploaded_file and not selected_course_id:
+            st.warning("Please select or create a course first.")
+            return
 
-            if result.get("status") == "error":
-                st.error(result.get("error"))
-                return
+        if uploaded_file and selected_course_id:
+            if st.button("Process CSV", key="process_words_csv"):
+                st.info(f"Uploading into course_id={selected_course_id}")
+                result = process_spelling_csv(
+                    uploaded_file,
+                    course_id=selected_course_id,
+                )
 
-            st.success("CSV processed successfully!")
+                if result.get("status") == "error":
+                    st.error(result.get("error"))
+                    return
 
-            st.markdown("### Upload Summary")
-            st.write("Words Added:", result["words_added"])
-            st.write("Lessons Created:", result["lessons_created"])
+                st.success("CSV processed successfully!")
 
-            if result["patterns"]:
-                st.write("Patterns:", ", ".join(result["patterns"]))
+                st.markdown("### Upload Summary")
+                st.write("Words Added:", result["words_added"])
+                st.write("Lessons Created:", result["lessons_created"])
+
+                if result["patterns"]:
+                    st.write("Patterns:", ", ".join(result["patterns"]))
+
+    with lessons_tab:
+        st.markdown("## Upload Lesson CSV")
+        st.caption("Expected file: spelling_lessons.csv")
+
+        lessons_file = st.file_uploader(
+            "Upload CSV (lesson_code, lesson_name, course_id, description, difficulty, word_selector)",
+            type=["csv"],
+            key="lesson_csv",
+        )
+
+        if lessons_file is not None and st.button("Process Lessons CSV", key="process_lessons_csv"):
+            df = _read_lesson_csv_with_encoding_fallback(lessons_file)
+            required_columns = [
+                "lesson_code",
+                "lesson_name",
+                "course_id",
+                "description",
+                "difficulty",
+                "word_selector",
+            ]
+            missing = [c for c in required_columns if c not in df.columns]
+            if missing:
+                st.error(f"CSV missing required columns: {', '.join(missing)}")
+                st.stop()
+
+            lessons_processed = 0
+            total_mappings = 0
+
+            for idx, row in df.iterrows():
+                row_num = idx + 1
+                lesson_code = str(row.get("lesson_code") or "").strip()
+                if not lesson_code:
+                    st.error(f"Row {row_num}: lesson_code is required.")
+                    st.stop()
+
+                course_id = _safe_int(row.get("course_id"))
+                if course_id is None:
+                    st.error(f"Row {row_num}: course_id is required.")
+                    st.stop()
+
+                lesson_name = str(row.get("lesson_name") or "").strip()
+                description = row.get("description")
+                description = str(description).strip() if description is not None else None
+                difficulty = _safe_int(row.get("difficulty"))
+                word_selector = str(row.get("word_selector") or "").strip()
+                if not word_selector:
+                    st.error(f"Row {row_num}: word_selector is required.")
+                    st.stop()
+
+                lesson_id = upsert_lesson(
+                    course_id=course_id,
+                    lesson_code=lesson_code,
+                    lesson_name=lesson_name,
+                    description=description,
+                    difficulty=difficulty,
+                )
+                word_ids = get_matching_words(course_id, word_selector)
+                rebuild_lesson_mappings(lesson_id, word_ids)
+
+                lessons_processed += 1
+                total_mappings += len(word_ids)
+
+            st.success("Lessons processed successfully!")
+            st.markdown("### Lesson Upload Summary")
+            st.write("Lessons processed:", lessons_processed)
+            st.write("Total mappings created:", total_mappings)
 
     with st.expander("Debug DB Status"):
         words = fetch_all("SELECT COUNT(*) AS c FROM spelling_words")
