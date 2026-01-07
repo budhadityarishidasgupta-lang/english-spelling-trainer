@@ -116,7 +116,7 @@ def get_or_create_word(
 # LESSON CREATION
 # ---------------------------
 
-def get_or_create_lesson(lesson_name: str, course_id: int):
+def get_or_create_lesson(course_id: int, lesson_name: str):
     """
     Always returns dict {lesson_id, course_id, lesson_name}
     """

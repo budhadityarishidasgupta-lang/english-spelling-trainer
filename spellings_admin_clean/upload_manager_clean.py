@@ -59,6 +59,7 @@ def _safe_int(value):
 
 
 def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | None = None):
+    assert course_id is not None, "course_id is required for lesson lookup"
     lesson_key = lesson_name
     row = {"lesson_code": lesson_code}
 
@@ -66,9 +67,9 @@ def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | N
     lesson_code = str(lesson_code_raw).strip() if lesson_code_raw else None
 
     if lesson_code:
-        lesson = get_lesson_by_code(course_id, lesson_code)
+        lesson = get_lesson_by_code(course_id=course_id, lesson_code=lesson_code)
     else:
-        lesson = get_lesson_by_name(course_id, lesson_key)
+        lesson = get_lesson_by_name(course_id=course_id, lesson_name=lesson_key)
 
     if lesson:
         return lesson, False
