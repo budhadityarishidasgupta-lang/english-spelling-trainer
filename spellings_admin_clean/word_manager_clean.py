@@ -153,9 +153,6 @@ def link_word_to_lesson(word_id: int, lesson_id: int):
     Correct mapping insertion.
     Uses columns: lesson_id, word_id, sort_order.
     """
-    # Ensure core mapping exists for reporting / practice queries
-    map_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-
     existing = execute(
         """
         SELECT 1
