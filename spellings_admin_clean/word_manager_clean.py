@@ -2,9 +2,7 @@ import pandas as pd
 from shared.db import execute
 from shared.db import safe_row
 from spelling_app.repository.spelling_lesson_repo import (
-    get_lesson_by_name_and_course,
     get_or_create_lesson as repo_get_or_create_lesson,
-    map_word_to_lesson,
 )
 
 # ---------------------------
@@ -118,18 +116,38 @@ def get_or_create_word(
 
 def get_or_create_lesson(course_id: int, lesson_name: str):
     """
-    Always returns dict {lesson_id, course_id, lesson_name}
+    Always returns dict {lesson_id, course_id, lesson_name, created}
     """
-    existing = get_lesson_by_name_and_course(
-        lesson_name=lesson_name,
-        course_id=course_id
+    existing = execute(
+        """
+        SELECT lesson_id
+        FROM spelling_lessons
+        WHERE lesson_name = :lesson_name
+          AND course_id = :course_id
+        LIMIT 1;
+        """,
+        {"lesson_name": lesson_name, "course_id": course_id},
     )
 
-    if existing and isinstance(existing, dict):
+    if isinstance(existing, dict) and existing.get("error"):
+        print(
+            f"[DB-ERROR] SELECT spelling_lessons failed "
+            f"(lesson_name='{lesson_name}', course_id={course_id}): {existing.get('error')}"
+        )
         return {
-            "lesson_id": existing["lesson_id"],
-            "course_id": existing["course_id"],
-            "lesson_name": existing["lesson_name"],
+            "lesson_id": None,
+            "course_id": course_id,
+            "lesson_name": lesson_name,
+            "created": False,
+        }
+
+    if isinstance(existing, list) and existing:
+        row = safe_row(existing[0])
+        return {
+            "lesson_id": row.get("lesson_id"),
+            "course_id": course_id,
+            "lesson_name": lesson_name,
+            "created": False,
         }
 
     # Create new lesson
@@ -139,9 +157,19 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
     )
 
     if lesson_id:
-        return {"lesson_id": lesson_id, "course_id": course_id, "lesson_name": lesson_name}
+        return {
+            "lesson_id": lesson_id,
+            "course_id": course_id,
+            "lesson_name": lesson_name,
+            "created": True,
+        }
 
-    return {"lesson_id": None, "course_id": course_id, "lesson_name": lesson_name}
+    return {
+        "lesson_id": None,
+        "course_id": course_id,
+        "lesson_name": lesson_name,
+        "created": False,
+    }
 
 
 # ---------------------------
@@ -213,8 +241,6 @@ def process_uploaded_csv(uploaded_file, course_id: int):
     lessons_set = set()
     patterns_set = set()
 
-    lesson_cache = {}
-
     for _, row in df.iterrows():
         word = str(row.get("word", "")).strip()
         if not word:
@@ -235,18 +261,15 @@ def process_uploaded_csv(uploaded_file, course_id: int):
 
         hint = str(row.get("hint", "")).strip()
 
-        # 1) LESSON (cached)
-        if lesson_name not in lesson_cache:
-            lesson_info = get_or_create_lesson(
-                lesson_name=lesson_name,
-                course_id=course_id
-            )
-            lesson_id = lesson_info.get("lesson_id")
-            lesson_cache[lesson_name] = lesson_id
-            lessons_set.add(lesson_name)
+        # 1) LESSON
+        lesson_info = get_or_create_lesson(
+            lesson_name=lesson_name,
+            course_id=course_id
+        )
+        lesson_id = lesson_info.get("lesson_id")
+        lessons_set.add(lesson_name)
+        if lesson_info.get("created"):
             lessons_created += 1
-        else:
-            lesson_id = lesson_cache[lesson_name]
 
         if not lesson_id:
             print(f"[WARN] Lesson creation failed for '{lesson_name}'. Skipping row.")
