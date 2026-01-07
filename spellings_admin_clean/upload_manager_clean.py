@@ -115,6 +115,9 @@ def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
 def process_spelling_csv(uploaded_file, course_id: int) -> dict:
     from spellings_admin_clean.word_manager_clean import process_uploaded_csv
 
+    assert course_id is not None, "course_id must be provided by Admin UI"
+    print(f"[INGESTION] Using course_id={course_id}")
+
     result = process_uploaded_csv(uploaded_file, course_id)
 
     # Enforce UI return contract
