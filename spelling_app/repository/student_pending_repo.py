@@ -134,6 +134,15 @@ def _create_student_user(name: str, email: str) -> Dict:
     Insert into users table with default password Learn123! and role='student'.
     Returns {'user_id': ...} or {'error': '...'}.
     """
+
+    APP_SOURCE = "spelling"
+
+    # HARD GUARD – do not allow silent mis-tagging
+    if APP_SOURCE != "spelling":
+        raise RuntimeError("Invalid app_source for spelling student creation")
+
+    print(f"[SPELLING_USER_CREATE] email={email}, app_source={APP_SOURCE}")
+
     password_hash = _hash_password(DEFAULT_STUDENT_PASSWORD)
 
     sql = """
