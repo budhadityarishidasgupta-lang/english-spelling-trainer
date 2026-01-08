@@ -1,3 +1,4 @@
+import streamlit as st
 import re
 from sqlalchemy import text
 
@@ -90,8 +91,8 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
 
     where_clause = " AND ".join(conditions)
     
-    print("DEBUG WHERE:", where_clause)
-    print("DEBUG PARAMS:", params)
+    st.error(f"DEBUG WHERE: {where_clause}")
+    st.error(f"DEBUG PARAMS: {params}")
     
     rows = fetch_all(
         f"""
