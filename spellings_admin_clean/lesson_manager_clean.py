@@ -112,10 +112,12 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
 
     word_ids: list[int] = []
     for row in rows or []:
-        mapping = row._mapping if hasattr(row, "_mapping") else row
-        word_id = mapping.get("word_id") if isinstance(mapping, dict) else None
-        if word_id is not None:
-            word_ids.append(word_id)
+        if hasattr(row, "_mapping"):
+            word_ids.append(row._mapping["word_id"])
+        elif isinstance(row, dict):
+            word_ids.append(row["word_id"])
+        elif isinstance(row, (list, tuple)):
+            word_ids.append(row[0])
 
     return word_ids
 
