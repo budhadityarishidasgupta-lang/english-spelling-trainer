@@ -134,8 +134,6 @@ def upsert_lesson(
     lesson_name = (lesson_name or "").strip()
     if not lesson_name:
         raise ValueError("lesson_name is required")
-    description = description.strip() if isinstance(description, str) else description
-
     existing = fetch_all(
         """
         SELECT lesson_id
@@ -156,16 +154,13 @@ def upsert_lesson(
                 text(
                     """
                     UPDATE spelling_lessons
-                    SET description = :description,
-                        difficulty = :difficulty
+                    SET lesson_name = :lesson_name
                     WHERE course_id = :course_id
                       AND lesson_name = :lesson_name
                     """
                 ),
                 {
                     "lesson_name": lesson_name,
-                    "description": description,
-                    "difficulty": difficulty,
                     "course_id": course_id,
                 },
             )
@@ -187,26 +182,14 @@ def upsert_lesson(
             result = conn.execute(
                 text(
                     """
-                    INSERT INTO spelling_lessons (
-                        course_id,
-                        lesson_name,
-                        description,
-                        difficulty
-                    )
-                    VALUES (
-                        :course_id,
-                        :lesson_name,
-                        :description,
-                        :difficulty
-                    )
+                    INSERT INTO spelling_lessons (course_id, lesson_name)
+                    VALUES (:course_id, :lesson_name)
                     RETURNING lesson_id
                     """
                 ),
                 {
                     "course_id": course_id,
                     "lesson_name": lesson_name,
-                    "description": description,
-                    "difficulty": difficulty,
                 },
             )
             lesson_id = _extract_lesson_id(result.fetchone())
