@@ -90,10 +90,11 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
             params[param_key] = int_value
 
     where_clause = " AND ".join(conditions)
-    
+
+    # 🔴 DEBUG — MUST BE HERE
     st.error(f"DEBUG WHERE: {where_clause}")
     st.error(f"DEBUG PARAMS: {params}")
-    
+
     rows = fetch_all(
         f"""
         SELECT word_id
@@ -112,7 +113,6 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
             word_ids.append(word_id)
 
     return word_ids
-
 
 def _extract_lesson_id(row) -> int | None:
     if row is None:
