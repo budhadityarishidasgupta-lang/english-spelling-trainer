@@ -50,8 +50,24 @@ def create_student_user(name: str, email: str):
     """
 
     sql = """
-        INSERT INTO users (name, email, password_hash, role)
-        VALUES (:n, :e, :p, 'student')
+        INSERT INTO users (
+            name,
+            email,
+            password_hash,
+            role,
+            status,
+            is_active,
+            app_source
+        )
+        VALUES (
+            :name,
+            :email,
+            :password_hash,
+            'student',
+            'ACTIVE',
+            TRUE,
+            'spelling'
+        )
         RETURNING user_id;
     """
 
