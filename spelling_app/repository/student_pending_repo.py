@@ -137,8 +137,24 @@ def _create_student_user(name: str, email: str) -> Dict:
     password_hash = _hash_password(DEFAULT_STUDENT_PASSWORD)
 
     sql = """
-        INSERT INTO users (name, email, password_hash, role)
-        VALUES (:name, :email, :password_hash, 'student')
+        INSERT INTO users (
+            name,
+            email,
+            password_hash,
+            role,
+            status,
+            is_active,
+            app_source
+        )
+        VALUES (
+            :name,
+            :email,
+            :password_hash,
+            'student',
+            'ACTIVE',
+            TRUE,
+            'spelling'
+        )
         RETURNING user_id;
     """
 
