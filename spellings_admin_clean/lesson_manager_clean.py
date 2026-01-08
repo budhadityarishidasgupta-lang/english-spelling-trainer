@@ -89,7 +89,10 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
             params[param_key] = int_value
 
     where_clause = " AND ".join(conditions)
-
+    
+    print("DEBUG WHERE:", where_clause)
+    print("DEBUG PARAMS:", params)
+    
     rows = fetch_all(
         f"""
         SELECT word_id
