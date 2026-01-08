@@ -44,6 +44,7 @@ from spellings_admin_clean.spelling_pending_registration_repo import (
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
+from spelling_app.repository.student_repo import list_registered_spelling_students
 
 
 # -------------------------------------------------
@@ -138,41 +139,6 @@ def _read_lesson_csv_with_encoding_fallback(uploaded_file) -> pd.DataFrame:
         df = pd.read_csv(buffer, encoding="latin-1")
 
     return _normalize_headers(df)
-
-
-def fetch_active_students():
-    rows = fetch_all(
-        """
-        SELECT DISTINCT
-            u.user_id,
-            u.name,
-            u.email
-        FROM users u
-        JOIN spelling_enrollments e
-            ON e.user_id = u.user_id
-        JOIN spelling_courses c
-            ON c.course_id = e.course_id
-        WHERE u.role = 'student'
-          AND u.is_active = true
-        ORDER BY u.name;
-        """
-    )
-    return rows_to_dicts(rows)
-
-
-def fetch_student_course_map():
-    rows = fetch_all(
-        """
-        SELECT
-            e.user_id,
-            STRING_AGG(c.course_name, ', ' ORDER BY c.course_name) AS assigned_courses
-        FROM spelling_enrollments e
-        JOIN spelling_courses c
-          ON c.course_id = e.course_id
-        GROUP BY e.user_id;
-        """
-    )
-    return {r["user_id"]: r.get("assigned_courses", "") for r in rows_to_dicts(rows)}
 
 
 def assign_course_to_student(user_id: int, course_id: int):
@@ -414,22 +380,23 @@ def render_course_management():
 def render_student_management():
     st.markdown("## 👩‍🎓 Students (Spelling App)")
 
-    students = fetch_active_students()
+    students = list_registered_spelling_students()
     courses_lookup = get_all_courses()
     courses = {course["course_name"]: course["course_id"] for course in courses_lookup}
-    assigned_map = fetch_student_course_map()
 
     if not students:
         st.info("No active students found.")
     else:
-        header_cols = st.columns([3, 4, 4, 2])
+        header_cols = st.columns([3, 4, 2, 2, 4, 2])
         header_cols[0].markdown("**Name**")
         header_cols[1].markdown("**Email**")
-        header_cols[2].markdown("**Assigned Courses**")
-        header_cols[3].markdown("**Assign Course**")
+        header_cols[2].markdown("**Status**")
+        header_cols[3].markdown("**Class**")
+        header_cols[4].markdown("**Registered Courses**")
+        header_cols[5].markdown("**Assign Course**")
 
         for student in students:
-            c1, c2, c3, c4 = st.columns([3, 4, 4, 2])
+            c1, c2, c3, c4, c5, c6 = st.columns([3, 4, 2, 2, 4, 2])
 
             with c1:
                 st.write(student["name"])
@@ -438,11 +405,15 @@ def render_student_management():
                 st.write(student["email"])
 
             with c3:
-                st.write(
-                    assigned_map.get(student["user_id"], "—")
-                )
+                st.write(student["status"])
 
             with c4:
+                st.write(student["class_name"] or "—")
+
+            with c5:
+                st.write(student["registered_courses"] or "—")
+
+            with c6:
                 selected_course = st.selectbox(
                     "Assign Course",
                     options=list(courses.keys()),
