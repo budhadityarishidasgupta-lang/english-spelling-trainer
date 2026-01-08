@@ -94,6 +94,11 @@ def get_matching_words(course_id: int, selector: str) -> list[int]:
     # 🔴 DEBUG — MUST BE HERE
     st.error(f"DEBUG WHERE: {where_clause}")
     st.error(f"DEBUG PARAMS: {params}")
+    
+    rows_check = fetch_all(
+        "SELECT COUNT(*) AS c FROM spelling_words WHERE course_id = 1 AND pattern_code = 0"
+    )
+    st.error(f"DEBUG DIRECT COUNT: {rows_check}")
 
     rows = fetch_all(
         f"""
