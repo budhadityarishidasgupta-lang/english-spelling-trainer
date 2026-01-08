@@ -1,5 +1,6 @@
 raise RuntimeError(
-    "student_admin_repo is deprecated. Use student_repo.list_registered_spelling_students"
+    "student_admin_repo is deprecated for student listing. "
+    "Use student_repo.list_registered_spelling_students instead."
 )
 
 from datetime import date
