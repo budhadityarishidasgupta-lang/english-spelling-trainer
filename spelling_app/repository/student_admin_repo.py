@@ -1,3 +1,7 @@
+raise RuntimeError(
+    "student_admin_repo is deprecated. Use student_repo.list_registered_spelling_students"
+)
+
 from datetime import date
 
 from sqlalchemy.sql import text
