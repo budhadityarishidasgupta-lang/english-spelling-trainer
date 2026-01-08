@@ -7,7 +7,6 @@ from shared.db import engine, fetch_all
 TEXT_COLUMNS = {
     "word",
     "pattern",
-    "pattern_code",
     "lesson_name",
     "level",
     "example_sentence",
