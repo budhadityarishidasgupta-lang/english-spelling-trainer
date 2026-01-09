@@ -740,7 +740,10 @@ def render_practice_page():
 
     cid = st.session_state.get("active_course_id")
     lesson_id = st.session_state.get("selected_lesson_id")
-    lesson_name = st.session_state.get("selected_lesson")
+    lesson_name = (
+        st.session_state.get("selected_lesson")
+        or st.session_state.get("active_lesson_name")
+    )
 
     if not cid or not lesson_id:
         st.error("No lesson selected. Choose from the lesson catalogue.")
@@ -1532,7 +1535,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     lesson = lesson_lookup.get(lesson_id, {})
 
     if not lesson_name:
-        lesson_name = lesson.get("lesson_name")
+        lesson_name = lesson.get("display_name") or lesson.get("lesson_name")
 
     mastery = lesson.get("progress_pct", 0) or 0
     xp_total, streak = get_xp_and_streak(user_id)
@@ -2310,7 +2313,8 @@ def main():
 
         row_cols = st.columns([3, 1, 1, 1])
         with row_cols[0]:
-            st.markdown(f"**{lesson['lesson_name']}**")
+            lesson_label = lesson.get("display_name") or lesson.get("lesson_name")
+            st.markdown(f"**{lesson_label}**")
         with row_cols[1]:
             st.markdown(str(word_count))
         with row_cols[2]:
@@ -2326,7 +2330,9 @@ def main():
                 st.session_state["lesson_started"] = True
                 st.session_state["active_lesson_id"] = lesson["lesson_id"]
                 st.session_state["active_course_id"] = lesson["course_id"]
-                st.session_state["active_lesson_name"] = lesson["lesson_name"]
+                lesson_label = lesson.get("display_name") or lesson.get("lesson_name")
+                st.session_state["active_lesson_name"] = lesson_label
+                st.session_state["selected_lesson"] = lesson_label
 
                 # Reset practice state
                 st.session_state["q_index"] = 0

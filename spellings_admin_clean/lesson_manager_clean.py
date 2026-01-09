@@ -135,6 +135,7 @@ def upsert_lesson(
         raise ValueError("course_id is required")
 
     lesson_name = (lesson_name or "").strip()
+    display_name = lesson_name
     if not lesson_name:
         raise ValueError("lesson_name is required")
     existing = fetch_all(
@@ -185,14 +186,15 @@ def upsert_lesson(
             result = conn.execute(
                 text(
                     """
-                    INSERT INTO spelling_lessons (course_id, lesson_name)
-                    VALUES (:course_id, :lesson_name)
+                    INSERT INTO spelling_lessons (course_id, lesson_name, display_name)
+                    VALUES (:course_id, :lesson_name, :display_name)
                     RETURNING lesson_id
                     """
                 ),
                 {
                     "course_id": course_id,
                     "lesson_name": lesson_name,
+                    "display_name": display_name,
                 },
             )
             lesson_id = _extract_lesson_id(result.fetchone())
