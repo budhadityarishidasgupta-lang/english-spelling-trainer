@@ -269,19 +269,10 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
 # LESSONS
 # ---------------------------------------------------------
 def get_lesson_word_count(lesson_id: int) -> int:
-    """
-    Return number of words mapped to a lesson.
-
-    IMPORTANT:
-    - Must be content-based (spelling_lesson_words only)
-    - Must be safe for SQLAlchemy Row / tuple / dict
-    - Must work for BOTH Word Mastery and Pattern Words courses
-    """
-
     row = fetch_one(
         """
         SELECT COUNT(*) AS cnt
-        FROM spelling_lesson_words
+        FROM spelling_lesson_items
         WHERE lesson_id = :lesson_id
         """,
         {"lesson_id": lesson_id},
@@ -289,6 +280,17 @@ def get_lesson_word_count(lesson_id: int) -> int:
 
     if row is None:
         return 0
+
+    if hasattr(row, "_mapping"):
+        return int(row._mapping.get("cnt", 0) or 0)
+
+    if isinstance(row, dict):
+        return int(row.get("cnt", 0) or 0)
+
+    if isinstance(row, tuple) and row:
+        return int(row[0] or 0)
+
+    return 0
 
     # SQLAlchemy Row
     if hasattr(row, "_mapping"):
@@ -564,7 +566,7 @@ def get_daily_five_word_ids(user_id: int) -> List[int]:
     return result
 
 
-def get_resume_index_for_lesson(user_id: int, lesson_id: int) -> int:
+#def get_resume_index_for_lesson(user_id: int, lesson_id: int) -> int:
     """
     Returns the 0-based index of the next word to resume for a lesson.
 
