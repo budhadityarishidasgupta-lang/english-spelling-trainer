@@ -3,6 +3,8 @@ import re
 from sqlalchemy import text
 
 from shared.db import engine, fetch_all
+from spelling_app.utils import normalize_lesson_name
+
 
 
 TEXT_COLUMNS = {
