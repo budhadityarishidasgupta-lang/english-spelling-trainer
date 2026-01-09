@@ -3,7 +3,21 @@ import re
 from sqlalchemy import text
 
 from shared.db import engine, fetch_all
-from spelling_app.utils import normalize_lesson_name
+
+
+def normalize_lesson_name(name: str) -> str:
+    """
+    Canonical lesson key normalizer.
+    Used ONLY for lesson identity & deduplication.
+    UI must use display_name instead.
+    """
+    if not name:
+        return ""
+
+    name = name.strip().lower()
+    name = re.sub(r"\s+", " ", name)
+    name = name.replace('"', "").replace("'", "")
+    return name
 
 
 
