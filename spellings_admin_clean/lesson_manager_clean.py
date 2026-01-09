@@ -229,6 +229,26 @@ def upsert_lesson(
     return lesson_id
 
 
+def update_lesson_display_name(lesson_id: int, display_name: str) -> None:
+    if not display_name or not display_name.strip():
+        raise ValueError("display_name cannot be empty")
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE spelling_lessons
+                SET display_name = :display_name
+                WHERE lesson_id = :lesson_id
+                """
+            ),
+            {
+                "lesson_id": lesson_id,
+                "display_name": display_name.strip(),
+            },
+        )
+
+
 def rebuild_lesson_mappings(lesson_id: int, word_ids: list[int]):
     if not word_ids:
         raise ValueError("word_selector matched zero words")

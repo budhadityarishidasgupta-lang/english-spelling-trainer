@@ -24,6 +24,7 @@ from spellings_admin_clean.lesson_manager_clean import (
     get_matching_words,
     rebuild_lesson_mappings,
     upsert_lesson,
+    update_lesson_display_name,
 )
 from spelling_app.repository.spelling_course_repo import archive_course
 from spelling_app.repository.spelling_lesson_repo import (
@@ -241,11 +242,27 @@ def render_course_management():
                 if not lesson.get("is_active") and not show_archived:
                     continue
 
+                lesson_id = lesson["lesson_id"]
+                current_name = (
+                    lesson.get("display_name")
+                    or lesson.get("lesson_name")
+                    or ""
+                )
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.write(lesson.get("display_name") or lesson.get("lesson_name"))
+                    new_name = st.text_input(
+                        label="Lesson name",
+                        value=current_name,
+                        key=f"lesson_name_{lesson_id}",
+                        label_visibility="collapsed",
+                    )
 
                 with col2:
+                    if st.button("💾", key=f"save_lesson_{lesson_id}"):
+                        update_lesson_display_name(lesson_id, new_name)
+                        st.success("Lesson name updated")
+                        st.experimental_rerun()
+
                     if lesson.get("is_active"):
                         if st.button("Archive", key=f"archive_{lesson['lesson_id']}"):
                             archive_lesson(lesson["lesson_id"])
