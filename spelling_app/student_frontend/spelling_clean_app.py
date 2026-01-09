@@ -35,16 +35,14 @@ from spelling_app.repository.spelling_lesson_repo import (
     get_daily5_words_for_student,
     get_weak_words_for_lesson,
 )
-from spelling_app.repository import student_repo
 from spelling_app.repository.student_repo import (
+    get_lessons_for_course,
     get_resume_index_for_lesson,
+    get_student_courses,
     get_words_by_ids,
+    get_words_for_lesson,
 )
 from spelling_app.services.spelling_service import get_daily_five_words, get_weak_words
-from spelling_app.repository.student_repo import (
-    get_lessons_for_course as repo_get_lessons_for_course,
-    get_student_courses as repo_get_student_courses,
-)
 from spelling_app.repository.spelling_help_text_repo import get_help_text
 from spelling_app.repository.spelling_content_repo import get_content_block
 from spelling_app.repository.registration_repo import (
@@ -420,76 +418,6 @@ def logout(st_module):
 ###########################################################
 #  STUDENT PORTAL FUNCTIONS
 ###########################################################
-
-def get_student_courses(user_id: int):
-    return repo_get_student_courses(user_id)
-
-
-def get_lessons_for_course(course_id, user_id=None):
-
-    lessons = repo_get_lessons_for_course(course_id) or []
-    lessons = [dict(l) for l in lessons]
-
-    for lesson_data in lessons:
-        lesson_id = lesson_data.get("lesson_id")
-        
-
-        if user_id is not None:
-            mastery = get_lesson_mastery(
-                user_id=user_id,
-                course_id=course_id,
-                lesson_id=lesson_data.get("lesson_id"),
-            )
-            lesson_data["progress_pct"] = mastery
-
-    return lessons
-
-
-def get_words_for_lesson(lesson_id: int):
-    """
-    Return dict-like rows for UI: current["word_id"], current["word"], etc.
-    Primary: spelling_lesson_items (Word Mastery)
-    Fallback: spelling_lesson_words (Word Pattern)
-    """
-    with engine.connect() as conn:
-        primary_sql = text(
-            """
-            SELECT
-                w.word_id,
-                w.word,
-                w.pattern,
-                w.pattern_code,
-                w.level,
-                w.example_sentence,
-                w.hint
-            FROM spelling_lesson_items sli
-            JOIN spelling_words w ON w.word_id = sli.word_id
-            WHERE sli.lesson_id = :lesson_id
-            ORDER BY w.word
-        """
-        )
-        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
-        if rows:
-            return rows
-
-        fallback_sql = text(
-            """
-            SELECT
-                w.word_id,
-                w.word,
-                w.pattern,
-                w.pattern_code,
-                w.level,
-                w.example_sentence,
-                w.hint
-            FROM spelling_lesson_words slw
-            JOIN spelling_words w ON w.word_id = slw.word_id
-            WHERE slw.lesson_id = :lesson_id
-            ORDER BY w.word
-        """
-        )
-        return conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
-
 
 
 ###########################################################
@@ -1592,7 +1520,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
     user_id = st.session_state.get("user_id")
     lesson_name = st.session_state.get("active_lesson_name")
 
-    lessons = get_lessons_for_course(course_id, user_id=user_id) if course_id else []
+    lessons = get_lessons_for_course(course_id) if course_id else []
+    for lesson_data in lessons:
+        mastery = get_lesson_mastery(
+            user_id=user_id,
+            course_id=course_id,
+            lesson_id=lesson_data.get("lesson_id"),
+        )
+        lesson_data["progress_pct"] = mastery
     lesson_lookup = {lesson["lesson_id"]: lesson for lesson in lessons}
     lesson = lesson_lookup.get(lesson_id, {})
 
@@ -1910,8 +1845,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
             unsafe_allow_html=True,
         )
 
-    # --- HINT DISPLAY (STABLE) ---
-    hint = st.session_state.get("current_hint")
+    # --- HINT DISPLAY (AUTHORITATIVE) ---
+    hint = current.get("hint")
     if hint:
         st.markdown("💡 **Hint**")
         st.info(hint)
@@ -2330,10 +2265,14 @@ def main():
 
     st.session_state.selected_course_title = course_map[active_course_id]
 
-    lessons = get_lessons_for_course(
-        active_course_id,
-        user_id=st.session_state.user_id,
-    )
+    lessons = get_lessons_for_course(active_course_id)
+    for lesson_data in lessons:
+        mastery = get_lesson_mastery(
+            user_id=st.session_state.user_id,
+            course_id=active_course_id,
+            lesson_id=lesson_data.get("lesson_id"),
+        )
+        lesson_data["progress_pct"] = mastery
 
     # Guard: selected lesson must belong to this course
     if st.session_state.get("selected_lesson_id"):
