@@ -360,46 +360,24 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
 
 
 def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
-    with engine.connect() as conn:
-        primary_sql = text(
-            """
-            SELECT w.word_id,
-                   w.word,
-                   w.pattern,
-                   w.pattern_code,
-                   w.level,
-                   w.lesson_name,
-                   w.example_sentence,
-                   w.hint
-            FROM spelling_words w
-            JOIN spelling_lesson_items li ON li.word_id = w.word_id
-            WHERE li.lesson_id = :lesson_id
-            ORDER BY w.word
+    rows = fetch_all(
         """
-        )
-        rows = conn.execute(primary_sql, {"lesson_id": lesson_id}).mappings().all()
-        if rows:
-            return _rows_to_dicts(rows)
-
-        fallback_sql = text(
-            """
-            SELECT w.word_id,
-                   w.word,
-                   w.pattern,
-                   w.pattern_code,
-                   w.level,
-                   w.lesson_name,
-                   w.example_sentence,
-                   w.hint
-            FROM spelling_words w
-            JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
-            WHERE lw.lesson_id = :lesson_id
-            ORDER BY w.word
-        """
-        )
-        return _rows_to_dicts(
-            conn.execute(fallback_sql, {"lesson_id": lesson_id}).mappings().all()
-        )
+        SELECT
+            w.word_id,
+            w.word,
+            w.example_sentence,
+            w.hint,
+            w.pattern,
+            w.pattern_code
+        FROM spelling_lesson_items sli
+        JOIN spelling_words w
+            ON w.word_id = sli.word_id
+        WHERE sli.lesson_id = :lesson_id
+        ORDER BY w.word_id
+        """,
+        {"lesson_id": lesson_id},
+    )
+    return _rows_to_dicts(rows)
 
 
 def get_resume_index_for_lesson(student_id, lesson_id):
