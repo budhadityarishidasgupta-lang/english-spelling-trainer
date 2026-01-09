@@ -81,9 +81,6 @@ def ensure_spelling_help_texts_table(engine):
         )
 
 
-ensure_spelling_help_texts_table(engine)
-
-
 def ensure_spelling_content_blocks_table(engine):
     with engine.begin() as conn:
         conn.execute(
@@ -100,9 +97,6 @@ def ensure_spelling_content_blocks_table(engine):
                 """
             )
         )
-
-
-ensure_spelling_content_blocks_table(engine)
 
 
 def ensure_spelling_payments_table(engine):
@@ -123,7 +117,10 @@ def ensure_spelling_payments_table(engine):
         )
 
 
-ensure_spelling_payments_table(engine)
+def init_spelling_tables():
+    ensure_spelling_help_texts_table(engine)
+    ensure_spelling_content_blocks_table(engine)
+    ensure_spelling_payments_table(engine)
 
 
 

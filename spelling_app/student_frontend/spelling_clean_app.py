@@ -27,7 +27,7 @@ import html
 load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
-from shared.db import engine, execute, fetch_all, safe_rows
+from shared.db import engine, execute, fetch_all, safe_rows, init_spelling_tables
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
@@ -51,6 +51,13 @@ from spelling_app.repository.registration_repo import (
     create_pending_registration,
     generate_registration_token,
 )
+
+@st.cache_resource
+def init_db():
+    init_spelling_tables()
+
+
+init_db()
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -1903,12 +1910,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
             unsafe_allow_html=True,
         )
 
-    st.caption(f"Difficulty: {blanks_count} blanks")
-
+    # --- HINT DISPLAY (STABLE) ---
     hint = st.session_state.get("current_hint")
     if hint:
-        with st.expander("💡 Hint"):
-            st.write(hint)
+        st.markdown("💡 **Hint**")
+        st.info(hint)
+
+    st.caption(f"Difficulty: {blanks_count} blanks")
+
 
     if st.session_state.get("current_wid") != wid:
         st.session_state.current_wid = wid
