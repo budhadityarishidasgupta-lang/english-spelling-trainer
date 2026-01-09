@@ -311,6 +311,7 @@ def get_lesson_catalogue(course_id: int) -> List[Dict[str, Any]]:
         SELECT
             l.lesson_id,
             l.lesson_name,
+            l.display_name,
             COUNT(sli.word_id) AS word_count
         FROM spelling_lessons l
         LEFT JOIN spelling_lesson_items sli
@@ -318,7 +319,7 @@ def get_lesson_catalogue(course_id: int) -> List[Dict[str, Any]]:
         WHERE l.course_id = :course_id
           AND l.is_active = TRUE
           AND l.lesson_name !~ '^[0-9]+$'
-        GROUP BY l.lesson_id, l.lesson_name
+        GROUP BY l.lesson_id, l.lesson_name, l.display_name
         ORDER BY l.lesson_id
         """,
         {"course_id": course_id},
@@ -337,6 +338,7 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
         SELECT
             lesson_id,
             lesson_name,
+            display_name,
             course_id,
             sort_order,
             is_active

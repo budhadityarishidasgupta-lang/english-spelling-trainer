@@ -45,6 +45,7 @@ def get_lesson_by_name_and_course(lesson_name: str, course_id: int):
         SELECT
             lesson_id,
             lesson_name,
+            display_name,
             course_id
         FROM spelling_lessons
         WHERE LOWER(lesson_name) = LOWER(:lesson_name)
@@ -75,11 +76,11 @@ def create_lesson(lesson_name: str, course_id: int):
     """
     rows = fetch_all(
         """
-        INSERT INTO spelling_lessons (lesson_name, course_id)
-        VALUES (:lesson_name, :course_id)
+        INSERT INTO spelling_lessons (lesson_name, display_name, course_id)
+        VALUES (:lesson_name, :display_name, :course_id)
         RETURNING lesson_id;
         """,
-        {"lesson_name": lesson_name, "course_id": course_id},
+        {"lesson_name": lesson_name, "display_name": lesson_name, "course_id": course_id},
     )
 
     if isinstance(rows, dict):
@@ -104,13 +105,14 @@ def create_spelling_lesson(course_id: int, lesson_name: str, lesson_code: str | 
     """Create a new spelling lesson with explicit sort order and optional code."""
     rows = fetch_all(
         """
-        INSERT INTO spelling_lessons (course_id, lesson_name, lesson_code, sort_order)
-        VALUES (:course_id, :lesson_name, :lesson_code, :sort_order)
-        RETURNING lesson_id, course_id, lesson_name, lesson_code;
+        INSERT INTO spelling_lessons (course_id, lesson_name, display_name, lesson_code, sort_order)
+        VALUES (:course_id, :lesson_name, :display_name, :lesson_code, :sort_order)
+        RETURNING lesson_id, course_id, lesson_name, display_name, lesson_code;
         """,
         {
             "course_id": course_id,
             "lesson_name": lesson_name,
+            "display_name": lesson_name,
             "lesson_code": lesson_code,
             "sort_order": sort_order,
         },
@@ -140,11 +142,11 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
 
     rows = fetch_all(
         """
-        INSERT INTO spelling_lessons (course_id, lesson_name)
-        VALUES (:cid, :lname)
+        INSERT INTO spelling_lessons (course_id, lesson_name, display_name)
+        VALUES (:cid, :lname, :display_name)
         RETURNING lesson_id
         """,
-        {"cid": course_id, "lname": lesson_name},
+        {"cid": course_id, "lname": lesson_name, "display_name": lesson_name},
     )
 
     if rows:
@@ -218,7 +220,7 @@ def get_lessons_for_course(course_id: int, include_archived: bool = False):
     """
     query = [
         """
-        SELECT lesson_id, lesson_name, course_id, is_active
+        SELECT lesson_id, lesson_name, display_name, course_id, is_active
         FROM spelling_lessons
         WHERE course_id = :cid
         """
@@ -378,6 +380,7 @@ def get_lesson_by_code(course_id: int, lesson_code: str):
         SELECT
             lesson_id,
             lesson_name,
+            display_name,
             lesson_code,
             course_id
         FROM spelling_lessons
@@ -402,6 +405,7 @@ def get_lesson_by_name(course_id: int, lesson_name: str):
         SELECT
             lesson_id,
             lesson_name,
+            display_name,
             lesson_code,
             course_id
         FROM spelling_lessons

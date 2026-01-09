@@ -67,11 +67,11 @@ def _get_or_create_pattern_lesson(course_id: int, lesson_name: str):
     created = _rows_to_dicts(
         fetch_all(
             """
-            INSERT INTO spelling_lessons (course_id, lesson_name)
-            VALUES (:cid, :lname)
+            INSERT INTO spelling_lessons (course_id, lesson_name, display_name)
+            VALUES (:cid, :lname, :display_name)
             RETURNING lesson_id;
             """,
-            {"cid": course_id, "lname": lesson_name},
+            {"cid": course_id, "lname": lesson_name, "display_name": lesson_name},
         )
     )
 

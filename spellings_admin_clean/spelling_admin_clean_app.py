@@ -243,13 +243,14 @@ def render_course_management():
 
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.write(lesson.get("lesson_name"))
+                    st.write(lesson.get("display_name") or lesson.get("lesson_name"))
 
                 with col2:
                     if lesson.get("is_active"):
                         if st.button("Archive", key=f"archive_{lesson['lesson_id']}"):
                             archive_lesson(lesson["lesson_id"])
-                            st.success(f"Lesson '{lesson['lesson_name']}' archived.")
+                            archived_name = lesson.get("display_name") or lesson.get("lesson_name")
+                            st.success(f"Lesson '{archived_name}' archived.")
                             st.experimental_rerun()
                     else:
                         st.caption("Archived")

@@ -73,10 +73,11 @@ def render_lesson_card_html(lesson: Dict[str, Any], mastered_words: int, total_w
     
     button_key = f"start_lesson_{key_prefix}_{lesson['lesson_id']}"
     
+    lesson_label = lesson.get("display_name") or lesson.get("lesson_name")
     html = f"""
     <div style="border: 1px solid #eee; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-weight: bold;">{lesson['lesson_name']}</span>
+            <span style="font-weight: bold;">{lesson_label}</span>
             <span style="font-size: 0.9em; color: #666;">{mastered_words}/{total_words} mastered</span>
         </div>
         {progress_bar_html}
