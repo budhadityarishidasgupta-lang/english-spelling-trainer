@@ -134,10 +134,15 @@ def upsert_lesson(
     if course_id is None:
         raise ValueError("course_id is required")
 
-    lesson_name = (lesson_name or "").strip()
-    display_name = lesson_name
-    if not lesson_name:
+    # 1️⃣ Preserve exact CSV text
+    raw_lesson_name = (lesson_name or "").strip()
+    if not raw_lesson_name:
         raise ValueError("lesson_name is required")
+
+    display_name = raw_lesson_name                  # UI label (EXACT CSV)
+    lesson_name = normalize_lesson_name(raw_lesson_name)  # DB key
+
+    # 2️⃣ Lookup by normalized key
     existing = fetch_all(
         """
         SELECT lesson_id
@@ -148,6 +153,7 @@ def upsert_lesson(
         """,
         {"course_id": course_id, "lesson_name": lesson_name},
     )
+
 
     if existing:
         existing_row = existing[0]._mapping if hasattr(existing[0], "_mapping") else existing[0]
