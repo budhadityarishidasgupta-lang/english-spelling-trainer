@@ -369,6 +369,7 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
         SELECT
             w.word_id,
             w.word,
+            w.hint,                -- ✅ ADD THIS LINE
             w.example_sentence,
             w.hint,
             w.pattern,
