@@ -354,6 +354,37 @@ def render_letter_highlight_html(correct_word: str, user_answer: str) -> str:
     st.session_state.start_time = time.time()
 
 
+def render_hint_block(hint: str, visible: bool):
+    """
+    UI-only: Render a collapsible hint block.
+    - Same font size as answer text
+    - Auto-hidden when visible=False
+    """
+    if not hint or not visible:
+        return
+
+    with st.expander("💡 Hint"):
+        st.markdown(
+            f"""
+            <div style="
+                font-size:26px;
+                font-weight:600;
+                letter-spacing:2px;
+                background:#0f172a;
+                padding:14px 18px;
+                border-radius:12px;
+                margin-top:8px;
+                text-align:center;
+                color:#9ca3af;
+                line-height:1.4;
+            ">
+                {escape(str(hint))}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 ###########################################################
 #  AUTHENTICATION
 ###########################################################
@@ -794,7 +825,8 @@ def render_practice_page():
 
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
-    st.session_state.current_hint = current.get("hint")
+    # Reset hint visibility for new word
+    st.session_state.show_hint = True
 
     info_bits = []
     if level is not None:
@@ -880,12 +912,16 @@ def render_practice_page():
         unsafe_allow_html=True,
     )
 
-    st.caption(f"Difficulty: {blanks_count} blanks")
+    # --- HINT (collapsible, auto-hide after submit) ---
+    render_hint_block(
+        hint=st.session_state.get("current_hint"),
+        visible=(
+            st.session_state.get("show_hint", False)
+            and not st.session_state.get("submitted", False)
+        ),
+    )
 
-    hint = st.session_state.get("current_hint")
-    if hint:
-        with st.expander("💡 Hint"):
-            st.write(hint)
+    st.caption(f"Difficulty: {blanks_count} blanks")
 
     if st.session_state.get("current_wid") != word_id:
         st.session_state.current_wid = word_id
@@ -940,6 +976,8 @@ def render_practice_page():
         st.session_state.submitted = True
         st.session_state.checked = True
         st.session_state.correct = is_correct
+        # Auto-hide hint after submission
+        st.session_state.show_hint = False
 
         # ❌ DO NOT reset current_wid
         # ❌ DO NOT rerun
@@ -1023,6 +1061,8 @@ def render_practice_page():
         st.session_state.correct = False
         st.session_state.hint_level = 0
         st.session_state.start_time = time.time()
+        # Re-enable hint for next word
+        st.session_state.show_hint = True
         st.session_state.current_example_sentence = None
         st.session_state.hint_used = False
         st.session_state.wrong_attempts = 0
@@ -1759,6 +1799,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
+    # Reset hint visibility for new word
+    st.session_state.show_hint = True
 
     wid = st.session_state.current_wid
     target_word = current["word"]
@@ -1848,11 +1890,14 @@ def render_practice_mode(lesson_id: int, course_id: int):
             unsafe_allow_html=True,
         )
 
-    # --- HINT DISPLAY (AUTHORITATIVE) ---
-    hint = current.get("hint")
-    if hint:
-        st.markdown("💡 **Hint**")
-        st.info(hint)
+    # --- HINT (collapsible, auto-hide after submit) ---
+    render_hint_block(
+        hint=st.session_state.get("current_hint"),
+        visible=(
+            st.session_state.get("show_hint", False)
+            and not st.session_state.get("answer_submitted", False)
+        ),
+    )
 
     st.caption(f"Difficulty: {blanks_count} blanks")
 
@@ -1904,6 +1949,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
                     st.session_state.last_result_correct = is_correct
                     st.session_state.word_state = "submitted"
+                    # Auto-hide hint after submission
+                    st.session_state.show_hint = False
                     st.session_state.submit_disabled = False
 
                     st.experimental_rerun()
@@ -2001,6 +2048,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
                     st.session_state.weak_index += 1
                 st.session_state.word_state = "editing"
                 st.session_state.start_time = time.time()
+                # Re-enable hint for next word
+                st.session_state.show_hint = True
 
                 # Clear old inputs safely
                 for k in list(st.session_state.keys()):
