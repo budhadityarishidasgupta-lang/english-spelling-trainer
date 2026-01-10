@@ -20,6 +20,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from dotenv import load_dotenv
 from html import escape
@@ -27,7 +28,7 @@ import html
 load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
-from shared.db import engine, execute, fetch_all, safe_rows, init_spelling_tables
+from shared.db import engine, execute, fetch_all, safe_rows
 from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
@@ -50,12 +51,17 @@ from spelling_app.repository.registration_repo import (
     generate_registration_token,
 )
 
-@st.cache_resource
-def init_db():
-    init_spelling_tables()
+# Student app must not initialize DB tables.
 
-
-init_db()
+def get_engine_safe():
+    try:
+        with engine.connect():
+            return engine
+    except OperationalError:
+        st.error(
+            "⚠️ Database temporarily unavailable. Please refresh in a few seconds."
+        )
+        st.stop()
 
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
@@ -403,7 +409,7 @@ def check_login(st_module, email: str, password: str) -> bool:
         """
     )
 
-    with engine.connect() as conn:
+    with get_engine_safe().connect() as conn:
         row = conn.execute(sql, {"e": email}).mappings().first()
 
     if not row:
@@ -659,7 +665,7 @@ def render_daily5_prompt():
     st.markdown("### 🎯 Daily 5 Ready")
     st.markdown("Warm up with 5 quick spelling questions before practice.")
 
-    with engine.connect() as db:
+    with get_engine_safe().connect() as db:
         title, body = fetch_daily5_help_text(db)
 
     title = title or "Daily 5"
@@ -1588,7 +1594,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         or st.session_state.get("active_lesson_id")
     )
 
-    with engine.connect() as db:
+    with get_engine_safe().connect() as db:
         render_mode_cards(
             db=db,
             user_id=user_id,
@@ -1648,7 +1654,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             return
 
         # Explicit debug counts (prevents silent “nothing happens”)
-        with engine.connect() as conn:
+        with get_engine_safe().connect() as conn:
             c_items = conn.execute(
                 text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
                 {"lid": lesson_id},
@@ -2088,7 +2094,7 @@ def main():
 
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
-        with engine.connect() as db:
+        with get_engine_safe().connect() as db:
             banner_data, tagline_text, value_text, register_text, support_text = get_landing_content(db)
 
         # Branding
@@ -2217,7 +2223,7 @@ def main():
 
     user_id = st.session_state.get("user_id")
 
-    with engine.connect() as db:
+    with get_engine_safe().connect() as db:
         if st.session_state.practice_mode == "daily5" and st.session_state.daily5_active:
             init_daily5_words(db, user_id)
 
