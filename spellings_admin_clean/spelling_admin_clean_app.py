@@ -430,7 +430,7 @@ def render_course_management():
                         skipped += 1
                         continue
 
-                    word_row = fetch_one(
+                    rows_found = fetch_all(
                         """
                         SELECT word_id
                         FROM spelling_words
@@ -440,11 +440,11 @@ def render_course_management():
                         {"word": word_raw, "course_id": course_val},
                     )
 
-                    if not word_row:
+                    if not rows_found:
                         skipped += 1
                         continue
 
-                    word_id = word_row["word_id"]
+                    word_id = rows_found[0]["word_id"]
 
                 rows.append({
                     "word_id": word_id,
