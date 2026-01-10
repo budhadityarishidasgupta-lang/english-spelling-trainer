@@ -2289,6 +2289,33 @@ def main():
             st.rerun()
 
     if st.session_state.get("lesson_started"):
+        lessons = get_lessons_for_course(st.session_state.active_course_id)
+
+        lesson_map = {
+            l["lesson_id"]: (l.get("display_name") or l.get("lesson_name"))
+            for l in lessons
+        }
+
+        selected_lesson_id = st.sidebar.selectbox(
+            "Change lesson",
+            options=list(lesson_map.keys()),
+            format_func=lambda lid: lesson_map[lid],
+            index=list(lesson_map.keys()).index(st.session_state.active_lesson_id),
+        )
+
+        if selected_lesson_id != st.session_state.active_lesson_id:
+            resume_index = get_resume_index_for_lesson(
+                user_id=st.session_state.user_id,
+                lesson_id=selected_lesson_id,
+            )
+
+            st.session_state.active_lesson_id = selected_lesson_id
+            st.session_state.practice_index = resume_index or 0
+            st.session_state.current_wid = None
+            st.session_state.word_state = "editing"
+
+            st.experimental_rerun()
+
         render_practice_mode(
             lesson_id=st.session_state["active_lesson_id"],
             course_id=st.session_state["active_course_id"],
