@@ -1076,6 +1076,14 @@ def render_practice_page():
 
         st.experimental_rerun()
 
+    st.markdown("---")
+    if st.button("🔁 Restart lesson"):
+        st.session_state.practice_index = 0
+        st.session_state.current_wid = None
+        st.session_state.word_state = "editing"
+
+        st.experimental_rerun()
+
     # Sidebar navigation
     if st.sidebar.button("Back to Courses"):
         st.session_state.practice_index = 0
