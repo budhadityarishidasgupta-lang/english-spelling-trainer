@@ -46,6 +46,10 @@ from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
 from spelling_app.repository.student_repo import list_registered_spelling_students
+from spelling_app.repository.hint_repo import (
+    upsert_ai_hint_drafts,
+    approve_drafts_to_overrides,
+)
 
 
 # -------------------------------------------------
@@ -272,7 +276,7 @@ def render_course_management():
                     else:
                         st.caption("Archived")
 
-    words_tab, lessons_tab = st.tabs(["Words", "Lessons"])
+    words_tab, lessons_tab, hint_ops_tab = st.tabs(["Words", "Lessons", "Hint Ops"])
 
     with words_tab:
         st.markdown("## Upload Spelling CSV")
@@ -367,6 +371,63 @@ def render_course_management():
             st.markdown("### Lesson Upload Summary")
             st.write("Lessons processed:", lessons_processed)
             st.write("Total mappings created:", total_mappings)
+
+    with hint_ops_tab:
+        st.markdown("## 🧠 Hint Ops — AI Draft → Approve")
+        st.caption("Safe workflow: upload drafts, review later, then approve to overrides.")
+
+        course_id = st.number_input(
+            "Course ID (optional for course-specific drafts)",
+            min_value=0,
+            value=0,
+            step=1,
+        )
+        course_id_val = None if course_id == 0 else int(course_id)
+
+        st.markdown("### 1) Upload AI hint drafts (CSV)")
+        st.caption("CSV columns required: word_id, hint_text (or hint). Optional: course_id")
+        up = st.file_uploader("Upload CSV", type=["csv"], key="hint_ops_upload")
+
+        if up is not None:
+            df = pd.read_csv(up)
+            df = _normalize_headers(df)
+
+            if "word_id" not in df.columns:
+                st.error("CSV must contain word_id column.")
+                st.stop()
+
+            hint_col = "hint_text" if "hint_text" in df.columns else "hint" if "hint" in df.columns else None
+            if not hint_col:
+                st.error("CSV must contain hint_text (or hint) column.")
+                st.stop()
+
+            course_col = "course_id" if "course_id" in df.columns else None
+
+            rows = []
+            for _, r in df.iterrows():
+                course_val = course_id_val
+                if course_col:
+                    course_raw = str(r.get(course_col)).strip()
+                    if course_raw and course_raw.lower() not in ("nan", "none"):
+                        course_val = int(course_raw)
+                hint_val = str(r.get(hint_col) or "").strip()
+                if hint_val.lower() in ("nan", "none"):
+                    hint_val = ""
+                rows.append({
+                    "word_id": int(r.get("word_id")),
+                    "course_id": course_val,
+                    "hint_text": hint_val,
+                })
+
+            if st.button("📥 Load drafts", use_container_width=True):
+                n = upsert_ai_hint_drafts(rows)
+                st.success(f"Loaded {n} hint drafts into spelling_hint_ai_draft.")
+
+        st.markdown("### 2) Approve drafts → Overrides (go live later)")
+        st.caption("This writes only to spelling_hint_overrides. Student app is NOT changed yet.")
+        if st.button("✅ Approve all drafts (this course / global)", use_container_width=True):
+            approved = approve_drafts_to_overrides(course_id_val)
+            st.success(f"Approved {approved} drafts to overrides.")
 
     with st.expander("Debug DB Status"):
         words = fetch_all("SELECT COUNT(*) AS c FROM spelling_words")
