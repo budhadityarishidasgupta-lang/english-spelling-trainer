@@ -385,15 +385,18 @@ def render_course_management():
         course_id_val = None if course_id == 0 else int(course_id)
 
         st.markdown("### 1) Upload AI hint drafts (CSV)")
-        st.caption("CSV columns required: word_id, hint_text (or hint). Optional: course_id")
+        st.caption("CSV columns required: word OR word_id, hint_text (or hint). Optional: course_id")
         up = st.file_uploader("Upload CSV", type=["csv"], key="hint_ops_upload")
 
         if up is not None:
             df = pd.read_csv(up)
             df = _normalize_headers(df)
 
-            if "word_id" not in df.columns:
-                st.error("CSV must contain word_id column.")
+            has_word_id = "word_id" in df.columns
+            has_word = "word" in df.columns
+
+            if not (has_word_id or has_word):
+                st.error("CSV must contain either 'word_id' or 'word' column.")
                 st.stop()
 
             hint_col = "hint_text" if "hint_text" in df.columns else "hint" if "hint" in df.columns else None
@@ -402,6 +405,7 @@ def render_course_management():
                 st.stop()
 
             course_col = "course_id" if "course_id" in df.columns else None
+            skipped = 0
 
             rows = []
             for _, r in df.iterrows():
@@ -413,8 +417,37 @@ def render_course_management():
                 hint_val = str(r.get(hint_col) or "").strip()
                 if hint_val.lower() in ("nan", "none"):
                     hint_val = ""
+                # Resolve word_id
+                if has_word_id and pd.notna(r.get("word_id")):
+                    try:
+                        word_id = int(r.get("word_id"))
+                    except Exception:
+                        skipped += 1
+                        continue
+                else:
+                    word_raw = str(r.get("word", "")).strip()
+                    if not word_raw:
+                        skipped += 1
+                        continue
+
+                    word_row = fetch_one(
+                        """
+                        SELECT word_id
+                        FROM spelling_words
+                        WHERE word = :word
+                          AND (:course_id IS NULL OR course_id = :course_id)
+                        """,
+                        {"word": word_raw, "course_id": course_val},
+                    )
+
+                    if not word_row:
+                        skipped += 1
+                        continue
+
+                    word_id = word_row["word_id"]
+
                 rows.append({
-                    "word_id": int(r.get("word_id")),
+                    "word_id": word_id,
                     "course_id": course_val,
                     "hint_text": hint_val,
                 })
@@ -422,6 +455,8 @@ def render_course_management():
             if st.button("📥 Load drafts", use_container_width=True):
                 n = upsert_ai_hint_drafts(rows)
                 st.success(f"Loaded {n} hint drafts into spelling_hint_ai_draft.")
+                if skipped:
+                    st.warning(f"Skipped {skipped} rows (word not found or invalid).")
 
         st.markdown("### 2) Approve drafts → Overrides (go live later)")
         st.caption("This writes only to spelling_hint_overrides. Student app is NOT changed yet.")
