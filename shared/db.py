@@ -122,6 +122,48 @@ def init_spelling_tables():
     ensure_spelling_content_blocks_table(engine)
     ensure_spelling_payments_table(engine)
 
+    # ------------------------------------------------------------
+    # HINTS: Safe content ops layer (does NOT affect student app)
+    # ------------------------------------------------------------
+    with engine.begin() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS spelling_hint_ai_draft (
+            draft_id     SERIAL PRIMARY KEY,
+            word_id      INT NOT NULL,
+            course_id    INT NULL,
+            hint_text    TEXT NOT NULL,
+            hint_style   TEXT NOT NULL DEFAULT 'meaning_plus_spelling',
+            model        TEXT NULL,
+            created_by   TEXT NOT NULL DEFAULT 'csv',
+            status       TEXT NOT NULL DEFAULT 'draft',  -- draft | approved | rejected
+            created_at   TIMESTAMP NOT NULL DEFAULT now(),
+            UNIQUE (word_id, course_id, hint_style)
+        );
+        """))
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS spelling_hint_overrides (
+            word_id     INT NOT NULL,
+            course_id   INT NULL,
+            hint_text   TEXT NOT NULL,
+            source      TEXT NOT NULL DEFAULT 'manual',
+            updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+            PRIMARY KEY (word_id, course_id)
+        );
+        """))
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_hint_ai_draft_status
+          ON spelling_hint_ai_draft(status);
+        """))
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_hint_ai_draft_word_course
+          ON spelling_hint_ai_draft(word_id, course_id);
+        """))
 
 
 
