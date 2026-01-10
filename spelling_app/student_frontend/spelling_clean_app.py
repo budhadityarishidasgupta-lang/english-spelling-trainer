@@ -2365,22 +2365,32 @@ def main():
             )
         with row_cols[3]:
             if st.button("Start", key=f"start_{lesson['lesson_id']}"):
+                lesson_id = lesson["lesson_id"]
+                user_id = st.session_state.user_id
+
+                resume_index = get_resume_index_for_lesson(
+                    user_id=user_id,
+                    lesson_id=lesson_id,
+                )
 
                 # SINGLE PRACTICE ENTRY CONTRACT (ALL COURSES)
                 st.session_state["mode"] = "Practice"
                 st.session_state["lesson_started"] = True
-                st.session_state["active_lesson_id"] = lesson["lesson_id"]
+                st.session_state["active_lesson_id"] = lesson_id
                 st.session_state["active_course_id"] = lesson["course_id"]
                 lesson_label = lesson.get("display_name") or lesson.get("lesson_name")
                 st.session_state["active_lesson_name"] = lesson_label
                 st.session_state["selected_lesson"] = lesson_label
 
                 # Reset practice state
+                st.session_state["practice_index"] = resume_index or 0
                 st.session_state["q_index"] = 0
                 st.session_state["current_input"] = ""
                 st.session_state["show_feedback"] = False
+                st.session_state["current_wid"] = None
+                st.session_state["word_state"] = "editing"
 
-                st.rerun()
+                st.experimental_rerun()
 
 
 if __name__ == "__main__":

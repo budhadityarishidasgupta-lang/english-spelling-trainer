@@ -385,12 +385,14 @@ def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
     return _rows_to_dicts(rows)
 
 
-def get_resume_index_for_lesson(student_id, lesson_id):
+def get_resume_index_for_lesson(student_id=None, lesson_id=None, user_id=None):
     """
     Resume Word Mastery progress safely.
     Derives lesson membership via lesson→word mappings.
     Schema-agnostic and non-breaking.
     """
+    if student_id is None:
+        student_id = user_id
 
     with engine.connect() as conn:
 
@@ -565,5 +567,4 @@ def get_daily_five_word_ids(user_id: int) -> List[int]:
                 seen.add(wid)
 
     return result
-
 
