@@ -444,7 +444,7 @@ def render_course_management():
                         skipped += 1
                         continue
 
-                    word_id = rows_found[0]["word_id"]
+                    word_id = rows_found[0][0]
 
                 rows.append({
                     "word_id": word_id,
