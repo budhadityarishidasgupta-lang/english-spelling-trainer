@@ -354,13 +354,16 @@ def render_letter_highlight_html(correct_word: str, user_answer: str) -> str:
     st.session_state.start_time = time.time()
 
 
-def render_hint_block(hint: str, show: bool):
+def render_hint_block(hint: str):
     """
-    UI-only: Render a collapsible hint block.
-    - Same font size as answer text
-    - Auto-hidden when show=False
+    Collapsible hint shown before submission.
+    Auto-hides after submit.
+    Font aligned with masked word.
     """
-    if not hint or not show:
+    if not hint:
+        return
+
+    if not st.session_state.get("show_hint", True):
         return
 
     with st.expander("💡 Hint"):
@@ -376,7 +379,6 @@ def render_hint_block(hint: str, show: bool):
                 margin-top:8px;
                 text-align:center;
                 color:#9ca3af;
-                line-height:1.4;
             ">
                 {escape(str(hint))}
             </div>
@@ -825,8 +827,8 @@ def render_practice_page():
 
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
-    # Hint visibility lifecycle
-    if "show_hint" not in st.session_state:
+    # Initialise hint visibility ONLY when word changes
+    if st.session_state.get("current_wid") != word_id:
         st.session_state.show_hint = True
 
     info_bits = []
@@ -914,13 +916,7 @@ def render_practice_page():
     )
 
     # --- HINT (collapsible, auto-hide after submit) ---
-    render_hint_block(
-        hint=st.session_state.get("current_hint"),
-        show=(
-            st.session_state.get("show_hint", False)
-            and not st.session_state.get("submitted", False)
-        ),
-    )
+    render_hint_block(st.session_state.get("current_hint"))
 
     st.caption(f"Difficulty: {blanks_count} blanks")
 
@@ -1798,12 +1794,13 @@ def render_practice_mode(lesson_id: int, course_id: int):
             current = st.session_state.get("current_word_pick") or practice_words[current_index]
             st.session_state.current_word_pick = current
 
+    wid = st.session_state.current_wid
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
-    # Reset hint visibility for new word
-    st.session_state.show_hint = True
+    # Initialise hint visibility ONLY when word changes
+    if st.session_state.get("current_wid") != wid:
+        st.session_state.show_hint = True
 
-    wid = st.session_state.current_wid
     target_word = current["word"]
     st.session_state["last_word_id"] = wid
 
@@ -1892,13 +1889,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         )
 
     # --- HINT (collapsible, auto-hide after submit) ---
-    render_hint_block(
-        hint=st.session_state.get("current_hint"),
-        show=(
-            st.session_state.get("show_hint", False)
-            and not st.session_state.get("answer_submitted", False)
-        ),
-    )
+    render_hint_block(st.session_state.get("current_hint"))
 
     st.caption(f"Difficulty: {blanks_count} blanks")
 
