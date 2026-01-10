@@ -354,13 +354,13 @@ def render_letter_highlight_html(correct_word: str, user_answer: str) -> str:
     st.session_state.start_time = time.time()
 
 
-def render_hint_block(hint: str, visible: bool):
+def render_hint_block(hint: str, show: bool):
     """
     UI-only: Render a collapsible hint block.
     - Same font size as answer text
-    - Auto-hidden when visible=False
+    - Auto-hidden when show=False
     """
-    if not hint or not visible:
+    if not hint or not show:
         return
 
     with st.expander("💡 Hint"):
@@ -825,8 +825,9 @@ def render_practice_page():
 
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
-    # Reset hint visibility for new word
-    st.session_state.show_hint = True
+    # Hint visibility lifecycle
+    if "show_hint" not in st.session_state:
+        st.session_state.show_hint = True
 
     info_bits = []
     if level is not None:
@@ -915,7 +916,7 @@ def render_practice_page():
     # --- HINT (collapsible, auto-hide after submit) ---
     render_hint_block(
         hint=st.session_state.get("current_hint"),
-        visible=(
+        show=(
             st.session_state.get("show_hint", False)
             and not st.session_state.get("submitted", False)
         ),
@@ -1893,7 +1894,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     # --- HINT (collapsible, auto-hide after submit) ---
     render_hint_block(
         hint=st.session_state.get("current_hint"),
-        visible=(
+        show=(
             st.session_state.get("show_hint", False)
             and not st.session_state.get("answer_submitted", False)
         ),
