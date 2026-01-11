@@ -63,6 +63,27 @@ def get_engine_safe():
         )
         st.stop()
 
+def _fetch_spelling_words(lesson_id: int):
+    return safe_rows(
+        fetch_all(
+            """
+            SELECT
+                w.word_id,
+                w.word,
+                w.hint,
+                w.example_sentence,
+                w.pattern,
+                w.pattern_code
+            FROM spelling_lesson_items sli
+            JOIN spelling_words w
+                ON w.word_id = sli.word_id
+            WHERE sli.lesson_id = :lesson_id
+            ORDER BY w.word_id
+            """,
+            {"lesson_id": lesson_id},
+        )
+    )
+
 def compute_badge(xp_total: int, mastery: float):
     """Decide a badge based on XP and mastery."""
     if xp_total >= 2000 and mastery == 100:
@@ -1613,6 +1634,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     st.session_state.active_lesson_id = active_lesson_id
 
     lesson_weak_words = []
+    practice_words = None
     if practice_mode == "Weak Words":
         lesson_weak_words = [
             w for w in get_weak_words(st.session_state["user_id"])
@@ -1654,6 +1676,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         words = ordered_weak_words
     else:
         words = get_words_for_lesson(lesson_id, course_id)
+        practice_words = _fetch_spelling_words(lesson_id)
 
     if not words:
         if practice_mode == "Weak Words":
@@ -1661,22 +1684,10 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.caption("Weak Words come from your incorrect attempts in this lesson.")
             return
 
-        # Explicit debug counts (prevents silent “nothing happens”)
-        with get_engine_safe().connect() as conn:
-            c_items = conn.execute(
-                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
-                {"lid": lesson_id},
-            ).scalar() or 0
-            c_words = conn.execute(
-                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
-                {"lid": lesson_id},
-            ).scalar() or 0
-
-        st.error("No practice words are mapped to this lesson yet.")
-        st.caption(
-            f"lesson_id={lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_items={int(c_words)}"
-        )
-        return
+        if not practice_words:
+            st.warning("No practice words are mapped to this lesson yet.")
+            return
+        words = practice_words
 
     signals_map = get_cached_word_signals(
         user_id=user_id,
