@@ -28,13 +28,14 @@ def _fetch_spelling_lessons():
     )
 
 
-def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
-    if course_id is None:
-        row = fetch_all(
-            "SELECT course_id FROM spelling_lessons WHERE lesson_id = :lid",
-            {"lid": lesson_id},
-        )
-        course_id = row[0]["course_id"] if row else None
+def _fetch_spelling_words(lesson_id: int):
+    # Resolve course_id from lesson (single source of truth)
+    rows = fetch_all(
+        "SELECT course_id FROM spelling_lessons WHERE lesson_id = :lid",
+        {"lid": lesson_id},
+    )
+    course_id = rows[0]["course_id"] if rows else None
+
     return fetch_all(
         """
         SELECT
@@ -64,6 +65,7 @@ def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
             "course_id": course_id,
         },
     )
+
 
 def _record_attempt(
     user_id: int,
