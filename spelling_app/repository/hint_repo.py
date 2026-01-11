@@ -3,6 +3,50 @@ from sqlalchemy import text
 from shared.db import engine
 
 
+def _ensure_hint_tables() -> None:
+    """
+    Production-safe, idempotent table creation for hint ops.
+    Does NOT affect student app behaviour.
+    """
+    with engine.begin() as conn:
+        # Drafts table (should already exist, but safe to ensure)
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS spelling_hint_ai_draft (
+                word_id     INT NOT NULL,
+                course_id   INT NULL,
+                hint_text   TEXT NOT NULL,
+                hint_style  TEXT NOT NULL DEFAULT 'meaning_plus_spelling',
+                created_by  TEXT NOT NULL DEFAULT 'csv',
+                status      TEXT NOT NULL DEFAULT 'draft',
+                created_at  TIMESTAMP NOT NULL DEFAULT now(),
+                updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+                PRIMARY KEY (word_id, course_id, hint_style)
+            );
+        """))
+
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_hint_ai_draft_status
+              ON spelling_hint_ai_draft(status);
+        """))
+
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_hint_ai_draft_word_course
+              ON spelling_hint_ai_draft(word_id, course_id);
+        """))
+
+        # Overrides table (this is the one missing in your prod DB)
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS spelling_hint_overrides (
+                word_id     INT NOT NULL,
+                course_id   INT NULL,
+                hint_text   TEXT NOT NULL,
+                source      TEXT NOT NULL DEFAULT 'manual',
+                updated_at  TIMESTAMP NOT NULL DEFAULT now(),
+                PRIMARY KEY (word_id, course_id)
+            );
+        """))
+
+
 def _norm(s: str) -> str:
     return (s or "").strip()
 
@@ -14,6 +58,8 @@ def upsert_ai_hint_drafts(rows: List[Dict[str, Any]]) -> int:
     """
     if not rows:
         return 0
+
+    _ensure_hint_tables()
 
     sql = text("""
         INSERT INTO spelling_hint_ai_draft (word_id, course_id, hint_text, hint_style, created_by, status)
@@ -44,6 +90,8 @@ def approve_drafts_to_overrides(course_id: Optional[int] = None) -> int:
     Promote draft hints to overrides (live table) and mark drafts approved.
     Does NOT touch spelling_words.hint (legacy fallback).
     """
+    _ensure_hint_tables()
+
     with engine.begin() as conn:
         # 1) Insert/Update overrides from drafts
         up_sql = text("""
@@ -86,6 +134,7 @@ def get_override_hint(word_id: int, course_id: Optional[int]) -> Optional[str]:
         ORDER BY (course_id IS NULL) ASC
         LIMIT 1;
     """)
+    _ensure_hint_tables()
     with engine.connect() as conn:
         row = conn.execute(sql, {"wid": int(word_id), "cid": course_id}).fetchone()
     return row[0] if row else None
