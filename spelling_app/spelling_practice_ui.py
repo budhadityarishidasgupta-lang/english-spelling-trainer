@@ -63,18 +63,28 @@ def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
             w.word,
             w.level AS difficulty,
             w.pattern AS pattern_hint,
-            w.hint AS definition,
+            COALESCE(o.hint_text, w.hint) AS definition,
             w.example_sentence AS sample_sentence,
             NULL AS missing_letter_mask
         FROM spelling_lesson_items li
         JOIN spelling_words w
-          ON w.word_id = li.word_id
+            ON w.word_id = li.word_id
+        LEFT JOIN LATERAL (
+            SELECT hint_text
+            FROM spelling_hint_overrides o
+            WHERE o.word_id = w.word_id
+              AND o.course_id = :course_id
+            ORDER BY o.updated_at DESC
+            LIMIT 1
+        ) o ON TRUE
         WHERE li.lesson_id = :lid
         ORDER BY w.word_id
         """,
-        {"lid": lesson_id},
+        {
+            "lid": lesson_id,
+            "course_id": course_id,
+        },
     )
-
 
 def _record_attempt(
     user_id: int,
