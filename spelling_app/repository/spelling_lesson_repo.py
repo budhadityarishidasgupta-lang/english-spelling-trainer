@@ -167,7 +167,7 @@ def map_word_to_lesson(word_id: int, lesson_id: int):
     """
     return fetch_all(
         """
-        INSERT INTO spelling_lesson_words (lesson_id, word_id)
+        INSERT INTO spelling_lesson_items (lesson_id, word_id)
         VALUES (:lesson_id, :word_id)
         ON CONFLICT DO NOTHING;
         """,
@@ -188,7 +188,7 @@ def update_lesson_name(lesson_id: int, new_name: str):
 
 def delete_lesson(lesson_id: int):
     """
-    Delete a lesson. CASCADE deletes mappings in spelling_lesson_words.
+    Delete a lesson. CASCADE deletes mappings in spelling_lesson_items.
     Words remain in spelling_words (safe).
     """
     sql = """
@@ -261,7 +261,7 @@ def get_lesson_words(course_id: int, lesson_id: int):
             w.pattern_code,
             lw.lesson_id
         FROM spelling_words w
-        JOIN spelling_lesson_words lw ON lw.word_id = w.word_id
+        JOIN spelling_lesson_items lw ON lw.word_id = w.word_id
         WHERE lw.lesson_id = :lid
         ORDER BY w.word_id ASC;
         """,
@@ -335,7 +335,7 @@ def get_weak_words_for_lesson(db, user_id, lesson_id):
         FROM spelling_attempts a
         JOIN spelling_words w
             ON a.word_id = w.word_id
-        JOIN spelling_lesson_words lw
+        JOIN spelling_lesson_items lw
             ON w.word_id = lw.word_id
         WHERE a.user_id = :user_id
           AND lw.lesson_id = :lesson_id
@@ -360,7 +360,7 @@ def get_lesson_word_counts(db, course_id: int) -> dict[int, int]:
             l.lesson_id,
             COUNT(lw.word_id) AS word_count
         FROM spelling_lessons l
-        LEFT JOIN spelling_lesson_words lw
+        LEFT JOIN spelling_lesson_items lw
             ON l.lesson_id = lw.lesson_id
         WHERE l.course_id = :course_id
           AND l.is_active = TRUE

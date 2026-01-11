@@ -1668,13 +1668,13 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 {"lid": lesson_id},
             ).scalar() or 0
             c_words = conn.execute(
-                text("SELECT COUNT(*) FROM spelling_lesson_words WHERE lesson_id=:lid"),
+                text("SELECT COUNT(*) FROM spelling_lesson_items WHERE lesson_id=:lid"),
                 {"lid": lesson_id},
             ).scalar() or 0
 
         st.error("No practice words are mapped to this lesson yet.")
         st.caption(
-            f"lesson_id={lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_words={int(c_words)}"
+            f"lesson_id={lesson_id} | spelling_lesson_items={int(c_items)} | spelling_lesson_items={int(c_words)}"
         )
         return
 
