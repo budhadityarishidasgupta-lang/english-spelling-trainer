@@ -43,9 +43,14 @@ def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
             FROM spelling_lesson_items li
             JOIN spelling_words w
               ON w.word_id = li.word_id
-            LEFT JOIN spelling_hint_overrides o
-              ON o.word_id = w.word_id
-             AND o.course_id = :course_id
+            LEFT JOIN LATERAL (
+                SELECT hint_text
+                FROM spelling_hint_overrides o
+                WHERE o.word_id = w.word_id
+                  AND o.course_id = :course_id
+                ORDER BY o.updated_at DESC
+                LIMIT 1
+            ) o ON TRUE
             WHERE li.lesson_id = :lid
             ORDER BY w.word_id
             """,
