@@ -29,33 +29,12 @@ def _fetch_spelling_lessons():
 
 
 def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
-    if USE_OVERRIDE_HINTS:
-        return fetch_all(
-            """
-            SELECT
-                w.word_id AS id,
-                w.word,
-                w.level AS difficulty,
-                w.pattern AS pattern_hint,
-                COALESCE(o.hint_text, w.hint) AS definition,
-                w.example_sentence AS sample_sentence,
-                NULL AS missing_letter_mask
-            FROM spelling_lesson_items li
-            JOIN spelling_words w
-              ON w.word_id = li.word_id
-            LEFT JOIN LATERAL (
-                SELECT hint_text
-                FROM spelling_hint_overrides o
-                WHERE o.word_id = w.word_id
-                  AND o.course_id = :course_id
-                ORDER BY o.updated_at DESC
-                LIMIT 1
-            ) o ON TRUE
-            WHERE li.lesson_id = :lid
-            ORDER BY w.word_id
-            """,
-            {"lid": lesson_id, "course_id": course_id},
+    if course_id is None:
+        row = fetch_all(
+            "SELECT course_id FROM spelling_lessons WHERE lesson_id = :lid",
+            {"lid": lesson_id},
         )
+        course_id = row[0]["course_id"] if row else None
     return fetch_all(
         """
         SELECT
@@ -68,7 +47,7 @@ def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
             NULL AS missing_letter_mask
         FROM spelling_lesson_items li
         JOIN spelling_words w
-            ON w.word_id = li.word_id
+          ON w.word_id = li.word_id
         LEFT JOIN LATERAL (
             SELECT hint_text
             FROM spelling_hint_overrides o
