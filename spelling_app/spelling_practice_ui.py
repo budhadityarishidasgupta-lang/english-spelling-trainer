@@ -29,10 +29,19 @@ def _fetch_spelling_lessons():
 def _fetch_spelling_words(lesson_id: int):
     return fetch_all(
         """
-        SELECT id, word, difficulty, pattern_hint, definition, sample_sentence, missing_letter_mask
-        FROM spelling_words
-        WHERE lesson_id = :lid
-        ORDER BY id
+        SELECT
+            w.word_id AS id,
+            w.word,
+            w.level AS difficulty,
+            w.pattern AS pattern_hint,
+            w.hint AS definition,
+            w.example_sentence AS sample_sentence,
+            NULL AS missing_letter_mask
+        FROM spelling_lesson_items li
+        JOIN spelling_words w
+          ON w.word_id = li.word_id
+        WHERE li.lesson_id = :lid
+        ORDER BY w.word_id
         """,
         {"lid": lesson_id},
     )
