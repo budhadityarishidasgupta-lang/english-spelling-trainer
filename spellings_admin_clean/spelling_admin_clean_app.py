@@ -453,6 +453,10 @@ def render_course_management():
                 })
 
             if st.button("📥 Load drafts", use_container_width=True):
+                
+                st.write("DEBUG: rows prepared for insert:", len(rows))
+                st.write("DEBUG sample row:", rows[0] if rows else "NO ROWS")
+                
                 n = upsert_ai_hint_drafts(rows)
                 st.success(f"Loaded {n} hint drafts into spelling_hint_ai_draft.")
                 if skipped:
