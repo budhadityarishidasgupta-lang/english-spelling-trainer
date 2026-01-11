@@ -130,9 +130,9 @@ def consolidate_legacy_lessons_into_patterns(course_id: int) -> dict:
 
         insert_result = execute(
             """
-            INSERT INTO spelling_lesson_words (lesson_id, word_id, position)
+            INSERT INTO spelling_lesson_items (lesson_id, word_id, position)
             SELECT :target_lesson_id, word_id, position
-            FROM spelling_lesson_words
+            FROM spelling_lesson_items
             WHERE lesson_id = :legacy_lesson_id
             ON CONFLICT (lesson_id, word_id) DO NOTHING;
             """,
