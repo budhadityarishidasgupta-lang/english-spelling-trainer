@@ -2,6 +2,8 @@ import random
 import datetime
 import streamlit as st
 
+USE_OVERRIDE_HINTS = True
+
 from shared.db import execute, fetch_all
 
 
@@ -26,7 +28,29 @@ def _fetch_spelling_lessons():
     )
 
 
-def _fetch_spelling_words(lesson_id: int):
+def _fetch_spelling_words(lesson_id: int, course_id: int | None = None):
+    if USE_OVERRIDE_HINTS:
+        return fetch_all(
+            """
+            SELECT
+                w.word_id AS id,
+                w.word,
+                w.level AS difficulty,
+                w.pattern AS pattern_hint,
+                COALESCE(o.hint_text, w.hint) AS definition,
+                w.example_sentence AS sample_sentence,
+                NULL AS missing_letter_mask
+            FROM spelling_lesson_items li
+            JOIN spelling_words w
+              ON w.word_id = li.word_id
+            LEFT JOIN spelling_hint_overrides o
+              ON o.word_id = w.word_id
+             AND o.course_id = :course_id
+            WHERE li.lesson_id = :lid
+            ORDER BY w.word_id
+            """,
+            {"lid": lesson_id, "course_id": course_id},
+        )
     return fetch_all(
         """
         SELECT
