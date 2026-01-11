@@ -3,13 +3,13 @@ from typing import List, Dict, Any
 from spelling_app.repository import student_repo
 
 
-def load_items(lesson_id: int) -> List[Dict[str, Any]]:
+def load_items(lesson_id: int, course_id: int) -> List[Dict[str, Any]]:
     """
     Fetch lesson words for legacy practice screens.
 
     Returns list of dicts containing at least: word_id/id, word/base_word, pattern.
     """
-    rows = student_repo.get_words_for_lesson(lesson_id)
+    rows = student_repo.get_words_for_lesson(lesson_id, course_id)
     items: List[Dict[str, Any]] = []
     for row in rows:
         items.append(
@@ -65,4 +65,3 @@ def get_daily_five_words(user_id: int) -> List[int]:
 def get_weak_words(user_id: int) -> List[Dict[str, Any]]:
     """Fetch weak words for a user sourced from the authoritative weak_words table."""
     return student_repo.get_weak_words(user_id)
-

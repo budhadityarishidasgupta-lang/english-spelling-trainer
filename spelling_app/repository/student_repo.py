@@ -4,6 +4,8 @@ from sqlalchemy import text
 
 from shared.db import engine, execute, fetch_all, fetch_one
 
+USE_OVERRIDE_HINTS = False  # Feature flag for AI hint overrides
+
 
 def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
     """
@@ -363,24 +365,49 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     return lessons_dict
 
 
-def get_words_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
+def get_words_for_lesson(lesson_id: int, course_id: int) -> List[Dict[str, Any]]:
+    if USE_OVERRIDE_HINTS:
+        sql = text(
+            """
+            SELECT
+                w.word_id,
+                w.word,
+                COALESCE(o.hint_text, w.hint) AS hint,
+                w.example_sentence,
+                w.hint,
+                w.pattern,
+                w.pattern_code
+            FROM spelling_lesson_items sli
+            JOIN spelling_words w
+                ON w.word_id = sli.word_id
+            LEFT JOIN spelling_hint_overrides o
+                ON o.word_id = w.word_id
+               AND (o.course_id = :course_id OR o.course_id IS NULL)
+            WHERE sli.lesson_id = :lesson_id
+            ORDER BY w.word_id
+            """
+        )
+    else:
+        sql = text(
+            """
+            SELECT
+                w.word_id,
+                w.word,
+                w.hint,                -- ✅ ADD THIS LINE
+                w.example_sentence,
+                w.hint,
+                w.pattern,
+                w.pattern_code
+            FROM spelling_lesson_items sli
+            JOIN spelling_words w
+                ON w.word_id = sli.word_id
+            WHERE sli.lesson_id = :lesson_id
+            ORDER BY w.word_id
+            """
+        )
     rows = fetch_all(
-        """
-        SELECT
-            w.word_id,
-            w.word,
-            w.hint,                -- ✅ ADD THIS LINE
-            w.example_sentence,
-            w.hint,
-            w.pattern,
-            w.pattern_code
-        FROM spelling_lesson_items sli
-        JOIN spelling_words w
-            ON w.word_id = sli.word_id
-        WHERE sli.lesson_id = :lesson_id
-        ORDER BY w.word_id
-        """,
-        {"lesson_id": lesson_id},
+        sql,
+        {"lesson_id": lesson_id, "course_id": course_id},
     )
     return _rows_to_dicts(rows)
 
@@ -567,4 +594,3 @@ def get_daily_five_word_ids(user_id: int) -> List[int]:
                 seen.add(wid)
 
     return result
-

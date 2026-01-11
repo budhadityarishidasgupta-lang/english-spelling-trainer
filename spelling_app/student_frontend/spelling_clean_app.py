@@ -792,7 +792,7 @@ def render_practice_page():
 
     st.markdown(f"### Lesson: **{lesson_name}**")
 
-    words = get_words_for_lesson(lesson_id)
+    words = get_words_for_lesson(lesson_id, cid)
     if not words:
         st.warning("No words found for this lesson.")
         return
@@ -1653,7 +1653,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
         words = ordered_weak_words
     else:
-        words = get_words_for_lesson(lesson_id)
+        words = get_words_for_lesson(lesson_id, course_id)
 
     if not words:
         if practice_mode == "Weak Words":

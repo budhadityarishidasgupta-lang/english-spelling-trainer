@@ -45,7 +45,7 @@ def _init_practice_state(lesson_id: int, course_id: int, lesson_title: str):
     state = st.session_state["practice_state"]
     if state.get("lesson_id") != lesson_id:
         # Fresh state for a new lesson
-        items_result = load_items(lesson_id)
+        items_result = load_items(lesson_id, course_id)
 
         # Expect load_items to return a list of dict-like rows
         if isinstance(items_result, dict) and "error" in items_result:
