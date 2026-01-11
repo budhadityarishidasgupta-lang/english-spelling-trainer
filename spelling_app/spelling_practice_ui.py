@@ -29,7 +29,7 @@ def _fetch_spelling_lessons():
 
 
 def _fetch_spelling_words(lesson_id: int):
-    # Resolve course_id from lesson (single source of truth)
+    # Resolve course_id deterministically
     rows = fetch_all(
         "SELECT course_id FROM spelling_lessons WHERE lesson_id = :lid",
         {"lid": lesson_id},
