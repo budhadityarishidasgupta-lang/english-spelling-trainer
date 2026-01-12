@@ -70,13 +70,33 @@ def _fetch_spelling_words(lesson_id: int):
             SELECT
                 w.word_id,
                 w.word,
-                w.hint,
+                COALESCE(
+                    o_same.hint_text,
+                    o_any.hint_text,
+                    w.hint
+                ) AS hint,
                 w.example_sentence,
                 w.pattern,
                 w.pattern_code
             FROM spelling_lesson_items sli
             JOIN spelling_words w
                 ON w.word_id = sli.word_id
+
+            -- 1️⃣ AI override for SAME course
+            LEFT JOIN spelling_hint_overrides o_same
+              ON o_same.word_id = w.word_id
+             AND o_same.course_id = w.course_id
+
+            -- 2️⃣ AI override for SAME WORD TEXT (any course)
+            LEFT JOIN spelling_hint_overrides o_any
+              ON o_any.word_id = (
+                  SELECT w2.word_id
+                  FROM spelling_words w2
+                  WHERE w2.word = w.word
+                    AND w2.word_id <> w.word_id
+                  LIMIT 1
+              )
+
             WHERE sli.lesson_id = :lesson_id
             ORDER BY w.word_id
             """,
