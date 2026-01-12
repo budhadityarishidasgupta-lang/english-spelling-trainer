@@ -29,13 +29,6 @@ def _fetch_spelling_lessons():
 
 
 def _fetch_spelling_words(lesson_id: int):
-    # Resolve course_id deterministically
-    rows = fetch_all(
-        "SELECT course_id FROM spelling_lessons WHERE lesson_id = :lid",
-        {"lid": lesson_id},
-    )
-    course_id = rows[0]["course_id"] if rows else None
-
     return fetch_all(
         """
         SELECT
@@ -53,17 +46,14 @@ def _fetch_spelling_words(lesson_id: int):
             SELECT hint_text
             FROM spelling_hint_overrides o
             WHERE o.word_id = w.word_id
-              AND o.course_id = :course_id
+              AND o.course_id = w.course_id
             ORDER BY o.updated_at DESC
             LIMIT 1
         ) o ON TRUE
         WHERE li.lesson_id = :lid
         ORDER BY w.word_id
         """,
-        {
-            "lid": lesson_id,
-            "course_id": course_id,
-        },
+        {"lid": lesson_id},
     )
 
 
