@@ -166,6 +166,78 @@ def init_spelling_tables():
         """))
 
 
+def init_math_tables():
+    """
+    Initialise Maths app tables.
+    Additive only. Safe for repeated runs.
+    """
+    with engine.begin() as conn:
+
+        # --------------------------------------------
+        # Maths Courses
+        # --------------------------------------------
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS math_courses (
+                course_id SERIAL PRIMARY KEY,
+                course_name TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE
+            );
+        """))
+
+        # --------------------------------------------
+        # Maths Lessons (Practice sets)
+        # --------------------------------------------
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS math_lessons (
+                lesson_id SERIAL PRIMARY KEY,
+                course_id INT NOT NULL,
+                lesson_name TEXT NOT NULL,      -- canonical, DO NOT EDIT
+                display_name TEXT NOT NULL,     -- UI-safe label
+                difficulty INT,
+                is_active BOOLEAN DEFAULT TRUE
+            );
+        """))
+
+        # --------------------------------------------
+        # Maths Questions (Practice only)
+        # --------------------------------------------
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS math_questions (
+                question_id SERIAL PRIMARY KEY,
+                external_question_code TEXT UNIQUE NOT NULL,
+                course_id INT NOT NULL,
+                lesson_id INT NOT NULL,
+                topic TEXT,
+                difficulty TEXT,
+                question_type TEXT DEFAULT 'mcq',
+                question_text TEXT NOT NULL,
+                options JSONB NOT NULL,
+                correct_option TEXT NOT NULL,   -- A / B / C / D
+                explanation TEXT
+            );
+        """))
+
+        # --------------------------------------------
+        # Maths Attempts (Append-only)
+        # --------------------------------------------
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS math_attempts (
+                attempt_id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL,
+                lesson_id INT NOT NULL,
+                question_id INT NOT NULL,
+                is_correct BOOLEAN NOT NULL,
+                answer TEXT NOT NULL,
+                time_taken INT,
+                attempted_on TIMESTAMP DEFAULT now()
+            );
+        """))
+
+
+# Call from your global init hook if present
+# init_math_tables()
+
+
 
 # --------------------------------------------------------------------
 # fetch_all() — Always return list of rows (for SELECT queries)
