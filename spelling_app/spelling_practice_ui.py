@@ -36,20 +36,32 @@ def _fetch_spelling_words(lesson_id: int):
             w.word,
             w.level AS difficulty,
             w.pattern AS pattern_hint,
-            COALESCE(o.hint_text, w.hint) AS definition,
+            COALESCE(
+                o_same.hint_text,
+                o_any.hint_text,
+                w.hint
+            ) AS definition,
             w.example_sentence AS sample_sentence,
             NULL AS missing_letter_mask
         FROM spelling_lesson_items li
         JOIN spelling_words w
           ON w.word_id = li.word_id
-        LEFT JOIN LATERAL (
-            SELECT hint_text
-            FROM spelling_hint_overrides o
-            WHERE o.word_id = w.word_id
-              AND o.course_id = w.course_id
-            ORDER BY o.updated_at DESC
-            LIMIT 1
-        ) o ON TRUE
+
+        -- 1️⃣ AI override for SAME course
+        LEFT JOIN spelling_hint_overrides o_same
+          ON o_same.word_id = w.word_id
+         AND o_same.course_id = w.course_id
+
+        -- 2️⃣ AI override for SAME WORD TEXT (any course)
+        LEFT JOIN spelling_hint_overrides o_any
+          ON o_any.word_id = (
+              SELECT w2.word_id
+              FROM spelling_words w2
+              WHERE w2.word = w.word
+                AND w2.word_id <> w.word_id
+              LIMIT 1
+          )
+
         WHERE li.lesson_id = :lid
         ORDER BY w.word_id
         """,
