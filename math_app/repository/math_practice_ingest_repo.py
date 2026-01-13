@@ -3,7 +3,7 @@ from typing import BinaryIO, Dict, List, Optional
 
 import pandas as pd
 
-from math_app.db import get_conn
+from math_app.db import get_db_connection
 
 REQUIRED_COLUMNS = [
     "question_id",
@@ -83,138 +83,133 @@ def ingest_practice_csv(
     questions_upserted = 0
     mappings_created = 0
 
-    conn = None
-    try:
-        conn = get_conn()
+    with get_db_connection() as conn:
         conn.autocommit = False
 
-        with conn.cursor() as cur:
-            # --- Helpers (SQL stays here, NOT in UI) ---
-            def upsert_lesson(topic: str) -> int:
-                nonlocal lessons_created
-                lesson_name = _norm_topic_to_lesson_name(topic)
-                display_name = (topic or "").strip() or lesson_name
+        try:
+            with conn.cursor() as cur:
+                # --- Helpers (SQL stays here, NOT in UI) ---
+                def upsert_lesson(topic: str) -> int:
+                    nonlocal lessons_created
+                    lesson_name = _norm_topic_to_lesson_name(topic)
+                    display_name = (topic or "").strip() or lesson_name
 
-                # Track per-run "created" roughly: if we didn't see it before, check existence
-                key = (course_id, lesson_name)
-                if key not in lessons_seen:
-                    lessons_seen.add(key)
+                    # Track per-run "created" roughly: if we didn't see it before, check existence
+                    key = (course_id, lesson_name)
+                    if key not in lessons_seen:
+                        lessons_seen.add(key)
 
-                cur.execute(
-                    """
-                    INSERT INTO math_lessons (course_id, lesson_name, display_name, is_active)
-                    VALUES (%s, %s, %s, TRUE)
-                    ON CONFLICT (course_id, lesson_name)
-                    DO UPDATE SET display_name = EXCLUDED.display_name
-                    RETURNING lesson_id;
-                    """,
-                    (course_id, lesson_name, display_name),
-                )
-                row = cur.fetchone()
-                if not row:
-                    raise RuntimeError("Failed to create/find lesson_id")
-                # We cannot perfectly detect "created vs updated" without extra query.
-                # Keep metric simple: count unique lessons encountered in CSV.
-                return int(row[0])
-
-            def upsert_question(row_dict: Dict[str, str]) -> int:
-                nonlocal questions_upserted
-                qid = row_dict["question_id"].strip()
-                topic = row_dict["topic"].strip()
-                difficulty = row_dict.get("difficulty", "").strip()
-                stem = row_dict["stem"].strip()
-
-                # Options
-                oa = row_dict.get("option_a", "").strip()
-                ob = row_dict.get("option_b", "").strip()
-                oc = row_dict.get("option_c", "").strip()
-                od = row_dict.get("option_d", "").strip()
-                oe = row_dict.get("option_e", "").strip() if "option_e" in row_dict else ""
-
-                correct = (row_dict.get("correct_option") or "").strip().upper()
-                if correct not in ("A", "B", "C", "D", "E"):
-                    raise ValueError(f"Invalid correct_option '{correct}' for question_id={qid}")
-
-                explanation = (row_dict.get("explanation") or "").strip()
-                hint = (row_dict.get("hint") or "").strip()
-
-                # NOTE: We store CSV 'explanation' into explanation column (and also mirror to solution if you want later)
-                cur.execute(
-                    """
-                    INSERT INTO math_questions (
-                        question_id, stem,
-                        option_a, option_b, option_c, option_d, option_e,
-                        correct_option, topic, difficulty,
-                        explanation, hint
+                    cur.execute(
+                        """
+                        INSERT INTO math_lessons (course_id, lesson_name, display_name, is_active)
+                        VALUES (%s, %s, %s, TRUE)
+                        ON CONFLICT (course_id, lesson_name)
+                        DO UPDATE SET display_name = EXCLUDED.display_name
+                        RETURNING lesson_id;
+                        """,
+                        (course_id, lesson_name, display_name),
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (question_id)
-                    DO UPDATE SET
-                        stem = EXCLUDED.stem,
-                        option_a = EXCLUDED.option_a,
-                        option_b = EXCLUDED.option_b,
-                        option_c = EXCLUDED.option_c,
-                        option_d = EXCLUDED.option_d,
-                        option_e = EXCLUDED.option_e,
-                        correct_option = EXCLUDED.correct_option,
-                        topic = EXCLUDED.topic,
-                        difficulty = EXCLUDED.difficulty,
-                        explanation = EXCLUDED.explanation,
-                        hint = EXCLUDED.hint
-                    RETURNING id;
-                    """,
-                    (qid, stem, oa, ob, oc, od, oe, correct, topic, difficulty, explanation, hint),
-                )
-                qpk = cur.fetchone()
-                if not qpk:
-                    raise RuntimeError(f"Failed to upsert question_id={qid}")
-                questions_upserted += 1
-                return int(qpk[0])
+                    row = cur.fetchone()
+                    if not row:
+                        raise RuntimeError("Failed to create/find lesson_id")
+                    # We cannot perfectly detect "created vs updated" without extra query.
+                    # Keep metric simple: count unique lessons encountered in CSV.
+                    return int(row[0])
 
-            def ensure_mapping(lesson_id: int, question_pk: int, position: Optional[int]) -> None:
-                nonlocal mappings_created
-                cur.execute(
-                    """
-                    INSERT INTO math_lesson_questions (lesson_id, question_pk, position)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (lesson_id, question_pk)
-                    DO UPDATE SET position = COALESCE(EXCLUDED.position, math_lesson_questions.position);
-                    """,
-                    (lesson_id, question_pk, position),
-                )
-                mappings_created += 1
+                def upsert_question(row_dict: Dict[str, str]) -> int:
+                    nonlocal questions_upserted
+                    qid = row_dict["question_id"].strip()
+                    topic = row_dict["topic"].strip()
+                    difficulty = row_dict.get("difficulty", "").strip()
+                    stem = row_dict["stem"].strip()
 
-            # --- Main loop ---
-            for idx, r in df.iterrows():
-                row = {c: str(r.get(c, "")) for c in df.columns}
+                    # Options
+                    oa = row_dict.get("option_a", "").strip()
+                    ob = row_dict.get("option_b", "").strip()
+                    oc = row_dict.get("option_c", "").strip()
+                    od = row_dict.get("option_d", "").strip()
+                    oe = row_dict.get("option_e", "").strip() if "option_e" in row_dict else ""
 
-                if not row.get("question_id", "").strip():
-                    # Skip blank rows
-                    continue
-                if not row.get("topic", "").strip():
-                    raise ValueError(f"Missing topic for question_id={row.get('question_id')}")
-                if not row.get("stem", "").strip():
-                    raise ValueError(f"Missing stem for question_id={row.get('question_id')}")
+                    correct = (row_dict.get("correct_option") or "").strip().upper()
+                    if correct not in ("A", "B", "C", "D", "E"):
+                        raise ValueError(f"Invalid correct_option '{correct}' for question_id={qid}")
 
-                lesson_id = upsert_lesson(row["topic"])
-                question_pk = upsert_question(row)
-                ensure_mapping(lesson_id, question_pk, position=int(idx) + 1)
+                    explanation = (row_dict.get("explanation") or "").strip()
+                    hint = (row_dict.get("hint") or "").strip()
 
-            # Lessons metric: count unique topics encountered (safe/clear)
-            lessons_created = len(lessons_seen)
+                    # NOTE: We store CSV 'explanation' into explanation column (and also mirror to solution if you want later)
+                    cur.execute(
+                        """
+                        INSERT INTO math_questions (
+                            question_id, stem,
+                            option_a, option_b, option_c, option_d, option_e,
+                            correct_option, topic, difficulty,
+                            explanation, hint
+                        )
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (question_id)
+                        DO UPDATE SET
+                            stem = EXCLUDED.stem,
+                            option_a = EXCLUDED.option_a,
+                            option_b = EXCLUDED.option_b,
+                            option_c = EXCLUDED.option_c,
+                            option_d = EXCLUDED.option_d,
+                            option_e = EXCLUDED.option_e,
+                            correct_option = EXCLUDED.correct_option,
+                            topic = EXCLUDED.topic,
+                            difficulty = EXCLUDED.difficulty,
+                            explanation = EXCLUDED.explanation,
+                            hint = EXCLUDED.hint
+                        RETURNING id;
+                        """,
+                        (qid, stem, oa, ob, oc, od, oe, correct, topic, difficulty, explanation, hint),
+                    )
+                    qpk = cur.fetchone()
+                    if not qpk:
+                        raise RuntimeError(f"Failed to upsert question_id={qid}")
+                    questions_upserted += 1
+                    return int(qpk[0])
 
-        conn.commit()
+                def ensure_mapping(lesson_id: int, question_pk: int, position: Optional[int]) -> None:
+                    nonlocal mappings_created
+                    cur.execute(
+                        """
+                        INSERT INTO math_lesson_questions (lesson_id, question_pk, position)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (lesson_id, question_pk)
+                        DO UPDATE SET position = COALESCE(EXCLUDED.position, math_lesson_questions.position);
+                        """,
+                        (lesson_id, question_pk, position),
+                    )
+                    mappings_created += 1
 
-        return {
-            "lessons_processed": lessons_created,
-            "questions_upserted": questions_upserted,
-            "mappings_processed": mappings_created,
-        }
+                # --- Main loop ---
+                for idx, r in df.iterrows():
+                    row = {c: str(r.get(c, "")) for c in df.columns}
 
-    except Exception:
-        if conn:
+                    if not row.get("question_id", "").strip():
+                        # Skip blank rows
+                        continue
+                    if not row.get("topic", "").strip():
+                        raise ValueError(f"Missing topic for question_id={row.get('question_id')}")
+                    if not row.get("stem", "").strip():
+                        raise ValueError(f"Missing stem for question_id={row.get('question_id')}")
+
+                    lesson_id = upsert_lesson(row["topic"])
+                    question_pk = upsert_question(row)
+                    ensure_mapping(lesson_id, question_pk, position=int(idx) + 1)
+
+                # Lessons metric: count unique topics encountered (safe/clear)
+                lessons_created = len(lessons_seen)
+
+            conn.commit()
+
+            return {
+                "lessons_processed": lessons_created,
+                "questions_upserted": questions_upserted,
+                "mappings_processed": mappings_created,
+            }
+
+        except Exception:
             conn.rollback()
-        raise
-    finally:
-        if conn:
-            conn.close()
+            raise
