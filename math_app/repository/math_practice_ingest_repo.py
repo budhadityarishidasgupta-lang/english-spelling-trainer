@@ -187,16 +187,16 @@ def ingest_practice_csv(
             # ------------------------------------------------------------
             # ENSURE LESSON–QUESTION MAPPING
             # ------------------------------------------------------------
-            def ensure_mapping(lesson_id: int, question_pk: int, position: int) -> None:
+            def ensure_mapping(lesson_id: int, question_id: int, position: int) -> None:
                 nonlocal mappings_created
                 cur.execute(
                     """
-                    INSERT INTO math_lesson_questions (lesson_id, question_pk, position)
+                    INSERT INTO math_lesson_questions (lesson_id, question_id, position)
                     VALUES (%s, %s, %s)
-                    ON CONFLICT (lesson_id, question_pk)
+                    ON CONFLICT (lesson_id, question_id)
                     DO UPDATE SET position = EXCLUDED.position;
                     """,
-                    (lesson_id, question_pk, position),
+                    (lesson_id, question_id, position),
                 )
                 mappings_created += 1
 
@@ -210,8 +210,8 @@ def ingest_practice_csv(
                     continue
 
                 lesson_id = upsert_lesson(row["topic"])
-                question_pk = upsert_question(row)
-                ensure_mapping(lesson_id, question_pk, idx + 1)
+                question_id = upsert_question(row)
+                ensure_mapping(lesson_id, question_id, idx + 1)
 
         conn.commit()
 
