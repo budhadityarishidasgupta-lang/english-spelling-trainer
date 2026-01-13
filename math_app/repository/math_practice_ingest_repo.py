@@ -105,7 +105,7 @@ def ingest_practice_csv(
                         VALUES (%s, %s, %s, TRUE)
                         ON CONFLICT (course_id, lesson_name)
                         DO UPDATE SET display_name = EXCLUDED.display_name
-                        RETURNING lesson_id;
+                        RETURNING id;
                         """,
                         (course_id, lesson_name, display_name),
                     )
