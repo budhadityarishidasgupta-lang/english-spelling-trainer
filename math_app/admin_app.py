@@ -1,6 +1,6 @@
 import streamlit as st
 
-
+#from math_app.db import init_math_tables
 from math_app.repository.math_practice_ingest_repo import ingest_practice_csv
 from math_app.repository.math_lessons_repo import (
     get_lessons_for_course,
@@ -8,7 +8,7 @@ from math_app.repository.math_lessons_repo import (
 )
 
 # Ensure maths tables exist (SAFE)
-init_math_tables()
+#init_math_tables()
 
 st.title("📘 WordSprint Maths — Admin")
 
