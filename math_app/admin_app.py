@@ -81,3 +81,40 @@ else:
                 mime="text/csv",
                 key=f"download_lesson_{lesson['lesson_id']}",
             )
+
+# ------------------------------------------------------------
+# LESSON CSV EXPORT (MAINTENANCE)
+# ------------------------------------------------------------
+st.divider()
+st.markdown("### 📥 Download Lesson CSV (Maintenance)")
+st.caption(
+    "Download an existing lesson as a CSV, edit it offline, and re-upload it to update questions."
+)
+
+lessons_for_export = get_lessons_for_course(course_id=int(course_id))
+
+if not lessons_for_export:
+    st.info("No lessons available for export.")
+else:
+    lesson_lookup = {
+        f"{l['display_name'] or l['lesson_name']} (ID {l['lesson_id']})": l["lesson_id"]
+        for l in lessons_for_export
+    }
+
+    selected_label = st.selectbox(
+        "Select lesson to download",
+        options=list(lesson_lookup.keys()),
+    )
+
+    if selected_label:
+        lesson_id = lesson_lookup[selected_label]
+
+        if st.button("⬇️ Download Lesson CSV"):
+            csv_data = export_lesson_to_csv(lesson_id)
+
+            st.download_button(
+                label="Download CSV",
+                data=csv_data,
+                file_name=f"lesson_{lesson_id}.csv",
+                mime="text/csv",
+            )
