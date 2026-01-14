@@ -1,6 +1,7 @@
 import streamlit as st
 
 #from math_app.db import init_math_tables
+from math_app.repository.math_practice_export_repo import export_lesson_to_csv
 from math_app.repository.math_practice_ingest_repo import ingest_practice_csv
 from math_app.repository.math_lessons_repo import (
     get_lessons_for_course,
@@ -51,7 +52,7 @@ if not lessons:
     st.info("No practice lessons found.")
 else:
     for lesson in lessons:
-        col1, col2, col3 = st.columns([3, 4, 1])
+        col1, col2, col3, col4 = st.columns([3, 4, 1, 2])
 
         with col1:
             st.text(lesson["lesson_name"])
@@ -70,3 +71,13 @@ else:
                     display_name=new_display_name.strip() or None,
                 )
                 st.success("Saved")
+
+        with col4:
+            csv_data = export_lesson_to_csv(lesson["lesson_id"])
+            st.download_button(
+                "Download CSV",
+                data=csv_data,
+                file_name=f"lesson_{lesson['lesson_id']}_questions.csv",
+                mime="text/csv",
+                key=f"download_lesson_{lesson['lesson_id']}",
+            )
