@@ -7,13 +7,11 @@ NO side effects.
 import pandas as pd
 from sqlalchemy import text
 
-#from spelling_app.db import engine
-
 
 # -----------------------------
 # Courses
 # -----------------------------
-def list_courses(include_archived: bool = True) -> pd.DataFrame:
+def list_courses(engine, include_archived: bool = True) -> pd.DataFrame:
     sql = """
         SELECT
             course_id,
@@ -29,7 +27,7 @@ def list_courses(include_archived: bool = True) -> pd.DataFrame:
 # -----------------------------
 # Lessons
 # -----------------------------
-def list_lessons(course_id: int) -> pd.DataFrame:
+def list_lessons(engine, course_id: int) -> pd.DataFrame:
     sql = """
         SELECT
             lesson_id,
@@ -47,7 +45,7 @@ def list_lessons(course_id: int) -> pd.DataFrame:
 # -----------------------------
 # Students
 # -----------------------------
-def list_students() -> pd.DataFrame:
+def list_students(engine) -> pd.DataFrame:
     sql = """
         SELECT
             user_id,
@@ -66,11 +64,7 @@ def list_students() -> pd.DataFrame:
 # -----------------------------
 # Progress (read-only snapshot)
 # -----------------------------
-def list_student_progress() -> pd.DataFrame:
-    """
-    High-level progress snapshot.
-    Does NOT compute mastery yet (Patch 4).
-    """
+def list_student_progress(engine) -> pd.DataFrame:
     sql = """
         SELECT
             u.user_id,
