@@ -23,8 +23,7 @@ SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 # Admin Console vNext (READ-ONLY, FLAGGED)
 # =========================================================
 
-if SPELLING_ADMIN_VNEXT:
-
+def render_admin_console_vnext(engine):
     from spelling_app.repository.admin_console_vnext_repo import (
         list_courses,
         list_lessons,
@@ -40,12 +39,10 @@ if SPELLING_ADMIN_VNEXT:
         ["Courses", "Lessons", "Students", "Progress"]
     )
 
-    # Courses
     with tab_courses:
         df_courses = list_courses(engine)
         st.dataframe(df_courses, use_container_width=True)
 
-    # Lessons
     with tab_lessons:
         df_courses = list_courses(engine)
         if not df_courses.empty:
@@ -55,20 +52,21 @@ if SPELLING_ADMIN_VNEXT:
                 format_func=lambda x: df_courses.loc[
                     df_courses["course_id"] == x, "course_name"
                 ].values[0],
-                key="vnext_course_select",
             )
             df_lessons = list_lessons(engine, course_id)
             st.dataframe(df_lessons, use_container_width=True)
 
-    # Students
     with tab_students:
         df_students = list_students(engine)
         st.dataframe(df_students, use_container_width=True)
 
-    # Progress
     with tab_progress:
         df_progress = list_student_progress(engine)
         st.dataframe(df_progress, use_container_width=True)
+
+
+if SPELLING_ADMIN_VNEXT:
+    render_admin_console_vnext(engine)
 
 from spellings_admin_clean.spelling_help_text_repo import (
     get_help_text,
