@@ -6,6 +6,7 @@
 import sys
 import base64
 import io
+import os
 import pandas as pd
 import streamlit as st
 
@@ -15,6 +16,8 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from shared.db import engine, fetch_all
+
+SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 from spellings_admin_clean.spelling_help_text_repo import (
     get_help_text,
     upsert_help_text,
