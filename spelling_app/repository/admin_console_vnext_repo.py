@@ -15,10 +15,9 @@ def list_courses(engine) -> pd.DataFrame:
     sql = """
         SELECT
             course_id,
-            course_name,
-            created_at
+            course_name
         FROM spelling_courses
-        ORDER BY created_at DESC
+        ORDER BY course_id DESC
     """
     return pd.read_sql(text(sql), engine)
 
@@ -49,11 +48,10 @@ def list_students(engine) -> pd.DataFrame:
             user_id,
             name,
             email,
-            class_name,
-            created_at
+            class_name
         FROM spelling_users
         WHERE role = 'student'
-        ORDER BY created_at DESC
+        ORDER BY user_id DESC
     """
     return pd.read_sql(text(sql), engine)
 
