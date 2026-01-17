@@ -45,13 +45,13 @@ def list_lessons(engine, course_id: int) -> pd.DataFrame:
 def list_students(engine) -> pd.DataFrame:
     sql = """
         SELECT
-            user_id,
-            name,
-            email,
-            class_name
-        FROM spelling_users
-        WHERE role = 'student'
-        ORDER BY user_id DESC
+            u.user_id,
+            u.name,
+            u.email,
+            u.class_name
+        FROM users u
+        WHERE u.role = 'student'
+        ORDER BY u.user_id DESC
     """
     return pd.read_sql(text(sql), engine)
 
@@ -66,8 +66,9 @@ def list_student_progress(engine) -> pd.DataFrame:
             u.name,
             u.email,
             COUNT(a.attempt_id) AS attempts
-        FROM spelling_users u
-        LEFT JOIN spelling_attempts a ON a.user_id = u.user_id
+        FROM users u
+        LEFT JOIN spelling_attempts a
+            ON a.user_id = u.user_id
         WHERE u.role = 'student'
         GROUP BY u.user_id, u.name, u.email
         ORDER BY attempts DESC
