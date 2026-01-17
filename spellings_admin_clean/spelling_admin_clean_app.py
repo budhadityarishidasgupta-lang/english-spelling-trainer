@@ -848,16 +848,24 @@ def render_maintenance():
 
 
 def main():
-   # st.set_page_config(
-   #     page_title="WordSprint – Spelling Admin",
-   #     layout="wide",
-   # )
+    # -------------------------------------------------
+    # vNext Admin Console (Preview)
+    # -------------------------------------------------
+    if SPELLING_ADMIN_VNEXT:
+        # vNext UI is already rendered above
+        # Do NOT render legacy admin UI
+        return
+
+    # -------------------------------------------------
+    # Legacy Admin UI (Production)
+    # -------------------------------------------------
 
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "course_management"
 
     admin_options = ["Course Management", "Students", "Help Texts", "Maintenance"]
     default_index = 0
+
     if st.session_state.admin_page == "students":
         default_index = admin_options.index("Students")
     elif st.session_state.admin_page == "help_texts":
