@@ -31,6 +31,12 @@ SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 # =========================================================
 
 def render_admin_console_vnext(engine):
+    """
+    vNext Admin Console
+    Uses vNext layout but embeds legacy admin capabilities.
+    SAFE: No logic duplication, no DB changes.
+    """
+
     from spelling_app.repository.admin_console_vnext_repo import (
         list_courses,
         list_lessons,
@@ -42,45 +48,34 @@ def render_admin_console_vnext(engine):
     )
 
     st.divider()
-    st.subheader("🧪 Admin Console vNext (Preview)")
-    st.caption("Read-only preview. No changes are saved.")
+    st.subheader("🧪 Admin Console vNext")
+    st.caption("vNext layout with legacy admin capabilities enabled.")
 
     tab_courses, tab_lessons, tab_students, tab_progress = st.tabs(
         ["Courses", "Lessons", "Students", "Progress"]
     )
 
-    # -----------------------------
-    # Courses
-    # -----------------------------
+    # =====================================================
+    # COURSES TAB — legacy features restored
+    # =====================================================
     with tab_courses:
         st.subheader("Courses")
 
-        df_courses = list_courses(engine)
-        st.dataframe(df_courses, use_container_width=True)
+        # 🔁 LEGACY COURSE MANAGEMENT (FULL FEATURE SET)
+        render_course_management()
 
-        st.caption("Course-level management only.")
-
-    # -----------------------------
-    # Lessons
-    # -----------------------------
+    # =====================================================
+    # LESSONS TAB — legacy lesson editor (temporary)
+    # =====================================================
     with tab_lessons:
         st.subheader("Lessons")
 
-        df_courses = list_courses(engine)
-        if not df_courses.empty:
-            course_id = st.selectbox(
-                "Select course",
-                df_courses["course_id"].tolist(),
-                format_func=lambda x: df_courses.loc[
-                    df_courses["course_id"] == x, "course_name"
-                ].values[0],
-            )
-            df_lessons = list_lessons(engine, course_id)
-            st.dataframe(df_lessons, use_container_width=True)
+        st.info("Lesson management (legacy). Will be consolidated later.")
+        render_course_management()
 
-    # -----------------------------
-    # Students
-    # -----------------------------
+    # =====================================================
+    # STUDENTS TAB — spelling-only students
+    # =====================================================
     with tab_students:
         st.subheader("Students")
 
@@ -91,11 +86,11 @@ def render_admin_console_vnext(engine):
         else:
             st.dataframe(students, use_container_width=True)
 
-        st.caption("Class/section management coming in Patch 3.")
+        st.caption("Class & assignment features coming in Patch 3.")
 
-    # -----------------------------
-    # Progress
-    # -----------------------------
+    # =====================================================
+    # PROGRESS TAB — read-only
+    # =====================================================
     with tab_progress:
         st.subheader("Progress (Preview)")
 
@@ -851,15 +846,6 @@ def main():
     # -------------------------------------------------
     # vNext Admin Console (Preview)
     # -------------------------------------------------
-    if SPELLING_ADMIN_VNEXT:
-        # vNext UI is already rendered above
-        # Do NOT render legacy admin UI
-        return
-
-    # -------------------------------------------------
-    # Legacy Admin UI (Production)
-    # -------------------------------------------------
-
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "course_management"
 
