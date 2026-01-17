@@ -32,9 +32,9 @@ SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 
 def render_admin_console_vnext(engine):
     """
-    vNext Admin Console
-    Uses vNext layout but embeds legacy admin capabilities.
-    SAFE: No logic duplication, no DB changes.
+    Admin Console vNext
+    OVERVIEW ONLY.
+    All mutations remain in legacy sidebar.
     """
 
     from spelling_app.repository.admin_console_vnext_repo import (
@@ -49,53 +49,74 @@ def render_admin_console_vnext(engine):
 
     st.divider()
     st.subheader("🧪 Admin Console vNext")
-    st.caption("vNext layout with legacy admin capabilities enabled.")
+    st.caption("Overview & monitoring only. Use sidebar for management actions.")
 
     tab_courses, tab_lessons, tab_students, tab_progress = st.tabs(
         ["Courses", "Lessons", "Students", "Progress"]
     )
 
-    # =====================================================
-    # COURSES TAB — legacy features restored
-    # =====================================================
+    # -----------------------------
+    # Courses (Overview)
+    # -----------------------------
     with tab_courses:
         st.subheader("Courses")
 
-        # 🔁 LEGACY COURSE MANAGEMENT (FULL FEATURE SET)
-        render_course_management()
+        df_courses = list_courses(engine)
+        if df_courses.empty:
+            st.info("No courses found.")
+        else:
+            st.dataframe(df_courses, use_container_width=True)
 
-    # =====================================================
-    # LESSONS TAB — legacy lesson editor (temporary)
-    # =====================================================
+        st.info("Create, upload, rename, archive → Course Management (sidebar)")
+
+    # -----------------------------
+    # Lessons (Overview)
+    # -----------------------------
     with tab_lessons:
         st.subheader("Lessons")
 
-        st.info("Lesson management (legacy). Will be consolidated later.")
-        render_course_management()
+        df_courses = list_courses(engine)
+        if df_courses.empty:
+            st.info("No courses available.")
+        else:
+            course_id = st.selectbox(
+                "Select course",
+                df_courses["course_id"].tolist(),
+                format_func=lambda x: df_courses.loc[
+                    df_courses["course_id"] == x, "course_name"
+                ].values[0],
+            )
 
-    # =====================================================
-    # STUDENTS TAB — spelling-only students
-    # =====================================================
+            df_lessons = list_lessons(engine, course_id)
+            if df_lessons.empty:
+                st.info("No lessons for this course.")
+            else:
+                st.dataframe(df_lessons, use_container_width=True)
+
+        st.info("Lesson edits & CSV uploads → Course Management (sidebar)")
+
+    # -----------------------------
+    # Students
+    # -----------------------------
     with tab_students:
         st.subheader("Students")
 
         students = list_registered_spelling_students()
-
         if not students:
             st.info("No spelling students found.")
         else:
             st.dataframe(students, use_container_width=True)
 
-        st.caption("Class & assignment features coming in Patch 3.")
+        st.caption("Class & assignment features coming in Patch 3")
 
-    # =====================================================
-    # PROGRESS TAB — read-only
-    # =====================================================
+    # -----------------------------
+    # Progress (Preview)
+    # -----------------------------
     with tab_progress:
         st.subheader("Progress (Preview)")
 
         st.warning(
-            "Progress view is preliminary. "
+            "Progress is currently aggregated. "
             "Spelling-only filtering will be applied next."
         )
 
