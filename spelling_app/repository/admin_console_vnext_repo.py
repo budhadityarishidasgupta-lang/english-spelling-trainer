@@ -7,7 +7,7 @@ NO side effects.
 import pandas as pd
 from sqlalchemy import text
 
-from spelling_app.db import engine
+#from spelling_app.db import engine
 
 
 # -----------------------------
