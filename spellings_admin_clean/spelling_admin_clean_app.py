@@ -49,15 +49,23 @@ def render_admin_console_vnext(engine):
         ["Courses", "Lessons", "Students", "Progress"]
     )
 
+    # -----------------------------
+    # Courses
+    # -----------------------------
     with tab_courses:
-    st.subheader("Courses")
+        st.subheader("Courses")
 
-    df_courses = list_courses(engine)
-    st.dataframe(df_courses, use_container_width=True)
+        df_courses = list_courses(engine)
+        st.dataframe(df_courses, use_container_width=True)
 
-    st.caption("Course-level management only.")
+        st.caption("Course-level management only.")
 
+    # -----------------------------
+    # Lessons
+    # -----------------------------
     with tab_lessons:
+        st.subheader("Lessons")
+
         df_courses = list_courses(engine)
         if not df_courses.empty:
             course_id = st.selectbox(
@@ -70,6 +78,9 @@ def render_admin_console_vnext(engine):
             df_lessons = list_lessons(engine, course_id)
             st.dataframe(df_lessons, use_container_width=True)
 
+    # -----------------------------
+    # Students
+    # -----------------------------
     with tab_students:
         st.subheader("Students")
 
@@ -82,6 +93,9 @@ def render_admin_console_vnext(engine):
 
         st.caption("Class/section management coming in Patch 3.")
 
+    # -----------------------------
+    # Progress
+    # -----------------------------
     with tab_progress:
         st.subheader("Progress (Preview)")
 
