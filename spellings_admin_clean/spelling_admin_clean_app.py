@@ -10,6 +10,13 @@ import os
 import pandas as pd
 import streamlit as st
 
+# other imports…
+
+st.set_page_config(
+    page_title="WordSprint – Spelling Admin",
+    layout="wide",
+)
+
 # ---- Force project root for Render ----
 PROJECT_ROOT = "/opt/render/project/src"
 if PROJECT_ROOT not in sys.path:
@@ -27,8 +34,11 @@ def render_admin_console_vnext(engine):
     from spelling_app.repository.admin_console_vnext_repo import (
         list_courses,
         list_lessons,
-        list_students,
         list_student_progress,
+    )
+
+    from spelling_app.repository.student_repo import (
+        list_registered_spelling_students,
     )
 
     st.divider()
@@ -57,8 +67,11 @@ def render_admin_console_vnext(engine):
             st.dataframe(df_lessons, use_container_width=True)
 
     with tab_students:
-        df_students = list_students(engine)
-        st.dataframe(df_students, use_container_width=True)
+        students = list_registered_spelling_students()
+        if not students:
+            st.info("No spelling students found.")
+        else:
+            st.dataframe(students, use_container_width=True)
 
     with tab_progress:
         df_progress = list_student_progress(engine)
@@ -805,10 +818,10 @@ def render_maintenance():
 
 
 def main():
-    st.set_page_config(
-        page_title="WordSprint – Spelling Admin",
-        layout="wide",
-    )
+   # st.set_page_config(
+   #     page_title="WordSprint – Spelling Admin",
+   #     layout="wide",
+   # )
 
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "course_management"
