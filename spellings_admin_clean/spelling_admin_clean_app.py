@@ -22,6 +22,7 @@ SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 # =========================================================
 # Admin Console vNext (READ-ONLY, FLAGGED)
 # =========================================================
+
 if SPELLING_ADMIN_VNEXT:
 
     from spelling_app.repository.admin_console_vnext_repo import (
@@ -39,24 +40,15 @@ if SPELLING_ADMIN_VNEXT:
         ["Courses", "Lessons", "Students", "Progress"]
     )
 
-    # -----------------------------
-    # Courses tab
-    # -----------------------------
+    # Courses
     with tab_courses:
         df_courses = list_courses(engine)
-        if df_courses.empty:
-            st.info("No courses found.")
-        else:
-            st.dataframe(df_courses, use_container_width=True)
+        st.dataframe(df_courses, use_container_width=True)
 
-    # -----------------------------
-    # Lessons tab
-    # -----------------------------
+    # Lessons
     with tab_lessons:
         df_courses = list_courses(engine)
-        if df_courses.empty:
-            st.info("No courses available.")
-        else:
+        if not df_courses.empty:
             course_id = st.selectbox(
                 "Select course",
                 df_courses["course_id"].tolist(),
@@ -65,32 +57,18 @@ if SPELLING_ADMIN_VNEXT:
                 ].values[0],
                 key="vnext_course_select",
             )
-
             df_lessons = list_lessons(engine, course_id)
-            if df_lessons.empty:
-                st.info("No lessons for this course.")
-            else:
-                st.dataframe(df_lessons, use_container_width=True)
+            st.dataframe(df_lessons, use_container_width=True)
 
-    # -----------------------------
-    # Students tab
-    # -----------------------------
+    # Students
     with tab_students:
         df_students = list_students(engine)
-        if df_students.empty:
-            st.info("No students found.")
-        else:
-            st.dataframe(df_students, use_container_width=True)
+        st.dataframe(df_students, use_container_width=True)
 
-    # -----------------------------
-    # Progress tab
-    # -----------------------------
+    # Progress
     with tab_progress:
         df_progress = list_student_progress(engine)
-        if df_progress.empty:
-            st.info("No progress data available.")
-        else:
-            st.dataframe(df_progress, use_container_width=True)
+        st.dataframe(df_progress, use_container_width=True)
 
 from spellings_admin_clean.spelling_help_text_repo import (
     get_help_text,
