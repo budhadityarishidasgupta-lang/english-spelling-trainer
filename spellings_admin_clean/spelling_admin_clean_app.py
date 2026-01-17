@@ -807,5 +807,80 @@ def main():
             render_branding_landing_page(db)
 
 
+# =========================================================
+# Admin Console vNext (READ-ONLY, FLAGGED)
+# =========================================================
+
+if SPELLING_ADMIN_VNEXT:
+
+    from spelling_app.repository.admin_console_vnext_repo import (
+        list_courses,
+        list_lessons,
+        list_students,
+        list_student_progress,
+    )
+
+    st.divider()
+    st.subheader("🧪 Admin Console vNext (Preview)")
+    st.caption("Read-only preview. No changes are saved.")
+
+    tab_courses, tab_lessons, tab_students, tab_progress = st.tabs(
+        ["Courses", "Lessons", "Students", "Progress"]
+    )
+
+    # -----------------------------
+    # Courses
+    # -----------------------------
+    with tab_courses:
+        df_courses = list_courses()
+        if df_courses.empty:
+            st.info("No courses found.")
+        else:
+            st.dataframe(df_courses, use_container_width=True)
+
+    # -----------------------------
+    # Lessons
+    # -----------------------------
+    with tab_lessons:
+        df_courses = list_courses()
+        if df_courses.empty:
+            st.info("No courses available.")
+        else:
+            course_id = st.selectbox(
+                "Select course",
+                df_courses["course_id"].tolist(),
+                format_func=lambda x: df_courses.loc[
+                    df_courses["course_id"] == x, "course_name"
+                ].values[0],
+                key="vnext_course_select",
+            )
+
+            df_lessons = list_lessons(course_id)
+            if df_lessons.empty:
+                st.info("No lessons for this course.")
+            else:
+                st.dataframe(df_lessons, use_container_width=True)
+
+    # -----------------------------
+    # Students
+    # -----------------------------
+    with tab_students:
+        df_students = list_students()
+        if df_students.empty:
+            st.info("No students found.")
+        else:
+            st.dataframe(df_students, use_container_width=True)
+
+    # -----------------------------
+    # Progress
+    # -----------------------------
+    with tab_progress:
+        df_progress = list_student_progress()
+        if df_progress.empty:
+            st.info("No progress data available.")
+        else:
+            st.dataframe(df_progress, use_container_width=True)
+
+
 if __name__ == "__main__":
     main()
