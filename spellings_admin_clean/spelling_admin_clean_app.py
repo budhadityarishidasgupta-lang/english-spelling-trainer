@@ -50,8 +50,12 @@ def render_admin_console_vnext(engine):
     )
 
     with tab_courses:
-        df_courses = list_courses(engine)
-        st.dataframe(df_courses, use_container_width=True)
+    st.subheader("Courses")
+
+    df_courses = list_courses(engine)
+    st.dataframe(df_courses, use_container_width=True)
+
+    st.caption("Course-level management only.")
 
     with tab_lessons:
         df_courses = list_courses(engine)
@@ -67,13 +71,25 @@ def render_admin_console_vnext(engine):
             st.dataframe(df_lessons, use_container_width=True)
 
     with tab_students:
+        st.subheader("Students")
+
         students = list_registered_spelling_students()
+
         if not students:
             st.info("No spelling students found.")
         else:
             st.dataframe(students, use_container_width=True)
 
+        st.caption("Class/section management coming in Patch 3.")
+
     with tab_progress:
+        st.subheader("Progress (Preview)")
+
+        st.warning(
+            "Progress view is preliminary. "
+            "Spelling-only filtering will be applied next."
+        )
+
         df_progress = list_student_progress(engine)
         st.dataframe(df_progress, use_container_width=True)
 
