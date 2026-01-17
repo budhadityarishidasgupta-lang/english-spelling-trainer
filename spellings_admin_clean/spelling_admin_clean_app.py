@@ -15,7 +15,7 @@ PROJECT_ROOT = "/opt/render/project/src"
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from shared.db import engine, fetch_all
+from shared.db import engine as shared_engine, fetch_all
 
 SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 
@@ -65,6 +65,7 @@ def render_admin_console_vnext(engine):
         st.dataframe(df_progress, use_container_width=True)
 
 
+engine = shared_engine
 if SPELLING_ADMIN_VNEXT:
     render_admin_console_vnext(engine)
 
