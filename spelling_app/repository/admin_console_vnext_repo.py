@@ -16,7 +16,7 @@ def list_courses(engine, include_archived: bool = True) -> pd.DataFrame:
         SELECT
             course_id,
             course_name,
-            is_active,
+            
             created_at
         FROM spelling_courses
         ORDER BY created_at DESC
@@ -34,7 +34,7 @@ def list_lessons(engine, course_id: int) -> pd.DataFrame:
             lesson_name,
             display_name,
             sort_order,
-            is_active
+            
         FROM spelling_lessons
         WHERE course_id = :course_id
         ORDER BY sort_order, lesson_id
@@ -51,7 +51,7 @@ def list_students(engine) -> pd.DataFrame:
             user_id,
             name,
             email,
-            is_active,
+            
             class_name,
             created_at
         FROM spelling_users
