@@ -1553,6 +1553,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
     if "weak_index" not in st.session_state:
         st.session_state.weak_index = 0
 
+    if "weak_words_completed" not in st.session_state:
+        st.session_state.weak_words_completed = False
+
     active_lesson_id = st.session_state.get("active_lesson_id")
 
     ensure_default_mode()
@@ -1688,13 +1691,36 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.session_state.weak_words_lesson_id = active_lesson_id
         st.session_state.practice_words = ordered_weak_words
 
-        if st.session_state.practice_index >= len(ordered_weak_words):
-            st.session_state.practice_index = 0
+        if (
+            practice_mode == "Weak Words"
+            and st.session_state.practice_index >= len(ordered_weak_words)
+        ):
+            st.session_state.weak_words_completed = True
 
         words = ordered_weak_words
     else:
         words = get_words_for_lesson(lesson_id, course_id)
         practice_words = _fetch_spelling_words(lesson_id)
+
+    if practice_mode == "Weak Words" and st.session_state.weak_words_completed:
+        st.success("🎉 You’ve completed all weak words for this lesson!")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("🔁 Review weak words again"):
+                st.session_state.practice_index = 0
+                st.session_state.weak_words_completed = False
+                st.experimental_rerun()
+
+        with col2:
+            if st.button("▶️ Return to practice"):
+                st.session_state.practice_mode = "Practice"
+                st.session_state.practice_index = 0
+                st.session_state.weak_words_completed = False
+                st.experimental_rerun()
+
+        st.stop()  # ⛔ CRITICAL: prevents fallback to practice
 
     if not words:
         if practice_mode == "Weak Words":
