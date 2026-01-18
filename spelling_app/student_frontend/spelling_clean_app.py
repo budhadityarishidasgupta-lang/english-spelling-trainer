@@ -435,6 +435,232 @@ def render_hint_block(hint: str):
         )
 
 
+def render_spelling_question(
+    word: str,
+    example_sentence: str = None,
+    hint: str = None,
+    word_id: int = None,
+    on_next=None,
+):
+    if "word_state" not in st.session_state:
+        st.session_state.word_state = "editing"
+    if "result_processed" not in st.session_state:
+        st.session_state.result_processed = False
+    if "start_time" not in st.session_state:
+        st.session_state.start_time = time.time()
+    if "correct_streak" not in st.session_state:
+        st.session_state.correct_streak = 0
+    if "recent_results" not in st.session_state:
+        st.session_state.recent_results = []
+    if "difficulty_level" not in st.session_state:
+        st.session_state.difficulty_level = 2
+    if "earned_badges" not in st.session_state:
+        st.session_state.earned_badges = set()
+    if "attempts_total" not in st.session_state:
+        st.session_state.attempts_total = 0
+    if "correct_total" not in st.session_state:
+        st.session_state.correct_total = 0
+
+    wid = word_id or st.session_state.get("current_wid")
+    if st.session_state.get("current_wid") != wid:
+        st.session_state.current_wid = wid
+        st.session_state.word_state = "editing"
+        st.session_state.result_processed = False
+        st.session_state.show_hint = True
+
+    st.session_state.current_example_sentence = example_sentence
+    st.session_state.current_hint = hint
+
+    st.subheader("Spell the word:")
+
+    if st.session_state.get("streak", 0) > 0:
+        st.markdown(
+            f"🔥 <b>{st.session_state.streak}-day streak!</b>",
+            unsafe_allow_html=True,
+        )
+
+    blanks_count = blanks_for_streak(
+        st.session_state.get("streak", 0), len(word)
+    )
+
+    masked_word, _ = generate_missing_letter_question(
+        word,
+        base_blanks=blanks_count,
+        max_blanks=blanks_count,
+    )
+
+    answer_submitted = st.session_state.word_state == "submitted"
+    st.session_state.answer_submitted = answer_submitted
+
+    if not answer_submitted:
+        st.markdown(
+            f"<div class='practice-word'>{masked_word}</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        highlight_html = render_letter_highlight_html(
+            word, st.session_state.get(f"input_{wid}", "")
+        )
+        st.markdown(
+            f"<div class='practice-answer'>{highlight_html}</div>",
+            unsafe_allow_html=True,
+        )
+
+    render_hint_block(st.session_state.get("current_hint"))
+
+    st.caption(f"Difficulty: {blanks_count} blanks")
+
+    if "submitted" not in st.session_state:
+        st.session_state.submitted = False
+        st.session_state.checked = False
+        st.session_state.correct = False
+
+    if not answer_submitted:
+        user_input = st.text_input(
+            "Type the complete word",
+            key=f"input_{wid}",
+        )
+
+    if st.session_state.word_state == "editing":
+        if "submit_disabled" not in st.session_state:
+            st.session_state.submit_disabled = False
+
+        submit_col, _ = st.columns([1, 1])
+
+        with submit_col:
+            if not answer_submitted:
+                if st.button(
+                    "✅ Submit", key=f"submit_{wid}", disabled=st.session_state.submit_disabled
+                ):
+                    st.session_state.submit_disabled = True
+                    st.session_state.action_lock = True
+                    is_correct = user_input.lower() == word.lower()
+
+                    time_taken = int(time.time() - st.session_state.start_time)
+                    blanks_count = masked_word.count("_")
+
+                    if wid is not None:
+                        record_attempt(
+                            user_id=st.session_state.user_id,
+                            word_id=wid,
+                            correct=is_correct,
+                            time_taken=time_taken,
+                            blanks_count=blanks_count,
+                            wrong_letters_count=0 if is_correct else 1,
+                        )
+
+                    st.session_state.last_result_correct = is_correct
+                    st.session_state.word_state = "submitted"
+                    st.session_state.show_hint = False
+                    st.session_state.submit_disabled = False
+
+                    st.experimental_rerun()
+
+    if answer_submitted:
+        is_correct = st.session_state.get("last_result_correct", False)
+
+        if is_correct:
+            st.success("✅ Correct!")
+        else:
+            st.error(f"❌ Not quite right — the correct answer is “{word}”")
+
+        if example_sentence:
+            safe_example = escape(str(example_sentence))
+            st.markdown(
+                f"""
+                <div class="example-box">
+                    📘 <strong>Example sentence:</strong><br>
+                    {safe_example}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    if (
+        st.session_state.word_state == "submitted"
+        and not st.session_state.get("result_processed")
+    ):
+        st.session_state.correct = st.session_state.get("last_result_correct", False)
+        st.session_state.attempts_total = st.session_state.get("attempts_total", 0) + 1
+        if st.session_state.correct:
+            st.session_state.correct_total = st.session_state.get("correct_total", 0) + 1
+
+        if st.session_state.correct:
+            st.session_state.correct_streak += 1
+        else:
+            st.session_state.correct_streak = 0
+
+        st.session_state.recent_results.append(st.session_state.correct)
+        st.session_state.recent_results = st.session_state.recent_results[-3:]
+
+        level = st.session_state.difficulty_level
+
+        if st.session_state.correct_streak >= 5:
+            level = min(level + 1, 5)
+        elif st.session_state.correct_streak >= 3:
+            level = min(level + 1, 4)
+        elif st.session_state.recent_results.count(False) >= 2:
+            level = max(level - 1, 1)
+
+        st.session_state.difficulty_level = level
+
+        def award_badge(badge_name, emoji):
+            if badge_name not in st.session_state.earned_badges:
+                st.session_state.earned_badges.add(badge_name)
+                st.success(f"{emoji} **Badge Unlocked:** {badge_name}")
+
+        if st.session_state.correct_streak == 3:
+            award_badge("Streak Starter", "🔥")
+
+        if st.session_state.correct_streak == 5:
+            award_badge("On Fire", "🚀")
+
+        attempts = st.session_state.get("attempts_total", 0)
+        corrects = st.session_state.get("correct_total", 0)
+
+        if attempts >= 10 and (attempts and (corrects / attempts) >= 0.9):
+            award_badge("Sharp Shooter", "🎯")
+
+        if st.session_state.correct_streak == 10:
+            award_badge("Perfect Run", "🏆")
+
+        st.session_state.result_processed = True
+
+    if st.session_state.word_state == "submitted" and st.session_state.get("action_lock"):
+        st.session_state.action_lock = False
+
+    if "next_disabled" not in st.session_state:
+        st.session_state.next_disabled = False
+
+    if st.session_state.answer_submitted:
+        next_col, _ = st.columns([1, 1])
+
+        with next_col:
+            if st.button("➡️ Next", key=f"next_{wid}", disabled=st.session_state.next_disabled):
+
+                st.session_state.next_disabled = True
+
+                st.session_state.action_lock = True
+                if on_next is not None:
+                    on_next(st.session_state.get("last_result_correct"))
+                st.session_state.word_state = "editing"
+                st.session_state.start_time = time.time()
+                st.session_state.show_hint = True
+
+                for k in list(st.session_state.keys()):
+                    if k.startswith("input_") or k.startswith("submit_"):
+                        del st.session_state[k]
+
+                st.session_state.current_wid = None
+                st.session_state.current_word_pick = None
+                st.session_state.result_processed = False
+                st.session_state.action_lock = False
+
+                st.session_state.next_disabled = False
+
+                st.experimental_rerun()
+
+
 ###########################################################
 #  AUTHENTICATION
 ###########################################################
@@ -479,6 +705,8 @@ def logout(st_module):
         "daily5_words",
         "daily5_index",
         "daily5_last_shown_date",
+        "daily_weak_words",
+        "daily_weak_index",
         "practice_mode",
         "current_wid",
         "current_word_pick",
@@ -739,9 +967,10 @@ def render_daily5_prompt():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("▶️ Start Daily 5", use_container_width=True):
-            st.session_state.daily5_active = True
-            st.session_state.practice_mode = "daily5"
+        if st.button("Start Daily Weak Words", use_container_width=True):
+            st.session_state.page = "daily_weak_words"
+            st.session_state.daily_weak_words = None
+            st.session_state.daily_weak_index = 0
             st.session_state.daily5_last_shown_date = date.today().isoformat()
             st.experimental_rerun()
 
@@ -751,6 +980,68 @@ def render_daily5_prompt():
             st.session_state.daily5_active = False
             st.session_state.practice_mode = "lesson"
             st.experimental_rerun()
+
+
+def render_daily_weak_words(user_id):
+    st.header("🧠 Daily Weak Words")
+    st.caption("Fix your most common spelling mistakes before practice.")
+
+    if st.session_state.daily_weak_words is None:
+        with get_engine_safe().connect() as db:
+            rows = fetch_all(
+                """
+                SELECT
+                    sw.word_id,
+                    sw.word,
+                    sw.example_sentence
+                FROM spelling_attempts sa
+                JOIN spelling_words sw ON sw.word_id = sa.word_id
+                WHERE sa.user_id = :uid
+                  AND sa.is_correct = false
+                GROUP BY sw.word_id, sw.word, sw.example_sentence
+                ORDER BY MAX(sa.attempted_at) DESC
+                LIMIT 10;
+                """,
+                {"uid": user_id},
+            )
+
+        if not rows:
+            st.info("No weak words today 👍")
+            if st.button("▶️ Go to Practice"):
+                st.session_state.page = "dashboard"
+                st.experimental_rerun()
+            st.stop()
+
+        st.session_state.daily_weak_words = [
+            {
+                "word_id": r[0],
+                "word": r[1],
+                "example_sentence": r[2],
+            }
+            for r in rows
+        ]
+
+    words = st.session_state.daily_weak_words
+    idx = st.session_state.daily_weak_index
+
+    if idx >= len(words):
+        st.success("🎉 Daily Weak Words complete!")
+        if st.button("▶️ Start Practice"):
+            st.session_state.page = "dashboard"
+            st.experimental_rerun()
+        st.stop()
+
+    current = words[idx]
+
+    render_spelling_question(
+        word_id=current["word_id"],
+        word=current["word"],
+        example_sentence=current.get("example_sentence"),
+        on_next=lambda correct: (
+            st.session_state.daily_weak_index.__iadd__(1)
+            if correct is not None else None
+        ),
+    )
 
 
 ###########################################################
@@ -1859,9 +2150,6 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     target_word = current["word"]
     st.session_state["last_word_id"] = wid
-
-    st.subheader("Spell the word:")
-
     if is_weak_mode:
         total_weak_words = len(practice_words)
         st.caption(f"{idx + 1} / {total_weak_words}")
@@ -1898,209 +2186,21 @@ def render_practice_mode(lesson_id: int, course_id: int):
         unsafe_allow_html=True,
     )
 
-    if st.session_state.get("streak", 0) > 0:
-        st.markdown(
-            f"🔥 <b>{st.session_state.streak}-day streak!</b>",
-            unsafe_allow_html=True,
-        )
-
-    blanks_count = blanks_for_streak(
-        st.session_state.get("streak", 0), len(target_word)
-    )
-
-    masked_word, _ = generate_missing_letter_question(
-        target_word,
-        base_blanks=blanks_count,
-        max_blanks=blanks_count,
-    )
-
-    answer_submitted = st.session_state.word_state == "submitted"
-    st.session_state.answer_submitted = answer_submitted
-
-    if not answer_submitted:
-        st.markdown(
-            f"<div class='practice-word'>{masked_word}</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        highlight_html = render_letter_highlight_html(
-            target_word, st.session_state.get(f"input_{wid}", "")
-        )
-        st.markdown(
-            f"<div class='practice-answer'>{highlight_html}</div>",
-            unsafe_allow_html=True,
-        )
-
-    # --- HINT (collapsible, auto-hide after submit) ---
-    render_hint_block(st.session_state.get("current_hint"))
-
-    st.caption(f"Difficulty: {blanks_count} blanks")
-
-
-    if st.session_state.get("current_wid") != wid:
-        st.session_state.current_wid = wid
-        st.session_state.submitted = False
-        st.session_state.checked = False
-        st.session_state.correct = False
-        st.session_state.pop(f"answer_{wid}", None)
-
-    if "submitted" not in st.session_state:
-        st.session_state.submitted = False
-        st.session_state.checked = False
-        st.session_state.correct = False
-
-    if not answer_submitted:
-        user_input = st.text_input(
-            "Type the complete word",
-            key=f"input_{wid}",
-        )
-
-    if st.session_state.word_state == "editing":
-        if "submit_disabled" not in st.session_state:
-            st.session_state.submit_disabled = False
-
-        submit_col, _ = st.columns([1, 1])
-
-        with submit_col:
-            if not answer_submitted:
-                if st.button(
-                    "✅ Submit", key=f"submit_{wid}", disabled=st.session_state.submit_disabled
-                ):
-                    st.session_state.submit_disabled = True
-                    st.session_state.action_lock = True
-                    is_correct = user_input.lower() == target_word.lower()
-
-                    time_taken = int(time.time() - st.session_state.start_time)
-                    blanks_count = masked_word.count("_")
-
-                    record_attempt(
-                        user_id=st.session_state.user_id,
-                        word_id=wid,
-                        correct=is_correct,
-                        time_taken=time_taken,
-                        blanks_count=blanks_count,
-                        wrong_letters_count=0 if is_correct else 1,
-                    )
-
-                    st.session_state.last_result_correct = is_correct
-                    st.session_state.word_state = "submitted"
-                    # Auto-hide hint after submission
-                    st.session_state.show_hint = False
-                    st.session_state.submit_disabled = False
-
-                    st.experimental_rerun()
-
-    if answer_submitted:
-        is_correct = st.session_state.get("last_result_correct", False)
-
-        if is_correct:
-            st.success("✅ Correct!")
+    def handle_next(_):
+        if st.session_state.active_mode == "weak_words":
+            st.session_state.weak_index += 1
         else:
-            st.error(f"❌ Not quite right — the correct answer is “{target_word}”")
+            st.session_state.practice_index += 1
+        if st.session_state.practice_mode == "daily5":
+            st.session_state.daily5_index += 1
 
-        example_sentence = st.session_state.get("current_example_sentence")
-        if example_sentence:
-            safe_example = escape(str(example_sentence))
-            st.markdown(
-                f"""
-                <div class="example-box">
-                    📘 <strong>Example sentence:</strong><br>
-                    {safe_example}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    if (
-        st.session_state.word_state == "submitted"
-        and not st.session_state.get("result_processed")
-    ):
-        st.session_state.correct = st.session_state.get("last_result_correct", False)
-        st.session_state.attempts_total = st.session_state.get("attempts_total", 0) + 1
-        if st.session_state.correct:
-            st.session_state.correct_total = st.session_state.get("correct_total", 0) + 1
-
-        if st.session_state.correct:
-            st.session_state.correct_streak += 1
-        else:
-            st.session_state.correct_streak = 0
-
-        st.session_state.recent_results.append(st.session_state.correct)
-        st.session_state.recent_results = st.session_state.recent_results[-3:]
-
-        level = st.session_state.difficulty_level
-
-        if st.session_state.correct_streak >= 5:
-            level = min(level + 1, 5)
-        elif st.session_state.correct_streak >= 3:
-            level = min(level + 1, 4)
-        elif st.session_state.recent_results.count(False) >= 2:
-            level = max(level - 1, 1)
-
-        st.session_state.difficulty_level = level
-
-        def award_badge(badge_name, emoji):
-            if badge_name not in st.session_state.earned_badges:
-                st.session_state.earned_badges.add(badge_name)
-                st.success(f"{emoji} **Badge Unlocked:** {badge_name}")
-
-        if st.session_state.correct_streak == 3:
-            award_badge("Streak Starter", "🔥")
-
-        if st.session_state.correct_streak == 5:
-            award_badge("On Fire", "🚀")
-
-        attempts = st.session_state.get("attempts_total", 0)
-        corrects = st.session_state.get("correct_total", 0)
-
-        if attempts >= 10 and (attempts and (corrects / attempts) >= 0.9):
-            award_badge("Sharp Shooter", "🎯")
-
-        if st.session_state.correct_streak == 10:
-            award_badge("Perfect Run", "🏆")
-
-        st.session_state.result_processed = True
-
-    if st.session_state.word_state == "submitted" and st.session_state.get("action_lock"):
-        st.session_state.action_lock = False
-
-    if "next_disabled" not in st.session_state:
-        st.session_state.next_disabled = False
-
-    if st.session_state.answer_submitted:
-        next_col, _ = st.columns([1, 1])
-
-        with next_col:
-            if st.button("➡️ Next", key=f"next_{wid}", disabled=st.session_state.next_disabled):
-
-                st.session_state.next_disabled = True
-
-                st.session_state.action_lock = True
-                if st.session_state.active_mode == "weak_words":
-                    st.session_state.weak_index += 1
-                else:
-                    st.session_state.practice_index += 1
-                if st.session_state.practice_mode == "daily5":
-                    st.session_state.daily5_index += 1
-                st.session_state.word_state = "editing"
-                st.session_state.start_time = time.time()
-                # Re-enable hint for next word
-                st.session_state.show_hint = True
-
-                # Clear old inputs safely
-                for k in list(st.session_state.keys()):
-                    if k.startswith("input_") or k.startswith("submit_"):
-                        del st.session_state[k]
-
-                # force new word selection
-                st.session_state.current_wid = None
-                st.session_state.current_word_pick = None
-                st.session_state.result_processed = False
-                st.session_state.action_lock = False
-
-                st.session_state.next_disabled = False
-
-                st.experimental_rerun()
+    render_spelling_question(
+        word_id=wid,
+        word=target_word,
+        example_sentence=current.get("example_sentence"),
+        hint=current.get("hint"),
+        on_next=handle_next,
+    )
 
 
 ###########################################################
@@ -2122,11 +2222,18 @@ def main():
     inject_student_css()
     initialize_session_state(st)
     init_daily5_state()
+    # Daily Weak Words (global warm-up)
+    if "daily_weak_words" not in st.session_state:
+        st.session_state.daily_weak_words = None
+    if "daily_weak_index" not in st.session_state:
+        st.session_state.daily_weak_index = 0
     if "action_lock" not in st.session_state:
         st.session_state.action_lock = False
 
     if "mode" not in st.session_state:
         st.session_state.mode = "Practice"
+    if st.session_state.get("page") is None:
+        st.session_state.page = "dashboard"
 
     st.title("WordSprint")
 
@@ -2255,11 +2362,17 @@ def main():
             "daily5_active",
             "daily5_words",
             "daily5_index",
+            "daily_weak_words",
+            "daily_weak_index",
         ]:
             st.session_state.pop(key, None)
         st.experimental_rerun()
 
     user_id = st.session_state.get("user_id")
+
+    if st.session_state.page == "daily_weak_words":
+        render_daily_weak_words(user_id)
+        st.stop()
 
     with get_engine_safe().connect() as db:
         if st.session_state.practice_mode == "daily5" and st.session_state.daily5_active:
