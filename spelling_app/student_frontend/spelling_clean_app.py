@@ -353,6 +353,7 @@ def init_weak_words(db, user_id, lesson_id):
             lesson_id=lesson_id,
         )
         st.session_state.weak_index = 0
+        st.session_state.weak_words_lesson_id = lesson_id
 
 
 def should_show_daily5_today():
@@ -676,7 +677,11 @@ def render_mode_cards(db, user_id, selected_lesson_id):
 
     with c1:
         if st.button("✏️ Practice", use_container_width=True):
+            st.session_state.active_mode = "practice"
             st.session_state.mode = "Practice"
+            st.session_state.practice_mode = "Practice"
+            st.session_state.page = "practice"
+            st.experimental_rerun()
 
     with c2:
         has_weak_words = False
@@ -694,9 +699,16 @@ def render_mode_cards(db, user_id, selected_lesson_id):
             use_container_width=True,
             disabled=not has_weak_words,
         ):
+            st.session_state.active_mode = "weak_words"
+            st.session_state.mode = "Weak Words"
             st.session_state.practice_mode = "Weak Words"
+
+            if st.session_state.weak_words_lesson_id != selected_lesson_id:
+                st.session_state.weak_words = None
+                st.session_state.weak_index = 0
+                st.session_state.weak_words_lesson_id = selected_lesson_id
+
             st.session_state.page = "practice"
-            st.session_state.answer_submitted = False
             st.experimental_rerun()
 
         if not has_weak_words:
@@ -1525,6 +1537,7 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
             st.markdown("#### 🪨 Weak Words Summary")
             st.metric("Weak Words", len(weak_word_ids))
             if st.button("Practice Weak Words"):
+                st.session_state.active_mode = "weak_words"
                 st.session_state.mode = "Weak Words"
                 st.session_state.practice_mode = "Weak Words"
                 st.session_state.page = "dashboard"
@@ -1546,16 +1559,6 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
 def render_practice_mode(lesson_id: int, course_id: int):
     import time
 
-    # --- Session state guards for Weak Words ---
-    if "weak_words" not in st.session_state:
-        st.session_state.weak_words = []
-
-    if "weak_index" not in st.session_state:
-        st.session_state.weak_index = 0
-
-    if "weak_words_completed" not in st.session_state:
-        st.session_state.weak_words_completed = False
-
     active_lesson_id = st.session_state.get("active_lesson_id")
 
     ensure_default_mode()
@@ -1563,57 +1566,25 @@ def render_practice_mode(lesson_id: int, course_id: int):
     st.session_state.practice_mode = practice_mode
     user_id = st.session_state.get("user_id")
 
-    # -----------------------------------
-    # HARD MODE GUARD — DO NOT REMOVE
-    # -----------------------------------
-    if practice_mode == "Weak Words":
-        with get_engine_safe().connect() as db:
-            weak_rows = get_weak_words_for_lesson(
-                db=db,
-                user_id=user_id,
-                lesson_id=active_lesson_id,
-            )
+    # -----------------------------
+    # Session isolation (CRITICAL)
+    # -----------------------------
+    if "active_mode" not in st.session_state:
+        st.session_state.active_mode = "practice"  # "practice" | "weak_words"
 
-        # Normalize
-        weak_words = []
-        for r in weak_rows or []:
-            m = getattr(r, "_mapping", r)
-            weak_words.append({
-                "word_id": m["word_id"],
-                "word": m["word"],
-                "pattern": m.get("pattern"),
-                "pattern_code": m.get("pattern_code"),
-                "example_sentence": m.get("example_sentence"),
-                "hint": m.get("hint"),
-                "lesson_id": active_lesson_id,
-            })
+    # Practice session state
+    if "practice_words" not in st.session_state:
+        st.session_state.practice_words = None
+    if "practice_index" not in st.session_state:
+        st.session_state.practice_index = 0
 
-        # ---- CASE 1: NO WEAK WORDS (GLOBAL, CONSISTENT) ----
-        if not weak_words:
-            st.info("No weak words for this lesson yet 👍")
-            st.stop()   # ⛔ ABSOLUTE STOP — prevents fallback
-
-        # ---- CASE 2: COMPLETED WEAK WORDS ----
-        if st.session_state.get("practice_index", 0) >= len(weak_words):
-            st.success("🎉 You’ve completed all weak words for this lesson!")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("🔁 Review weak words again"):
-                    st.session_state.practice_index = 0
-                    st.experimental_rerun()
-
-            with col2:
-                if st.button("▶️ Return to practice"):
-                    st.session_state.practice_mode = "Practice"
-                    st.session_state.practice_index = 0
-                    st.experimental_rerun()
-
-            st.stop()   # ⛔ DO NOT FALL THROUGH
-
-        # ---- ACTIVE WEAK WORD PRACTICE ----
-        words = weak_words
+    # Weak Words session state (separate!)
+    if "weak_words" not in st.session_state:
+        st.session_state.weak_words = None
+    if "weak_index" not in st.session_state:
+        st.session_state.weak_index = 0
+    if "weak_words_lesson_id" not in st.session_state:
+        st.session_state.weak_words_lesson_id = None
 
     # --- SAFETY INITIALISATION ---
     st.session_state.setdefault("correct_streak", 0)
@@ -1709,16 +1680,71 @@ def render_practice_mode(lesson_id: int, course_id: int):
     active_lesson_id = st.session_state.get("active_lesson_id") or lesson_id
     st.session_state.active_lesson_id = active_lesson_id
 
-    practice_words = None
-    if practice_mode != "Weak Words":
-        words = get_words_for_lesson(lesson_id, course_id)
-        practice_words = _fetch_spelling_words(lesson_id)
+    if st.session_state.active_mode == "weak_words":
+        # Build weak words ONCE per lesson per entry
+        if st.session_state.weak_words_lesson_id != active_lesson_id:
+            st.session_state.weak_words = None
+            st.session_state.weak_index = 0
+            st.session_state.weak_words_lesson_id = active_lesson_id
+        if st.session_state.weak_words is not None and not st.session_state.weak_words:
+            st.info("No weak words for this lesson yet 👍")
+            if st.button("▶️ Go to Practice"):
+                st.session_state.active_mode = "practice"
+                st.session_state.practice_mode = "Practice"
+                st.session_state.page = "practice"
+                st.experimental_rerun()
+            st.stop()
+        if st.session_state.weak_words is None:
+            with get_engine_safe().connect() as db:
+                weak_rows = get_weak_words_for_lesson(
+                    db=db,
+                    user_id=user_id,
+                    lesson_id=active_lesson_id,
+                )
 
-    if not words:
-        if not practice_words:
-            st.warning("No practice words are mapped to this lesson yet.")
-            return
-        words = practice_words
+            if not weak_rows:
+                st.info("No weak words for this lesson yet 👍")
+                if st.button("▶️ Go to Practice"):
+                    st.session_state.active_mode = "practice"
+                    st.session_state.practice_mode = "Practice"
+                    st.session_state.page = "practice"
+                    st.experimental_rerun()
+                st.stop()
+
+            weak_words = []
+            for r in weak_rows:
+                m = getattr(r, "_mapping", r)
+                weak_words.append({
+                    "word_id": m["word_id"],
+                    "word": m["word"],
+                    "pattern": m.get("pattern"),
+                    "pattern_code": m.get("pattern_code"),
+                    "example_sentence": m.get("example_sentence"),
+                    "hint": m.get("hint"),
+                })
+
+            st.session_state.weak_words = weak_words
+            st.session_state.weak_index = 0
+            st.session_state.weak_words_lesson_id = active_lesson_id
+
+        words = st.session_state.weak_words
+        idx = st.session_state.weak_index
+    else:
+        if st.session_state.practice_words is None:
+            words = get_words_for_lesson(lesson_id, course_id)
+            practice_words = _fetch_spelling_words(lesson_id)
+
+            if not words:
+                if not practice_words:
+                    st.warning("No practice words are mapped to this lesson yet.")
+                    return
+                words = practice_words
+
+            st.session_state.practice_words = words
+            st.session_state.practice_index = 0
+
+        words = st.session_state.practice_words
+        idx = st.session_state.practice_index
 
     signals_map = get_cached_word_signals(
         user_id=user_id,
@@ -1750,21 +1776,18 @@ def render_practice_mode(lesson_id: int, course_id: int):
         st.caption("Try another lesson.")
         return
 
+    is_weak_mode = st.session_state.active_mode == "weak_words"
     if st.session_state.practice_mode == "daily5":
         practice_words = st.session_state.get("daily5_words", [])
-        is_weak_mode = False
-        index_key = "daily5_index"
+        total_words = len(practice_words)
+        daily5_index = st.session_state.get("daily5_index", 0)
+        current_index = min(daily5_index, total_words - 1) if total_words else 0
     else:
         practice_words = words
-        is_weak_mode = practice_mode == "Weak Words"
-        index_key = "q_index" if is_weak_mode else "practice_index"
-
-    if index_key not in st.session_state:
-        st.session_state[index_key] = 0
+        total_words = len(practice_words)
+        current_index = min(idx, total_words - 1) if total_words else 0
 
     total_words = len(practice_words)
-    practice_index = int(st.session_state[index_key])
-    current_index = min(practice_index, total_words - 1) if total_words else 0
     progress = (current_index + 1) / total_words if total_words else 0
 
     if progress < 0.3:
@@ -1797,24 +1820,28 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.start_time = time.time()
             st.session_state.action_lock = False
     else:
-        if practice_index >= total_words:
-            finish_message = (
-                "🎉 You’ve practiced all weak words for this lesson!"
-                if is_weak_mode
-                else "🎉 You finished all words!"
-            )
-            st.success(finish_message)
-            if st.button("Restart practice"):
-                st.session_state[index_key] = 0
-                st.session_state.current_wid = None
-                st.session_state.current_word_pick = None
-                st.session_state.word_state = "editing"
-                st.session_state.start_time = time.time()
-                st.experimental_rerun()
-            return
+        if st.session_state.active_mode == "weak_words":
+            if st.session_state.weak_index >= len(words):
+                st.success("🎉 You’ve completed all weak words for this lesson!")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔁 Restart weak words"):
+                        st.session_state.weak_index = 0
+                        st.experimental_rerun()
+                with col2:
+                    if st.button("▶️ Go to Practice"):
+                        st.session_state.active_mode = "practice"
+                        st.session_state.practice_mode = "Practice"
+                        st.session_state.page = "practice"
+                        st.experimental_rerun()
+                st.stop()
+        else:
+            if st.session_state.practice_index >= len(words):
+                st.success("✅ Practice completed for this lesson!")
+                st.stop()
 
         if st.session_state.current_wid is None:
-            current = practice_words[st.session_state[index_key]]
+            current = practice_words[idx]
             st.session_state.current_wid = current["word_id"]
             st.session_state.current_word_pick = current
             st.session_state.start_time = time.time()
@@ -1836,18 +1863,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
     st.subheader("Spell the word:")
 
     if is_weak_mode:
-        # Weak Words counter should reflect only weak words in this lesson
-        lesson_id = st.session_state.get("active_lesson_id")
-
-        weak_words_for_lesson = [
-            w for w in practice_words
-            if w.get("lesson_id") == lesson_id
-        ]
-
-        total_weak_words = len(weak_words_for_lesson)
-        st.session_state["q_index"] = current_index
-
-        st.caption(f"{st.session_state['q_index'] + 1} / {total_weak_words}")
+        total_weak_words = len(practice_words)
+        st.caption(f"{idx + 1} / {total_weak_words}")
     else:
         if st.session_state.practice_mode == "daily5":
             st.caption(f"Daily 5 — {st.session_state.get('daily5_index', 0) + 1} / 5")
@@ -2059,7 +2076,10 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.session_state.next_disabled = True
 
                 st.session_state.action_lock = True
-                st.session_state.practice_index += 1
+                if st.session_state.active_mode == "weak_words":
+                    st.session_state.weak_index += 1
+                else:
+                    st.session_state.practice_index += 1
                 if st.session_state.practice_mode == "daily5":
                     st.session_state.daily5_index += 1
                 st.session_state.word_state = "editing"
@@ -2247,22 +2267,8 @@ def main():
 
         selected_lesson_id = st.session_state.get("selected_lesson_id")
 
-        if st.session_state.practice_mode == "weak_words" and selected_lesson_id:
+        if st.session_state.get("active_mode") == "weak_words" and selected_lesson_id:
             init_weak_words(db, user_id, selected_lesson_id)
-
-            if (
-                st.session_state.practice_mode == "weak_words"
-                and not st.session_state.weak_words
-            ):
-                st.info("🎉 You have no weak words in this lesson!")
-                st.caption("Great job — you’ve corrected everything so far.")
-
-                # Exit Weak Words mode cleanly
-                st.session_state.practice_mode = "lesson"
-                st.session_state.pop("weak_words", None)
-                st.session_state.pop("weak_index", None)
-
-                st.experimental_rerun()
 
     if should_show_daily5_today() and not st.session_state.daily5_active:
         with st.container():
