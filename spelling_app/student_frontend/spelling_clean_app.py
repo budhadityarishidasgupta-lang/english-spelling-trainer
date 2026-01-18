@@ -694,7 +694,8 @@ def render_mode_cards(db, user_id, selected_lesson_id):
             use_container_width=True,
             disabled=not has_weak_words,
         ):
-            st.session_state.practice_mode = "weak_words"
+            st.session_state.practice_mode = "Weak Words"
+            st.session_state.page = "practice"
             st.session_state.answer_submitted = False
             st.experimental_rerun()
 
@@ -1656,30 +1657,27 @@ def render_practice_mode(lesson_id: int, course_id: int):
     lesson_weak_words = []
     practice_words = None
     if practice_mode == "Weak Words":
-        lesson_weak_words = [
-            w for w in get_weak_words(st.session_state["user_id"])
-            if w.get("lesson_id") == active_lesson_id
-        ]
+        # Always derive weak words from append-only attempts within THIS lesson
+        with get_engine_safe().connect() as db:
+            weak_rows = get_weak_words_for_lesson(
+                db=db,
+                user_id=user_id,
+                lesson_id=active_lesson_id,
+            )
 
-        weak_word_ids = [w["word_id"] for w in lesson_weak_words]
-
-        if weak_word_ids:
-            lesson_word_rows = get_words_by_ids(weak_word_ids)
-            lesson_word_lookup = {
-                w["word_id"]: w
-                for w in lesson_word_rows
-            }
-
-            ordered_weak_words = [
-                lesson_word_lookup[wid]
-                for wid in weak_word_ids
-                if wid in lesson_word_lookup
-            ]
-
-            for word in ordered_weak_words:
-                word.setdefault("lesson_id", active_lesson_id)
-        else:
-            ordered_weak_words = []
+        # Normalize rows -> dicts
+        ordered_weak_words = []
+        for r in weak_rows or []:
+            m = getattr(r, "_mapping", r)
+            ordered_weak_words.append({
+                "word_id": m["word_id"],
+                "word": m["word"],
+                "pattern": m.get("pattern"),
+                "pattern_code": m.get("pattern_code"),
+                "example_sentence": m.get("example_sentence"),
+                "hint": m.get("hint"),
+                "lesson_id": active_lesson_id,
+            })
 
         if st.session_state.get("weak_words_lesson_id") != active_lesson_id:
             st.session_state.practice_index = 0
