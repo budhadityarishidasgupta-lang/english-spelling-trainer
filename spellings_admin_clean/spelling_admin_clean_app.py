@@ -1075,6 +1075,9 @@ def main():
     if st.sidebar.button("Branding & Landing"):
         st.session_state.admin_page = "branding_landing"
 
+    if st.sidebar.button("Student Home"):
+        st.session_state.admin_page = "student_home"
+
     if st.session_state.admin_page == "course_management":
         render_course_management()
     elif st.session_state.admin_page == "students":
@@ -1087,6 +1090,12 @@ def main():
     elif st.session_state.admin_page == "branding_landing":
         with engine.connect() as db:
             render_branding_landing_page(db)
+    elif st.session_state.admin_page == "student_home":
+        st.header("🏠 Student Home")
+        st.caption(
+            "Configure the welcome and guidance content shown to students "
+            "after login. (Coming next.)"
+        )
 
 
 if __name__ == "__main__":
