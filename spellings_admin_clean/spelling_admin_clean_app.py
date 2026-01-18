@@ -605,8 +605,49 @@ def render_course_management():
         st.write(rows_to_dicts(sample))
 
 
+def list_classes():
+    rows = fetch_all(
+        """
+        SELECT DISTINCT class_name
+        FROM spelling_users
+        WHERE class_name IS NOT NULL
+          AND class_name <> ''
+        ORDER BY class_name;
+        """
+    )
+    return [r[0] for r in rows]
+
+
+def assign_student_to_class(user_id: int, class_name: str):
+    fetch_all(
+        """
+        UPDATE spelling_users
+        SET class_name = :class_name
+        WHERE user_id = :user_id;
+        """,
+        {"user_id": user_id, "class_name": class_name},
+    )
+
+
 def render_student_management():
     st.markdown("## 👩‍🎓 Students (Spelling App)")
+    st.subheader("🏫 Class Management")
+
+    existing_classes = list_classes()
+
+    new_class_name = st.text_input(
+        "Create new class",
+        placeholder="e.g. Year 5 – Group A",
+    )
+
+    if st.button("Create Class"):
+        if not new_class_name.strip():
+            st.error("Class name cannot be empty.")
+        elif new_class_name in existing_classes:
+            st.warning("Class already exists.")
+        else:
+            st.success(f"Class '{new_class_name}' created.")
+            st.experimental_rerun()
 
     students = list_registered_spelling_students()
     courses_lookup = get_all_courses()
@@ -615,6 +656,12 @@ def render_student_management():
     if not students:
         st.info("No active students found.")
     else:
+        selected_class = st.selectbox(
+            "Filter by class",
+            options=["All"] + existing_classes,
+            index=0,
+        )
+
         header_cols = st.columns([3, 4, 2, 2, 4, 2])
         header_cols[0].markdown("**Name**")
         header_cols[1].markdown("**Email**")
@@ -624,6 +671,10 @@ def render_student_management():
         header_cols[5].markdown("**Assign Course**")
 
         for student in students:
+            if selected_class != "All":
+                if student["class_name"] != selected_class:
+                    continue
+
             c1, c2, c3, c4, c5, c6 = st.columns([3, 4, 2, 2, 4, 2])
 
             with c1:
@@ -636,7 +687,26 @@ def render_student_management():
                 st.write(student["status"])
 
             with c4:
-                st.write(student["class_name"] or "—")
+                class_choice = st.selectbox(
+                    "Class",
+                    options=["—"] + existing_classes,
+                    index=(
+                        existing_classes.index(student["class_name"]) + 1
+                        if student["class_name"] in existing_classes
+                        else 0
+                    ),
+                    key=f"class_select_{student['user_id']}",
+                    label_visibility="collapsed",
+                )
+
+                if class_choice != "—" and class_choice != student["class_name"]:
+                    if st.button("Save", key=f"save_class_{student['user_id']}"):
+                        assign_student_to_class(
+                            user_id=student["user_id"],
+                            class_name=class_choice,
+                        )
+                        st.success("Class updated")
+                        st.experimental_rerun()
 
             with c5:
                 st.write(student["registered_courses"] or "—")
