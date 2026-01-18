@@ -908,6 +908,73 @@ def render_help_texts_page(db):
         st.success("Daily 5 help text saved successfully.")
 
 
+def render_student_home_content(db):
+    st.header("🏠 Student Home Content")
+    st.caption(
+        "Edit the welcome and guidance content shown to students after login."
+    )
+
+    st.divider()
+
+    def block_editor(key, label, placeholder=""):
+        existing = get_content_block(db, key)
+
+        body = st.text_area(
+            label,
+            value=existing.body if existing else "",
+            height=120,
+            placeholder=placeholder,
+        )
+
+        col1, col2 = st.columns([1, 3])
+
+        with col1:
+            if st.button("💾 Save", key=f"save_{key}"):
+                upsert_content_block(
+                    db=db,
+                    block_key=key,
+                    body=body,
+                )
+                st.success(f"{label} saved.")
+
+        with col2:
+            if body:
+                st.markdown("**Preview:**")
+                st.markdown(body)
+
+        st.divider()
+
+    block_editor(
+        "student_home_title",
+        "Welcome Title",
+        placeholder="Welcome back 👋",
+    )
+
+    block_editor(
+        "student_home_intro",
+        "Welcome Intro",
+        placeholder="Here’s how to make the most of your spelling practice today.",
+    )
+
+    block_editor(
+        "student_home_practice",
+        "Practice Section Text",
+        placeholder="Practice helps you learn new spelling patterns step by step.",
+    )
+
+    block_editor(
+        "student_home_weak_words",
+        "Weak Words Section Text",
+        placeholder="Weak Words help you focus on spellings you found tricky before.",
+    )
+
+    block_editor(
+        "student_home_daily5",
+        "Daily 5 Section Text",
+        placeholder="Start with a quick warm-up using your recent mistakes.",
+    )
+
+
 def render_text_block_editor(db, block_key, label, placeholder=""):
     existing = get_content_block(db, block_key)
 
@@ -1091,11 +1158,8 @@ def main():
         with engine.connect() as db:
             render_branding_landing_page(db)
     elif st.session_state.admin_page == "student_home":
-        st.header("🏠 Student Home")
-        st.caption(
-            "Configure the welcome and guidance content shown to students "
-            "after login. (Coming next.)"
-        )
+        with engine.connect() as db:
+            render_student_home_content(db)
 
 
 if __name__ == "__main__":
