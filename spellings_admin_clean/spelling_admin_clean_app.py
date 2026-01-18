@@ -297,6 +297,17 @@ def create_class(class_name: str):
     )
 
 
+def archive_class(class_name: str):
+    fetch_all(
+        """
+        UPDATE spelling_classes
+        SET is_active = FALSE
+        WHERE class_name = :name;
+        """,
+        {"name": class_name},
+    )
+
+
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
@@ -643,7 +654,19 @@ def render_student_management():
     st.markdown("## 👩‍🎓 Students (Spelling App)")
     st.subheader("🏫 Class Management")
 
+    students = list_registered_spelling_students()
     existing_classes = list_classes()
+
+    class_counts = {
+        c: sum(1 for s in students if s.get("class_name") == c)
+        for c in existing_classes
+    }
+
+    class_labels = [
+        f"{c} ({class_counts[c]})" for c in existing_classes
+    ]
+
+    label_to_class = dict(zip(class_labels, existing_classes))
 
     new_class_name = st.text_input(
         "Create new class",
@@ -660,33 +683,82 @@ def render_student_management():
             st.success(f"Class '{new_class_name}' created.")
             st.experimental_rerun()
 
-    selected_class = st.selectbox(
+    if not class_labels:
+        st.info("No classes yet. Create a class to begin.")
+        return
+
+    selected_label = st.selectbox(
         "Select class",
-        options=existing_classes,
+        options=class_labels,
     )
+    selected_class = label_to_class[selected_label]
+
+    if st.button("Archive selected class"):
+        archive_class(selected_class)
+        st.success(f"Class '{selected_class}' archived.")
+        st.experimental_rerun()
+
+    st.markdown("### Assign course to entire class")
+
+    courses_lookup = get_all_courses()
+    course_map = {
+        c["course_name"]: c["course_id"] for c in courses_lookup
+    }
+
+    selected_course = st.selectbox(
+        "Select course",
+        options=list(course_map.keys()),
+    )
+
+    if st.button("Assign course to all students in class"):
+        class_students = [
+            s for s in students if s.get("class_name") == selected_class
+        ]
+
+        if not class_students:
+            st.warning("No students in this class.")
+        else:
+            for s in class_students:
+                assign_course_to_student(
+                    user_id=s["user_id"],
+                    course_id=course_map[selected_course],
+                )
+
+            st.success(
+                f"Course '{selected_course}' assigned to {len(class_students)} students."
+            )
 
     # ------------------------------------
     # Class roster preview (read-only)
     # ------------------------------------
     st.markdown("#### Students in selected class")
 
-    students = list_registered_spelling_students()
-
-    class_students = [
-        s for s in students if s.get("class_name") == selected_class
-    ]
+    class_students = [s for s in students if s.get("class_name") == selected_class]
 
     if not class_students:
         st.info(f"No students currently assigned to '{selected_class}'.")
     else:
-        h1, h2 = st.columns([3, 5])
+        h1, h2, h3 = st.columns([3, 5, 2])
         h1.markdown("**Name**")
         h2.markdown("**Email**")
+        h3.markdown("**Action**")
 
         for s in class_students:
-            c1, c2 = st.columns([3, 5])
+            c1, c2, c3 = st.columns([3, 5, 2])
+
             c1.write(s["name"])
             c2.write(s["email"])
+
+            if c3.button(
+                "Remove",
+                key=f"remove_{s['user_id']}_{selected_class}",
+            ):
+                assign_student_to_class(
+                    user_id=s["user_id"],
+                    class_name=None,
+                )
+                st.success(f"{s['name']} removed from class.")
+                st.experimental_rerun()
 
     search_term = st.text_input(
         "Search students (name or email)",
