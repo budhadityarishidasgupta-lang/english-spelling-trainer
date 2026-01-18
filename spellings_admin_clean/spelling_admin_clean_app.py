@@ -274,6 +274,29 @@ def assign_course_to_student(user_id: int, course_id: int):
     return True
 
 
+def list_classes():
+    rows = fetch_all(
+        """
+        SELECT class_name
+        FROM spelling_classes
+        WHERE is_active = TRUE
+        ORDER BY class_name;
+        """
+    )
+    return [r[0] for r in rows]
+
+
+def create_class(class_name: str):
+    fetch_all(
+        """
+        INSERT INTO spelling_classes (class_name)
+        VALUES (:name)
+        ON CONFLICT DO NOTHING;
+        """,
+        {"name": class_name.strip()},
+    )
+
+
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
@@ -605,19 +628,6 @@ def render_course_management():
         st.write(rows_to_dicts(sample))
 
 
-def list_classes():
-    rows = fetch_all(
-        """
-        SELECT DISTINCT class_name
-        FROM spelling_users
-        WHERE class_name IS NOT NULL
-          AND class_name <> ''
-        ORDER BY class_name;
-        """
-    )
-    return [r[0] for r in rows]
-
-
 def assign_student_to_class(user_id: int, class_name: str):
     fetch_all(
         """
@@ -646,8 +656,19 @@ def render_student_management():
         elif new_class_name in existing_classes:
             st.warning("Class already exists.")
         else:
+            create_class(new_class_name)
             st.success(f"Class '{new_class_name}' created.")
             st.experimental_rerun()
+
+    selected_class = st.selectbox(
+        "Filter by class",
+        options=["All"] + existing_classes,
+    )
+
+    search_term = st.text_input(
+        "Search students (name or email)",
+        placeholder="Type name or email…",
+    )
 
     students = list_registered_spelling_students()
     courses_lookup = get_all_courses()
@@ -656,12 +677,6 @@ def render_student_management():
     if not students:
         st.info("No active students found.")
     else:
-        selected_class = st.selectbox(
-            "Filter by class",
-            options=["All"] + existing_classes,
-            index=0,
-        )
-
         header_cols = st.columns([3, 4, 2, 2, 4, 2])
         header_cols[0].markdown("**Name**")
         header_cols[1].markdown("**Email**")
@@ -673,6 +688,10 @@ def render_student_management():
         for student in students:
             if selected_class != "All":
                 if student["class_name"] != selected_class:
+                    continue
+            if search_term:
+                q = search_term.lower()
+                if q not in student["name"].lower() and q not in student["email"].lower():
                     continue
 
             c1, c2, c3, c4, c5, c6 = st.columns([3, 4, 2, 2, 4, 2])
