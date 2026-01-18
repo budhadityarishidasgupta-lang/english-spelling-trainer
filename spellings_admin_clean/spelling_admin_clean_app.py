@@ -661,93 +661,74 @@ def render_student_management():
             st.experimental_rerun()
 
     selected_class = st.selectbox(
-        "Filter by class",
-        options=["All"] + existing_classes,
+        "Select class",
+        options=existing_classes,
     )
 
     search_term = st.text_input(
         "Search students (name or email)",
-        placeholder="Type name or email…",
+        placeholder="Type to search…",
     )
 
     students = list_registered_spelling_students()
-    courses_lookup = get_all_courses()
-    courses = {course["course_name"]: course["course_id"] for course in courses_lookup}
 
-    if not students:
-        st.info("No active students found.")
-    else:
-        header_cols = st.columns([3, 4, 2, 2, 4, 2])
-        header_cols[0].markdown("**Name**")
-        header_cols[1].markdown("**Email**")
-        header_cols[2].markdown("**Status**")
-        header_cols[3].markdown("**Class**")
-        header_cols[4].markdown("**Registered Courses**")
-        header_cols[5].markdown("**Assign Course**")
+    filtered_students = []
+    for s in students:
+        if search_term:
+            q = search_term.lower()
+            if q not in s["name"].lower() and q not in s["email"].lower():
+                continue
+        filtered_students.append(s)
 
-        for student in students:
-            if selected_class != "All":
-                if student["class_name"] != selected_class:
-                    continue
-            if search_term:
-                q = search_term.lower()
-                if q not in student["name"].lower() and q not in student["email"].lower():
-                    continue
+    st.markdown("### Assign students to selected class")
 
-            c1, c2, c3, c4, c5, c6 = st.columns([3, 4, 2, 2, 4, 2])
+    if not filtered_students:
+        st.info("No students match the search.")
+        return
 
-            with c1:
-                st.write(student["name"])
+    h1, h2, h3, h4 = st.columns([1, 3, 4, 3])
+    h1.markdown("**Select**")
+    h2.markdown("**Name**")
+    h3.markdown("**Email**")
+    h4.markdown("**Current Class**")
 
-            with c2:
-                st.write(student["email"])
+    selected_user_ids = []
 
-            with c3:
-                st.write(student["status"])
+    for s in filtered_students:
+        c1, c2, c3, c4 = st.columns([1, 3, 4, 3])
 
-            with c4:
-                class_choice = st.selectbox(
-                    "Class",
-                    options=["—"] + existing_classes,
-                    index=(
-                        existing_classes.index(student["class_name"]) + 1
-                        if student["class_name"] in existing_classes
-                        else 0
-                    ),
-                    key=f"class_select_{student['user_id']}",
-                    label_visibility="collapsed",
+        with c1:
+            checked = st.checkbox(
+                "",
+                key=f"select_student_{s['user_id']}",
+            )
+            if checked:
+                selected_user_ids.append(s["user_id"])
+
+        with c2:
+            st.write(s["name"])
+
+        with c3:
+            st.write(s["email"])
+
+        with c4:
+            st.write(s["class_name"] or "—")
+
+    st.divider()
+
+    if st.button("Assign selected students to class"):
+        if not selected_user_ids:
+            st.warning("Please select at least one student.")
+        else:
+            for uid in selected_user_ids:
+                assign_student_to_class(
+                    user_id=uid,
+                    class_name=selected_class,
                 )
-
-                if class_choice != "—" and class_choice != student["class_name"]:
-                    if st.button("Save", key=f"save_class_{student['user_id']}"):
-                        assign_student_to_class(
-                            user_id=student["user_id"],
-                            class_name=class_choice,
-                        )
-                        st.success("Class updated")
-                        st.experimental_rerun()
-
-            with c5:
-                st.write(student["registered_courses"] or "—")
-
-            with c6:
-                selected_course = st.selectbox(
-                    "Assign Course",
-                    options=list(courses.keys()),
-                    key=f"assign_course_{student['user_id']}",
-                    label_visibility="collapsed",
-                )
-
-                if st.button(
-                    "Assign",
-                    key=f"assign_btn_{student['user_id']}",
-                ):
-                    assign_course_to_student(
-                        user_id=student["user_id"],
-                        course_id=courses[selected_course],
-                    )
-                    st.success("Course assigned")
-                    st.experimental_rerun()
+            st.success(
+                f"{len(selected_user_ids)} student(s) assigned to class '{selected_class}'."
+            )
+            st.experimental_rerun()
 
     st.subheader("Pending Registrations")
 
