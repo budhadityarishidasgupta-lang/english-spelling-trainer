@@ -665,12 +665,33 @@ def render_student_management():
         options=existing_classes,
     )
 
+    # ------------------------------------
+    # Class roster preview (read-only)
+    # ------------------------------------
+    st.markdown("#### Students in selected class")
+
+    students = list_registered_spelling_students()
+
+    class_students = [
+        s for s in students if s.get("class_name") == selected_class
+    ]
+
+    if not class_students:
+        st.info(f"No students currently assigned to '{selected_class}'.")
+    else:
+        h1, h2 = st.columns([3, 5])
+        h1.markdown("**Name**")
+        h2.markdown("**Email**")
+
+        for s in class_students:
+            c1, c2 = st.columns([3, 5])
+            c1.write(s["name"])
+            c2.write(s["email"])
+
     search_term = st.text_input(
         "Search students (name or email)",
         placeholder="Type to search…",
     )
-
-    students = list_registered_spelling_students()
 
     filtered_students = []
     for s in students:
