@@ -654,11 +654,14 @@ def render_student_management():
     st.markdown("## 👩‍🎓 Students (Spelling App)")
     st.subheader("🏫 Class Management")
 
-    students = list_registered_spelling_students()
     existing_classes = list_classes()
 
     class_counts = {
-        c: sum(1 for s in students if s.get("class_name") == c)
+        c: sum(
+            1
+            for s in list_registered_spelling_students()
+            if s.get("class_name") == c
+        )
         for c in existing_classes
     }
 
@@ -712,7 +715,9 @@ def render_student_management():
 
     if st.button("Assign course to all students in class"):
         class_students = [
-            s for s in students if s.get("class_name") == selected_class
+            s
+            for s in list_registered_spelling_students()
+            if s.get("class_name") == selected_class
         ]
 
         if not class_students:
@@ -733,7 +738,11 @@ def render_student_management():
     # ------------------------------------
     st.markdown("#### Students in selected class")
 
-    class_students = [s for s in students if s.get("class_name") == selected_class]
+    class_students = [
+        s
+        for s in list_registered_spelling_students()
+        if s.get("class_name") == selected_class
+    ]
 
     if not class_students:
         st.info(f"No students currently assigned to '{selected_class}'.")
@@ -765,13 +774,14 @@ def render_student_management():
         placeholder="Type to search…",
     )
 
-    filtered_students = []
-    for s in students:
-        if search_term:
-            q = search_term.lower()
-            if q not in s["name"].lower() and q not in s["email"].lower():
-                continue
-        filtered_students.append(s)
+    all_students = list_registered_spelling_students()
+    filtered_students = [
+        s
+        for s in all_students
+        if not search_term
+        or search_term.lower() in s["name"].lower()
+        or search_term.lower() in s["email"].lower()
+    ]
 
     st.markdown("### Assign students to selected class")
 
