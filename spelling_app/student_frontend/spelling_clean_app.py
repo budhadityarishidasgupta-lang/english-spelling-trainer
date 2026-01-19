@@ -2392,17 +2392,24 @@ def main():
 
         current_course_id = st.session_state.get("active_course_id")
 
-        selected_course = st.sidebar.selectbox(
-            "Switch course",
-            options=st.session_state["courses"],
-            format_func=lambda c: c["course_name"],
-            index=next(
-                (i for i, c in enumerate(st.session_state["courses"])
-                 if c["course_id"] == current_course_id),
-                0,
+        course_labels = [course["course_name"] for course in st.session_state["courses"]]
+        course_options = {
+            course["course_name"]: course for course in st.session_state["courses"]
+        }
+        current_index = next(
+            (
+                i for i, course in enumerate(st.session_state["courses"])
+                if course["course_id"] == current_course_id
             ),
+            0,
+        )
+        selected_course_label = st.sidebar.radio(
+            "Practice Mode",
+            options=course_labels,
+            index=current_index,
             key="sidebar_course_switcher",
         )
+        selected_course = course_options[selected_course_label]
 
         # If user selects a different course
         if selected_course["course_id"] != current_course_id:
