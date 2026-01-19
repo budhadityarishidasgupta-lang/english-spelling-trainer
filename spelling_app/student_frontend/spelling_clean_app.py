@@ -78,6 +78,25 @@ def user_has_any_mistakes(user_id: int) -> bool:
         ).fetchone()
         return row is not None
 
+
+def get_global_weak_words(user_id: int, limit: int = 20):
+    with get_engine_safe().connect() as db:
+        rows = db.execute(
+            text(
+                """
+                SELECT DISTINCT word_id, word
+                FROM spelling_attempts
+                WHERE user_id = :uid
+                  AND correct = FALSE
+                ORDER BY attempted_at DESC
+                LIMIT :limit
+                """
+            ),
+            {"uid": user_id, "limit": limit},
+        ).fetchall()
+
+        return rows
+
 def _fetch_spelling_words(lesson_id: int):
     return safe_rows(
         fetch_all(
@@ -926,7 +945,7 @@ def render_student_home(db, user_id: int) -> None:
 
 
 def _load_weak_word_pool(user_id: int) -> list[dict]:
-    weak_rows = get_weak_words(user_id) or []
+    weak_rows = get_global_weak_words(user_id) or []
     word_ids = [row.get("word_id") for row in weak_rows if row.get("word_id") is not None]
     word_details = get_words_by_ids(word_ids)
     detail_map = {row.get("word_id"): row for row in word_details}
