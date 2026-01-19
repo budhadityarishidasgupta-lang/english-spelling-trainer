@@ -886,7 +886,8 @@ def render_student_home(db, user_id: int) -> None:
     intro = _get_student_home_text(db, "student_home_intro", "")
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
-    weak_words = get_weak_words(user_id) or []
+    all_weak_words = get_weak_words(user_id) or []
+    show_weak_words = len(all_weak_words) > 0
 
     st.markdown(f"## {title}")
     st.markdown(intro)
@@ -900,7 +901,7 @@ def render_student_home(db, user_id: int) -> None:
         st.experimental_rerun()
 
     # Weak Words section (conditional)
-    if weak_words:
+    if show_weak_words:
         st.markdown("### 🧠 Weak Words")
         st.markdown(weak_txt)
         if st.button("Start Weak Words"):
