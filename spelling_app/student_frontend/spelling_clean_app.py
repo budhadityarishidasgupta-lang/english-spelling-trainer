@@ -230,7 +230,7 @@ def get_landing_content(db):
     register_text = (
         register.body
         if register and register.body
-        else "One-time access to WordSprint learning apps\nSecure checkout via PayPal."
+        else "One-time access to SpellingSprint learning apps\nSecure checkout via PayPal."
     )
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
@@ -239,16 +239,18 @@ def get_landing_content(db):
 
 def _get_student_home_text(db, key: str, fallback: str = "") -> str:
     """
-    Fetch content block text for Student Home.
-    Falls back safely if block is missing.
+    Fetch Student Home content from admin-managed content blocks.
+    Handles ORM and SQLAlchemy Core row formats safely.
     """
     row = get_content_block(db, key)
     if not row:
         return fallback
 
+    # ORM-style access
     if hasattr(row, "body") and row.body:
         return row.body
 
+    # SQLAlchemy Core Row
     if hasattr(row, "_mapping"):
         return row._mapping.get("body", fallback)
 
@@ -825,7 +827,7 @@ def generate_missing_letter_question(
 ###########################################################
 
 def render_login_page():
-    st.title("Welcome to WordSprint!")
+    st.title("Welcome to SpellingSprint!")
     st.markdown("---")
 
     col_left, _ = st.columns([1, 1])
@@ -964,40 +966,36 @@ def render_mode_cards(db, user_id, selected_lesson_id):
 
 
 def render_student_home(db, user_id: int) -> None:
-    # --- Fetch ALL content (always) ---
+    # Fetch admin-managed content (ALWAYS)
     title = _get_student_home_text(db, "student_home_title", "Welcome")
     intro = _get_student_home_text(db, "student_home_intro", "")
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
     daily5_txt = _get_student_home_text(db, "student_home_daily5", "")
 
-    # --- Determine Daily 5 eligibility ONLY ---
-    # Reuse existing logic — no new queries
+    # Determine Daily 5 visibility ONLY
     weak_words = get_weak_words(user_id) or []
     show_daily5 = len(weak_words) > 0
-
-    # --- Render page (NO routing here) ---
-    st.title("WordSprint")
 
     st.markdown(f"## {title}")
     st.markdown(intro)
     st.markdown("---")
 
-    # Practice (always visible)
+    # Practice section (always)
     st.markdown("### ✏️ Practice")
     st.markdown(practice_txt)
     if st.button("Start Practice"):
         st.session_state.page = "dashboard"
         st.experimental_rerun()
 
-    # Weak Words (always visible)
+    # Weak Words section (always)
     st.markdown("### 🧠 Weak Words")
     st.markdown(weak_txt)
     if st.button("Go to Lessons"):
         st.session_state.page = "dashboard"
         st.experimental_rerun()
 
-    # Daily 5 (conditionally visible)
+    # Daily 5 section (conditional)
     if show_daily5:
         st.markdown("### 🎯 Daily 5")
         st.markdown(daily5_txt)
@@ -2299,7 +2297,7 @@ def main():
     if "action_lock" not in st.session_state:
         st.session_state.action_lock = False
 
-    st.title("WordSprint")
+    st.title("SpellingSprint")
 
     # NOT LOGGED IN → show Login + Registration tabs
     if not st.session_state.is_logged_in:
@@ -2317,7 +2315,7 @@ def main():
 
         # Value proposition
         st.markdown(
-            f"<div class='landing-card'><strong>Why WordSprint?</strong><br><br>{value_text.replace(chr(10), '<br>')}</div>",
+            f"<div class='landing-card'><strong>Why SpellingSprint?</strong><br><br>{value_text.replace(chr(10), '<br>')}</div>",
             unsafe_allow_html=True,
         )
 
@@ -2338,7 +2336,7 @@ def main():
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        with st.expander("➕ New to WordSprint? Create an account"):
+        with st.expander("➕ New to SpellingSprint? Create an account"):
             st.markdown(
                 f"<div class='landing-card'><strong>Registration</strong><br><br>{register_text.replace(chr(10), '<br>')}</div>",
                 unsafe_allow_html=True,
