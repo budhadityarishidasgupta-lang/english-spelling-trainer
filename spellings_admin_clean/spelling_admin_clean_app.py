@@ -22,7 +22,7 @@ PROJECT_ROOT = "/opt/render/project/src"
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from shared.db import engine as shared_engine, fetch_all
+from db import engine as shared_engine, fetch_all
 
 SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 
@@ -926,53 +926,63 @@ def render_student_home_content(db):
             placeholder=placeholder,
         )
 
-        col1, col2 = st.columns([1, 3])
-
-        with col1:
-            if st.button("💾 Save", key=f"save_{key}"):
-                upsert_content_block(
-                    db=db,
-                    block_key=key,
-                    body=body,
-                )
-                st.success(f"{label} saved.")
-
-        with col2:
-            if body:
-                st.markdown("**Preview:**")
-                st.markdown(body)
+        if body:
+            st.markdown("**Preview:**")
+            st.markdown(body)
 
         st.divider()
+        return body
 
-    block_editor(
+    title_text = block_editor(
         "student_home_title",
         "Welcome Title",
         placeholder="Welcome back 👋",
     )
 
-    block_editor(
+    intro_text = block_editor(
         "student_home_intro",
         "Welcome Intro",
         placeholder="Here’s how to make the most of your spelling practice today.",
     )
 
-    block_editor(
+    practice_text = block_editor(
         "student_home_practice",
         "Practice Section Text",
         placeholder="Practice helps you learn new spelling patterns step by step.",
     )
 
-    block_editor(
+    weak_words_text = block_editor(
         "student_home_weak_words",
         "Weak Words Section Text",
         placeholder="Weak Words help you focus on spellings you found tricky before.",
     )
 
-    block_editor(
+    daily5_text = block_editor(
         "student_home_daily5",
         "Daily 5 Section Text",
         placeholder="Start with a quick warm-up using your recent mistakes.",
     )
+
+    blocks = {
+        "student_home_title": title_text,
+        "student_home_intro": intro_text,
+        "student_home_practice": practice_text,
+        "student_home_weak_words": weak_words_text,
+        "student_home_daily5": daily5_text,
+    }
+
+    if st.button("💾 Save All"):
+        for key, body in blocks.items():
+            upsert_content_block(
+                db=db,
+                block_key=key,
+                title=key.replace("_", " ").title(),
+                body=body,
+            )
+
+        st.success("Student Home content saved.")
+        st.session_state.admin_page = "content_student_home"
+        st.experimental_rerun()
 
 
 def render_text_block_editor(db, block_key, label, placeholder=""):
@@ -1110,54 +1120,32 @@ def main():
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "course_management"
 
-    admin_options = ["Course Management", "Students", "Help Texts", "Maintenance"]
-    default_index = 0
-
-    if st.session_state.admin_page == "students":
-        default_index = admin_options.index("Students")
-    elif st.session_state.admin_page == "help_texts":
-        default_index = admin_options.index("Help Texts")
-    elif st.session_state.admin_page == "maintenance":
-        default_index = admin_options.index("Maintenance")
-
-    admin_section = st.sidebar.radio(
-        "Admin Sections",
-        admin_options,
-        index=default_index,
-    )
-
-    if admin_section == "Course Management":
+    st.sidebar.markdown("## Admin Sections")
+    if st.sidebar.button("Course Management"):
         st.session_state.admin_page = "course_management"
-    elif admin_section == "Students":
+    if st.sidebar.button("Students"):
         st.session_state.admin_page = "students"
-    elif admin_section == "Help Texts":
-        st.session_state.admin_page = "help_texts"
-    elif admin_section == "Maintenance":
-        st.session_state.admin_page = "maintenance"
-
-    st.sidebar.markdown("### 🧩 Content")
     if st.sidebar.button("Help Texts"):
         st.session_state.admin_page = "help_texts"
+    if st.sidebar.button("Maintenance"):
+        st.session_state.admin_page = "maintenance"
 
-    if st.sidebar.button("Branding & Landing"):
-        st.session_state.admin_page = "branding_landing"
-
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## Content")
     if st.sidebar.button("Student Home"):
-        st.session_state.admin_page = "student_home"
+        st.session_state.admin_page = "content_student_home"
 
-    if st.session_state.admin_page == "course_management":
+    page = st.session_state.admin_page
+    if page == "course_management":
         render_course_management()
-    elif st.session_state.admin_page == "students":
+    elif page == "students":
         render_student_management()
-    elif st.session_state.admin_page == "help_texts":
+    elif page == "help_texts":
         with engine.connect() as db:
             render_help_texts_page(db)
-    elif st.session_state.admin_page == "maintenance":
+    elif page == "maintenance":
         render_maintenance()
-    elif st.session_state.admin_page == "branding_landing":
-        with engine.connect() as db:
-            render_branding_landing_page(db)
-    elif st.session_state.admin_page == "student_home":
+    elif page == "content_student_home":
         with engine.connect() as db:
             render_student_home_content(db)
 
