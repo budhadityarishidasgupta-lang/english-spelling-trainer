@@ -7,6 +7,7 @@ import sys
 import base64
 import io
 import os
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 
@@ -18,11 +19,11 @@ st.set_page_config(
 )
 
 # ---- Force project root for Render ----
-PROJECT_ROOT = "/opt/render/project/src"
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+REPO_ROOT = str(Path(__file__).resolve().parents[1])
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-from db import engine as shared_engine, fetch_all
+from shared.db import engine as shared_engine, fetch_all
 
 SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 
@@ -981,8 +982,7 @@ def render_student_home_content(db):
             )
 
         st.success("Student Home content saved.")
-        st.session_state.admin_page = "content_student_home"
-        st.experimental_rerun()
+        set_admin_page("content_student_home")
 
 
 def render_text_block_editor(db, block_key, label, placeholder=""):
@@ -1113,27 +1113,36 @@ def render_maintenance():
         st.info("No courses available for maintenance.")
 
 
+def set_admin_page(page: str) -> None:
+    st.session_state.admin_page = page
+    st.query_params["admin_page"] = page
+    st.experimental_rerun()
+
+
 def main():
     # -------------------------------------------------
     # vNext Admin Console (Preview)
     # -------------------------------------------------
     if "admin_page" not in st.session_state:
-        st.session_state.admin_page = "course_management"
+        st.session_state.admin_page = st.query_params.get(
+            "admin_page",
+            "course_management",
+        )
 
     st.sidebar.markdown("## Admin Sections")
     if st.sidebar.button("Course Management"):
-        st.session_state.admin_page = "course_management"
+        set_admin_page("course_management")
     if st.sidebar.button("Students"):
-        st.session_state.admin_page = "students"
+        set_admin_page("students")
     if st.sidebar.button("Help Texts"):
-        st.session_state.admin_page = "help_texts"
+        set_admin_page("help_texts")
     if st.sidebar.button("Maintenance"):
-        st.session_state.admin_page = "maintenance"
+        set_admin_page("maintenance")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("## Content")
     if st.sidebar.button("Student Home"):
-        st.session_state.admin_page = "content_student_home"
+        set_admin_page("content_student_home")
 
     page = st.session_state.admin_page
     if page == "course_management":
