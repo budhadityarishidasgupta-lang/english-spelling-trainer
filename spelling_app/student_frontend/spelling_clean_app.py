@@ -61,6 +61,23 @@ def get_engine_safe():
         )
         st.stop()
 
+
+def user_has_any_mistakes(user_id: int) -> bool:
+    with get_engine_safe().connect() as db:
+        row = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM spelling_attempts
+                WHERE user_id = :uid
+                  AND correct = FALSE
+                LIMIT 1
+                """
+            ),
+            {"uid": user_id},
+        ).fetchone()
+        return row is not None
+
 def _fetch_spelling_words(lesson_id: int):
     return safe_rows(
         fetch_all(
@@ -886,8 +903,7 @@ def render_student_home(db, user_id: int) -> None:
     intro = _get_student_home_text(db, "student_home_intro", "")
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
-    all_weak_words = get_weak_words(user_id) or []
-    show_weak_words = len(all_weak_words) > 0
+    show_weak_words = user_has_any_mistakes(st.session_state.user_id)
 
     st.markdown(f"## {title}")
     st.markdown(intro)
@@ -1923,7 +1939,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
     # ------------------------------------------------
 
     if st.session_state.get("practice_lesson_id") != lesson_id:
-        st.session_state.practice_index = 0
+        resume_index = get_resume_index_for_lesson(
+            user_id=st.session_state.user_id,
+            lesson_id=lesson_id,
+        )
+        st.session_state.practice_index = resume_index or 0
         st.session_state["q_index"] = 0
         st.session_state.current_wid = None
         st.session_state.current_word_pick = None
