@@ -235,6 +235,26 @@ def get_landing_content(db):
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
     return banner_data, tagline_text, value_text, register_text, support_text
+
+
+def _get_student_home_text(db, key: str, fallback: str = "") -> str:
+    """
+    Fetch content block text for Student Home.
+    Falls back safely if block is missing.
+    """
+    row = get_content_block(db, key)
+    if not row:
+        return fallback
+
+    if hasattr(row, "body") and row.body:
+        return row.body
+
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("body", fallback)
+
+    return fallback
+
+
 def inject_student_css():
     st.markdown(
         """
@@ -693,7 +713,7 @@ def check_login(st_module, email: str, password: str) -> bool:
         st_module.session_state.is_logged_in = True
         st_module.session_state.user_id = row["user_id"]
         st_module.session_state.user_name = row["name"]
-        st_module.session_state.page = "dashboard"
+        st_module.session_state.page = "home"
         return True
 
     return False
@@ -941,6 +961,49 @@ def render_mode_cards(db, user_id, selected_lesson_id):
 
         if not has_weak_words:
             st.caption("No weak words for this lesson yet 👍")
+
+
+def render_student_home(db, user_id: int) -> None:
+    # --- Fetch ALL content (always) ---
+    title = _get_student_home_text(db, "student_home_title", "Welcome")
+    intro = _get_student_home_text(db, "student_home_intro", "")
+    practice_txt = _get_student_home_text(db, "student_home_practice", "")
+    weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
+    daily5_txt = _get_student_home_text(db, "student_home_daily5", "")
+
+    # --- Determine Daily 5 eligibility ONLY ---
+    # Reuse existing logic — no new queries
+    weak_words = get_weak_words(user_id) or []
+    show_daily5 = len(weak_words) > 0
+
+    # --- Render page (NO routing here) ---
+    st.title("WordSprint")
+
+    st.markdown(f"## {title}")
+    st.markdown(intro)
+    st.markdown("---")
+
+    # Practice (always visible)
+    st.markdown("### ✏️ Practice")
+    st.markdown(practice_txt)
+    if st.button("Start Practice"):
+        st.session_state.page = "dashboard"
+        st.experimental_rerun()
+
+    # Weak Words (always visible)
+    st.markdown("### 🧠 Weak Words")
+    st.markdown(weak_txt)
+    if st.button("Go to Lessons"):
+        st.session_state.page = "dashboard"
+        st.experimental_rerun()
+
+    # Daily 5 (conditionally visible)
+    if show_daily5:
+        st.markdown("### 🎯 Daily 5")
+        st.markdown(daily5_txt)
+        if st.button("Start Daily 5"):
+            st.session_state.page = "daily5_prompt"
+            st.experimental_rerun()
 
 
 def render_daily5_prompt():
@@ -2222,6 +2285,12 @@ def main():
     inject_student_css()
     initialize_session_state(st)
     init_daily5_state()
+
+    if "page" not in st.session_state or st.session_state.page is None:
+        st.session_state.page = "home"
+
+    if "mode" not in st.session_state:
+        st.session_state.mode = None
     # Daily Weak Words (global warm-up)
     if "daily_weak_words" not in st.session_state:
         st.session_state.daily_weak_words = None
@@ -2229,11 +2298,6 @@ def main():
         st.session_state.daily_weak_index = 0
     if "action_lock" not in st.session_state:
         st.session_state.action_lock = False
-
-    if "mode" not in st.session_state:
-        st.session_state.mode = "Practice"
-    if st.session_state.get("page") is None:
-        st.session_state.page = "dashboard"
 
     st.title("WordSprint")
 
@@ -2370,6 +2434,15 @@ def main():
 
     user_id = st.session_state.get("user_id")
 
+    if st.session_state.page == "home":
+        with get_engine_safe().connect() as db:
+            render_student_home(db, st.session_state.user_id)
+        st.stop()
+
+    if st.session_state.page == "daily5_prompt":
+        render_daily5_prompt()
+        st.stop()
+
     if st.session_state.page == "daily_weak_words":
         render_daily_weak_words(user_id)
         st.stop()
@@ -2382,11 +2455,6 @@ def main():
 
         if st.session_state.get("active_mode") == "weak_words" and selected_lesson_id:
             init_weak_words(db, user_id, selected_lesson_id)
-
-    if should_show_daily5_today() and not st.session_state.daily5_active:
-        with st.container():
-            render_daily5_prompt()
-        st.stop()
 
     st.sidebar.markdown("### 📘 Course")
 
