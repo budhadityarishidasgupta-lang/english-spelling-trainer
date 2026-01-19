@@ -33,7 +33,6 @@ from spelling_app.repository.attempt_repo import record_attempt
 from spelling_app.repository.attempt_repo import get_lesson_mastery   # <-- REQUIRED FIX
 from spelling_app.repository.attempt_repo import get_word_difficulty_signals
 from spelling_app.repository.spelling_lesson_repo import (
-    get_daily5_words_for_student,
     get_weak_words_for_lesson,
 )
 from spelling_app.repository.student_repo import (
@@ -44,7 +43,6 @@ from spelling_app.repository.student_repo import (
     get_words_for_lesson,
 )
 from spelling_app.services.spelling_service import get_daily_five_words, get_weak_words
-from spelling_app.repository.spelling_help_text_repo import get_help_text
 from spelling_app.repository.spelling_content_repo import get_content_block
 from spelling_app.repository.registration_repo import (
     create_pending_registration,
@@ -152,11 +150,10 @@ POINTS_PER_CORRECT = 10
 PRACTICE_MODES = [
     "Practice",   # current missing-letter mode
     "Review",     # weak words (to be implemented)
-    "Daily 5",    # daily set (to be implemented)
     "Test",       # timed quiz (to be implemented)
 ]
 
-VALID_PRACTICE_MODES = ["lesson", "daily5", "weak_words"]
+VALID_PRACTICE_MODES = ["lesson", "weak_words"]
 
 SESSION_KEYS = [
     "is_logged_in",
@@ -188,24 +185,6 @@ def row_to_dict(row):
         except Exception:
             return {}
     return {}
-
-
-def fetch_daily5_help_text(db):
-    row = get_help_text(db, "daily5_intro")
-    if row:
-        mapping = getattr(row, "_mapping", row)
-        title = mapping.get("title") if isinstance(mapping, dict) else getattr(row, "title", None)
-        body = mapping.get("body") if isinstance(mapping, dict) else getattr(row, "body", None)
-
-        if body:
-            return title or "Daily 5", body
-
-    # Fallback (shown only if admin has not configured text yet)
-    return (
-        "Why start with Daily 5?",
-        "Daily 5 helps warm up your spelling skills and prepares your brain for today’s practice. "
-        "It takes just a couple of minutes and makes learning easier.",
-    )
 
 
 def _get_block(db, key):
@@ -343,30 +322,6 @@ def initialize_session_state(st_module):
                 st_module.session_state[key] = None
 
 
-def init_daily5_state():
-    if "daily5_last_shown_date" not in st.session_state:
-        st.session_state.daily5_last_shown_date = None
-
-    if "daily5_active" not in st.session_state:
-        st.session_state.daily5_active = False
-
-    if (
-        "practice_mode" not in st.session_state
-        or st.session_state.practice_mode not in VALID_PRACTICE_MODES
-    ):
-        st.session_state.practice_mode = "lesson"
-
-
-def init_daily5_words(db, user_id):
-    if "daily5_words" not in st.session_state:
-        st.session_state.daily5_words = get_daily5_words_for_student(
-            db=db,
-            user_id=user_id,
-            limit=5,
-        )
-        st.session_state.daily5_index = 0
-
-
 def init_weak_words(db, user_id, lesson_id):
     if "weak_words" not in st.session_state:
         st.session_state.weak_words = get_weak_words_for_lesson(
@@ -376,11 +331,6 @@ def init_weak_words(db, user_id, lesson_id):
         )
         st.session_state.weak_index = 0
         st.session_state.weak_words_lesson_id = lesson_id
-
-
-def should_show_daily5_today():
-    today = date.today().isoformat()
-    return st.session_state.daily5_last_shown_date != today
 
 
 def reset_practice_state():
@@ -723,12 +673,6 @@ def check_login(st_module, email: str, password: str) -> bool:
 
 def logout(st_module):
     cleanup_keys = SESSION_KEYS + [
-        "daily5_active",
-        "daily5_words",
-        "daily5_index",
-        "daily5_last_shown_date",
-        "daily_weak_words",
-        "daily_weak_index",
         "practice_mode",
         "current_wid",
         "current_word_pick",
@@ -885,7 +829,7 @@ def submit_registration():
 
 
 ###########################################################
-#  MODE SELECTOR (Practice / Review / Daily 5 / Test)
+#  MODE SELECTOR (Practice / Review / Test)
 ###########################################################
 
 def ensure_default_mode():
@@ -898,6 +842,8 @@ def ensure_default_mode():
         st.session_state.practice_mode not in PRACTICE_MODES
         and st.session_state.practice_mode not in VALID_PRACTICE_MODES
     ):
+        st.session_state.practice_mode = "lesson"
+    elif st.session_state.practice_mode == "Daily 5":
         st.session_state.practice_mode = "lesson"
 
 
@@ -917,13 +863,13 @@ def render_mode_selector_sidebar():
     if current_mode != st.session_state.practice_mode:
         st.session_state.practice_mode = current_mode
         # When changing mode, send user back to dashboard for a clean flow.
-        st.session_state.page = "dashboard"
+        st.session_state.page = "practice"
         st.experimental_rerun()
 
 
 def render_mode_cards(db, user_id, selected_lesson_id):
     st.markdown("### 🎯 What would you like to do today?")
-    c1, c2, c3 = st.columns(3)
+    c1, _ = st.columns(2)
 
     with c1:
         if st.button("✏️ Practice", use_container_width=True):
@@ -933,37 +879,6 @@ def render_mode_cards(db, user_id, selected_lesson_id):
             st.session_state.page = "practice"
             st.experimental_rerun()
 
-    with c2:
-        has_weak_words = False
-        weak_preview = get_weak_words_for_lesson(
-            db=db,
-            user_id=user_id,
-            lesson_id=selected_lesson_id,
-        )
-
-        if weak_preview:
-            has_weak_words = True
-
-        if st.button(
-            "🧠 Weak Words",
-            use_container_width=True,
-            disabled=not has_weak_words,
-        ):
-            st.session_state.active_mode = "weak_words"
-            st.session_state.mode = "Weak Words"
-            st.session_state.practice_mode = "Weak Words"
-
-            if st.session_state.weak_words_lesson_id != selected_lesson_id:
-                st.session_state.weak_words = None
-                st.session_state.weak_index = 0
-                st.session_state.weak_words_lesson_id = selected_lesson_id
-
-            st.session_state.page = "practice"
-            st.experimental_rerun()
-
-        if not has_weak_words:
-            st.caption("No weak words for this lesson yet 👍")
-
 
 def render_student_home(db, user_id: int) -> None:
     # Fetch admin-managed content (ALWAYS)
@@ -971,11 +886,7 @@ def render_student_home(db, user_id: int) -> None:
     intro = _get_student_home_text(db, "student_home_intro", "")
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
-    daily5_txt = _get_student_home_text(db, "student_home_daily5", "")
-
-    # Determine Daily 5 visibility ONLY
     weak_words = get_weak_words(user_id) or []
-    show_daily5 = len(weak_words) > 0
 
     st.markdown(f"## {title}")
     st.markdown(intro)
@@ -985,124 +896,153 @@ def render_student_home(db, user_id: int) -> None:
     st.markdown("### ✏️ Practice")
     st.markdown(practice_txt)
     if st.button("Start Practice"):
-        st.session_state.page = "dashboard"
+        st.session_state.page = "practice"
         st.experimental_rerun()
 
-    # Weak Words section (always)
-    st.markdown("### 🧠 Weak Words")
-    st.markdown(weak_txt)
-    if st.button("Go to Lessons"):
-        st.session_state.page = "dashboard"
-        st.experimental_rerun()
-
-    # Daily 5 section (conditional)
-    if show_daily5:
-        st.markdown("### 🎯 Daily 5")
-        st.markdown(daily5_txt)
-        if st.button("Start Daily 5"):
-            st.session_state.page = "daily5_prompt"
+    # Weak Words section (conditional)
+    if weak_words:
+        st.markdown("### 🧠 Weak Words")
+        st.markdown(weak_txt)
+        if st.button("Start Weak Words"):
+            st.session_state.page = "weak_words"
             st.experimental_rerun()
 
 
-def render_daily5_prompt():
-    st.markdown("### 🎯 Daily 5 Ready")
-    st.markdown("Warm up with 5 quick spelling questions before practice.")
+def _load_weak_word_pool(user_id: int) -> list[dict]:
+    weak_rows = get_weak_words(user_id) or []
+    word_ids = [row.get("word_id") for row in weak_rows if row.get("word_id") is not None]
+    word_details = get_words_by_ids(word_ids)
+    detail_map = {row.get("word_id"): row for row in word_details}
 
-    with get_engine_safe().connect() as db:
-        title, body = fetch_daily5_help_text(db)
-
-    title = title or "Daily 5"
-    help_body = body or "Warm up with 5 quick spelling questions before practice."
-
-    if help_body:
-        st.markdown(
-            f"""
-            <div class="daily5-help-box">
-                <strong>{title}</strong><br>
-                {help_body}
-            </div>
-            """,
-            unsafe_allow_html=True,
+    pool = []
+    for row in weak_rows:
+        word_id = row.get("word_id")
+        if word_id is None:
+            continue
+        details = detail_map.get(word_id, {})
+        pool.append(
+            {
+                "word_id": word_id,
+                "word": details.get("word") or row.get("word") or "",
+                "example_sentence": details.get("example_sentence"),
+                "hint": details.get("hint"),
+            }
         )
+    return pool
 
-    col1, col2 = st.columns(2)
 
-    with col1:
-        if st.button("Start Daily Weak Words", use_container_width=True):
-            st.session_state.page = "daily_weak_words"
-            st.session_state.daily_weak_words = None
-            st.session_state.daily_weak_index = 0
-            st.session_state.daily5_last_shown_date = date.today().isoformat()
+def render_weak_words_page(user_id: int) -> None:
+    st.title("🧠 Weak Words")
+    st.caption("Focus on the words you’ve struggled with recently.")
+
+    if st.session_state.get("weak_page_user_id") != user_id:
+        st.session_state.weak_page_user_id = user_id
+        st.session_state.weak_page_pool = None
+        st.session_state.weak_page_index = 0
+        st.session_state.weak_page_submitted = False
+        st.session_state.weak_page_last_correct = None
+        st.session_state.weak_page_current_word_id = None
+        st.session_state.weak_page_start_time = time.time()
+
+    if st.session_state.get("weak_page_pool") is None:
+        st.session_state.weak_page_pool = _load_weak_word_pool(user_id)
+
+    if st.button("⬅️ Back to Home"):
+        st.session_state.page = "home"
+        st.experimental_rerun()
+
+    weak_pool = st.session_state.get("weak_page_pool") or []
+    if not weak_pool:
+        st.info("No weak words yet — great job!")
+        return
+
+    idx = st.session_state.get("weak_page_index", 0)
+    if idx >= len(weak_pool):
+        st.success("🎉 You’ve completed all weak words!")
+        if st.button("🔁 Restart Weak Words"):
+            st.session_state.weak_page_index = 0
+            st.session_state.weak_page_submitted = False
+            st.session_state.weak_page_last_correct = None
+            st.session_state.weak_page_current_word_id = None
+            st.session_state.weak_page_start_time = time.time()
             st.experimental_rerun()
+        return
 
-    with col2:
-        if st.button("⏭️ Skip for Today", use_container_width=True):
-            st.session_state.daily5_last_shown_date = date.today().isoformat()
-            st.session_state.daily5_active = False
-            st.session_state.practice_mode = "lesson"
-            st.experimental_rerun()
+    current = weak_pool[idx]
+    word_id = current["word_id"]
+    word = current["word"]
 
+    if st.session_state.get("weak_page_current_word_id") != word_id:
+        st.session_state.weak_page_current_word_id = word_id
+        st.session_state.weak_page_submitted = False
+        st.session_state.weak_page_last_correct = None
+        st.session_state.weak_page_start_time = time.time()
+        st.session_state.pop(f"weak_page_input_{word_id}", None)
 
-def render_daily_weak_words(user_id):
-    st.header("🧠 Daily Weak Words")
-    st.caption("Fix your most common spelling mistakes before practice.")
+    st.markdown(f"**Word {idx + 1} of {len(weak_pool)}**")
+    st.subheader("Spell the word:")
 
-    if st.session_state.daily_weak_words is None:
-        with get_engine_safe().connect() as db:
-            rows = fetch_all(
-                """
-                SELECT
-                    sw.word_id,
-                    sw.word,
-                    sw.example_sentence
-                FROM spelling_attempts sa
-                JOIN spelling_words sw ON sw.word_id = sa.word_id
-                WHERE sa.user_id = :uid
-                  AND sa.is_correct = false
-                GROUP BY sw.word_id, sw.word, sw.example_sentence
-                ORDER BY MAX(sa.attempted_at) DESC
-                LIMIT 10;
-                """,
-                {"uid": user_id},
+    if current.get("hint"):
+        with st.expander("💡 Hint"):
+            st.markdown(escape(str(current["hint"])))
+
+    user_input = st.text_input(
+        "Type the complete word",
+        key=f"weak_page_input_{word_id}",
+        disabled=st.session_state.get("weak_page_submitted", False),
+    )
+
+    if not st.session_state.get("weak_page_submitted", False):
+        if st.button("✅ Submit"):
+            time_taken = int(time.time() - st.session_state.get("weak_page_start_time", time.time()))
+            is_correct = user_input.strip().lower() == word.lower()
+
+            record_attempt(
+                user_id=st.session_state.user_id,
+                word_id=word_id,
+                correct=is_correct,
+                time_taken=time_taken,
+                blanks_count=0,
+                wrong_letters_count=0 if is_correct else 1,
             )
 
-        if not rows:
-            st.info("No weak words today 👍")
-            if st.button("▶️ Go to Practice"):
-                st.session_state.page = "dashboard"
-                st.experimental_rerun()
-            st.stop()
-
-        st.session_state.daily_weak_words = [
-            {
-                "word_id": r[0],
-                "word": r[1],
-                "example_sentence": r[2],
-            }
-            for r in rows
-        ]
-
-    words = st.session_state.daily_weak_words
-    idx = st.session_state.daily_weak_index
-
-    if idx >= len(words):
-        st.success("🎉 Daily Weak Words complete!")
-        if st.button("▶️ Start Practice"):
-            st.session_state.page = "dashboard"
+            st.session_state.weak_page_submitted = True
+            st.session_state.weak_page_last_correct = is_correct
             st.experimental_rerun()
-        st.stop()
 
-    current = words[idx]
+    if st.session_state.get("weak_page_submitted", False):
+        is_correct = st.session_state.get("weak_page_last_correct", False)
+        if is_correct:
+            st.success("✅ Correct!")
+        else:
+            st.error(f"❌ Not quite right — the correct answer is “{word}”")
 
-    render_spelling_question(
-        word_id=current["word_id"],
-        word=current["word"],
-        example_sentence=current.get("example_sentence"),
-        on_next=lambda correct: (
-            st.session_state.daily_weak_index.__iadd__(1)
-            if correct is not None else None
-        ),
-    )
+        if current.get("example_sentence"):
+            st.markdown(
+                f"""
+                <div class="example-box">
+                    📘 <strong>Example sentence:</strong><br>
+                    {escape(str(current["example_sentence"]))}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if is_correct:
+            if st.button("➡️ Next Word"):
+                st.session_state.weak_page_index = idx + 1
+                st.session_state.weak_page_submitted = False
+                st.session_state.weak_page_last_correct = None
+                st.session_state.weak_page_current_word_id = None
+                st.session_state.weak_page_start_time = time.time()
+                st.experimental_rerun()
+        else:
+            if st.button("🔁 Try Again"):
+                st.session_state.weak_page_submitted = False
+                st.session_state.weak_page_last_correct = None
+                st.session_state.weak_page_start_time = time.time()
+                st.session_state.pop(f"weak_page_input_{word_id}", None)
+                st.experimental_rerun()
 
 
 ###########################################################
@@ -1192,7 +1132,7 @@ def render_practice_page():
 
     if not cid or not lesson_id:
         st.error("No lesson selected. Choose from the lesson catalogue.")
-        st.session_state.page = "dashboard"
+        st.session_state.page = "practice"
         st.experimental_rerun()
         return
 
@@ -1227,7 +1167,7 @@ def render_practice_page():
         st.success("🎉 You finished all words!")
         if st.button("Back to Courses"):
             st.session_state.practice_index = 0
-            st.session_state.page = "dashboard"
+            st.session_state.page = "practice"
             st.experimental_rerun()
         return
 
@@ -1499,7 +1439,7 @@ def render_practice_page():
     # Sidebar navigation
     if st.sidebar.button("Back to Courses"):
         st.session_state.practice_index = 0
-        st.session_state.page = "dashboard"
+        st.session_state.page = "practice"
         st.experimental_rerun()
 
 
@@ -1889,10 +1829,7 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
             st.markdown("#### 🪨 Weak Words Summary")
             st.metric("Weak Words", len(weak_word_ids))
             if st.button("Practice Weak Words"):
-                st.session_state.active_mode = "weak_words"
-                st.session_state.mode = "Weak Words"
-                st.session_state.practice_mode = "Weak Words"
-                st.session_state.page = "dashboard"
+                st.session_state.page = "weak_words"
                 st.experimental_rerun()
             st.caption("Weak words are those below 60% accuracy or missed twice recently.")
 
@@ -2269,11 +2206,6 @@ def render_practice_mode(lesson_id: int, course_id: int):
 ###########################################################
 
 def main():
-    # === HARD SAFETY: if a lesson is selected, ALWAYS enter practice ===
-    if st.session_state.get("active_lesson_id") is not None:
-        st.session_state["mode"] = "Practice"
-        st.session_state["lesson_started"] = True
-
     if "registration_success" not in st.session_state:
         st.session_state.registration_success = False
 
@@ -2282,18 +2214,14 @@ def main():
 
     inject_student_css()
     initialize_session_state(st)
-    init_daily5_state()
 
     if "page" not in st.session_state or st.session_state.page is None:
+        st.session_state.page = "home"
+    elif st.session_state.page not in {"home", "practice", "weak_words"}:
         st.session_state.page = "home"
 
     if "mode" not in st.session_state:
         st.session_state.mode = None
-    # Daily Weak Words (global warm-up)
-    if "daily_weak_words" not in st.session_state:
-        st.session_state.daily_weak_words = None
-    if "daily_weak_index" not in st.session_state:
-        st.session_state.daily_weak_index = 0
     if "action_lock" not in st.session_state:
         st.session_state.action_lock = False
 
@@ -2421,11 +2349,13 @@ def main():
         for key in [
             "practice_mode",
             "answer_submitted",
-            "daily5_active",
-            "daily5_words",
-            "daily5_index",
-            "daily_weak_words",
-            "daily_weak_index",
+            "weak_page_pool",
+            "weak_page_index",
+            "weak_page_submitted",
+            "weak_page_last_correct",
+            "weak_page_current_word_id",
+            "weak_page_user_id",
+            "weak_page_start_time",
         ]:
             st.session_state.pop(key, None)
         st.experimental_rerun()
@@ -2437,22 +2367,15 @@ def main():
             render_student_home(db, st.session_state.user_id)
         st.stop()
 
-    if st.session_state.page == "daily5_prompt":
-        render_daily5_prompt()
+    if st.session_state.page == "weak_words":
+        render_weak_words_page(user_id)
         st.stop()
 
-    if st.session_state.page == "daily_weak_words":
-        render_daily_weak_words(user_id)
-        st.stop()
+    if st.session_state.page != "practice":
+        st.session_state.page = "home"
+        st.experimental_rerun()
 
-    with get_engine_safe().connect() as db:
-        if st.session_state.practice_mode == "daily5" and st.session_state.daily5_active:
-            init_daily5_words(db, user_id)
-
-        selected_lesson_id = st.session_state.get("selected_lesson_id")
-
-        if st.session_state.get("active_mode") == "weak_words" and selected_lesson_id:
-            init_weak_words(db, user_id, selected_lesson_id)
+    st.session_state.active_mode = "practice"
 
     st.sidebar.markdown("### 📘 Course")
 
