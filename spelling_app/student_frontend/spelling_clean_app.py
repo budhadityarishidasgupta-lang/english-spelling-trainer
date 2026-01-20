@@ -35,6 +35,9 @@ from spelling_app.repository.attempt_repo import get_word_difficulty_signals
 from spelling_app.repository.spelling_lesson_repo import (
     get_weak_words_for_lesson,
 )
+from spelling_app.repository.weak_words_virtual_lesson_repo import (
+    prepare_system_weak_words_lesson_for_user,
+)
 from spelling_app.repository.student_repo import (
     get_lessons_for_course,
     get_resume_index_for_lesson,
@@ -969,7 +972,22 @@ def render_student_home(db, user_id: int) -> None:
         st.markdown("### 🧠 Weak Words")
         st.markdown(weak_txt)
         if st.button("Start Weak Words"):
-            st.session_state.page = "weak_words"
+            prepared = prepare_system_weak_words_lesson_for_user(
+                user_id=user_id,
+                limit=50,
+            )
+            word_count = 0
+            if prepared:
+                word_count = int(prepared.get("word_count", 0))
+            if word_count == 0:
+                st.info("No weak words yet — great job!")
+                return
+            st.session_state.active_course_id = prepared["course_id"]
+            st.session_state.active_lesson_id = prepared["lesson_id"]
+            st.session_state.active_lesson_name = "Weak Words"
+            st.session_state.active_mode = "practice"
+            st.session_state.practice_mode = "Practice"
+            st.session_state.page = "practice"
             st.experimental_rerun()
 
 

@@ -34,6 +34,7 @@ def list_lessons(engine, course_id: int) -> pd.DataFrame:
             sort_order
         FROM spelling_lessons
         WHERE course_id = :course_id
+          AND (lesson_code IS NULL OR lesson_code NOT ILIKE '__SYSTEM%')
         ORDER BY sort_order, lesson_id
     """
     return pd.read_sql(text(sql), engine, params={"course_id": course_id})
