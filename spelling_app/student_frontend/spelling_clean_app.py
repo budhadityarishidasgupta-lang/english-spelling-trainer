@@ -92,7 +92,7 @@ def get_global_weak_words(user_id: int, limit: int = 20):
                   ON w.word_id = a.word_id
                 WHERE a.user_id = :uid
                   AND a.correct = FALSE
-                ORDER BY a.word_id, a.attempted_at DESC
+                ORDER BY a.word_id, a.id DESC
                 LIMIT :limit
                 """
             ),
