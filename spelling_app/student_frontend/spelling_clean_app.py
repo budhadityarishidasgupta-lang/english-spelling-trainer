@@ -950,20 +950,24 @@ def render_student_home(db, user_id: int) -> None:
 
 def _load_weak_word_pool(user_id: int) -> list[dict]:
     weak_rows = get_global_weak_words(user_id) or []
-    word_ids = [row.get("word_id") for row in weak_rows if row.get("word_id") is not None]
+    word_ids = [
+        row._mapping["word_id"]
+        for row in weak_rows
+        if row._mapping.get("word_id") is not None
+    ]
     word_details = get_words_by_ids(word_ids)
     detail_map = {row.get("word_id"): row for row in word_details}
 
     pool = []
     for row in weak_rows:
-        word_id = row.get("word_id")
+        word_id = row._mapping.get("word_id")
         if word_id is None:
             continue
         details = detail_map.get(word_id, {})
         pool.append(
             {
                 "word_id": word_id,
-                "word": details.get("word") or row.get("word") or "",
+                "word": details.get("word") or row._mapping["word"] or "",
                 "example_sentence": details.get("example_sentence"),
                 "hint": details.get("hint"),
             }
