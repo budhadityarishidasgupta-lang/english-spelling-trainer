@@ -1008,6 +1008,10 @@ def render_practice_question(word_ids: list[int]) -> None:
 
 
 def render_weak_words_page(user_id: int) -> None:
+    
+    # 🔴 DEBUG LINE — ADD THIS
+    st.error(f"DEBUG: weak-words user_id = {user_id}")
+    
     st.session_state.mode = "weak_words"
     st.title("🧠 Weak Words")
     st.caption("Focus on the words you’ve struggled with recently.")
