@@ -89,7 +89,7 @@ def get_global_weak_words(user_id: int, limit: int = 20):
                     w.word
                 FROM spelling_attempts a
                 JOIN spelling_words w
-                  ON w.id = a.word_id
+                  ON w.word_id = a.word_id
                 WHERE a.user_id = :uid
                   AND a.correct = FALSE
                 ORDER BY a.word_id, a.attempted_at DESC
