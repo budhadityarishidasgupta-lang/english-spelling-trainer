@@ -83,13 +83,13 @@ def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
     with get_engine_safe().connect() as db:
         rows = db.execute(
             text(
-                '''
+                """
                 SELECT DISTINCT word_id
                 FROM spelling_attempts
                 WHERE user_id = :uid
                   AND correct = FALSE
                 LIMIT :limit
-                '''
+                """
             ),
             {"uid": user_id, "limit": limit},
         ).fetchall()
@@ -102,24 +102,28 @@ def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
 
 
 def _load_weak_word_pool(user_id: int) -> list[dict]:
-    word_ids = get_global_weak_word_ids(user_id) or []
+    word_ids = get_global_weak_word_ids(user_id)
     if not word_ids:
         return []
-    word_details = get_words_by_ids(word_ids)
-    by_id = {d.get("word_id"): d for d in word_details}
+
+    # Fetch directly from spelling_words
+    words = get_words_by_ids(word_ids)  # existing helper
+    by_id = {w["word_id"]: w for w in words}
+
     pool = []
     for wid in word_ids:
-        d = by_id.get(wid)
-        if not d:
+        w = by_id.get(wid)
+        if not w:
             continue
         pool.append(
             {
                 "word_id": wid,
-                "word": d.get("word") or "",
-                "hint": d.get("hint"),
-                "example_sentence": d.get("example_sentence"),
+                "word": w.get("word"),
+                "hint": w.get("hint"),
+                "example_sentence": w.get("example_sentence"),
             }
         )
+
     return pool
 
 def _fetch_spelling_words(lesson_id: int):
@@ -1004,6 +1008,7 @@ def render_practice_question(word_ids: list[int]) -> None:
 
 
 def render_weak_words_page(user_id: int) -> None:
+    st.session_state.mode = "weak_words"
     st.title("🧠 Weak Words")
     st.caption("Focus on the words you’ve struggled with recently.")
 
@@ -2161,6 +2166,10 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_word_pick = current
 
     wid = st.session_state.current_wid
+    if st.session_state.get("mode") != "weak_words":
+        lesson_word_ids = {word["word_id"] for word in words}
+        if lesson_id and wid not in lesson_word_ids:
+            return
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
     # Initialise hint visibility ONLY when word changes
