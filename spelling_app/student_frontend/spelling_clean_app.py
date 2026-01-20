@@ -79,12 +79,12 @@ def user_has_any_mistakes(user_id: int) -> bool:
         return row is not None
 
 
-def get_global_weak_words(user_id: int, limit: int = 20):
+def get_global_weak_words(user_id: int, limit: int = 50):
     with get_engine_safe().connect() as db:
         rows = db.execute(
             text(
                 """
-                SELECT DISTINCT ON (a.word_id)
+                SELECT
                     a.word_id,
                     w.word
                 FROM spelling_attempts a
@@ -92,7 +92,7 @@ def get_global_weak_words(user_id: int, limit: int = 20):
                   ON w.word_id = a.word_id
                 WHERE a.user_id = :uid
                   AND a.correct = FALSE
-                ORDER BY a.word_id, a.id DESC
+                GROUP BY a.word_id, w.word
                 LIMIT :limit
                 """
             ),
