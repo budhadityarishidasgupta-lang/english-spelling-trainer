@@ -1973,14 +1973,24 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.experimental_rerun()
             st.stop()
         if st.session_state.weak_words is None:
-            with get_engine_safe().connect() as db:
-                weak_rows = get_weak_words_for_lesson(
-                    db=db,
-                    user_id=user_id,
-                    lesson_id=active_lesson_id,
-                )
+            if st.session_state.get("mode") == "weak_words":
+                practice_word_ids = st.session_state.get("practice_word_pool", [])
+                if not practice_word_ids:
+                    st.info("No practice words are available right now.")
+                    st.stop()
+                weak_rows = get_words_by_ids(practice_word_ids)
+            else:
+                with get_engine_safe().connect() as db:
+                    weak_rows = get_weak_words_for_lesson(
+                        db=db,
+                        user_id=user_id,
+                        lesson_id=active_lesson_id,
+                    )
 
             if not weak_rows:
+                if st.session_state.get("mode") == "weak_words":
+                    st.info("No practice words are available right now.")
+                    st.stop()
                 st.info("No weak words for this lesson yet 👍")
                 if st.button("▶️ Go to Practice"):
                     st.session_state.active_mode = "practice"
