@@ -79,19 +79,19 @@ def user_has_any_mistakes(user_id: int) -> bool:
         return row is not None
 
 
-def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
+def get_global_weak_word_ids(student_id: int, limit: int = 50) -> list[int]:
     with get_engine_safe().connect() as db:
         rows = db.execute(
             text(
-                """
+                '''
                 SELECT DISTINCT word_id
                 FROM spelling_attempts
-                WHERE user_id = :uid
+                WHERE student_id = :sid
                   AND correct = FALSE
                 LIMIT :limit
-                """
+                '''
             ),
-            {"uid": user_id, "limit": limit},
+            {"sid": student_id, "limit": limit},
         ).fetchall()
     return [
         r._mapping["word_id"]
