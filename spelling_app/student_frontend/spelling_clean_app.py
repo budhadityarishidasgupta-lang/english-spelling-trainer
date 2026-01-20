@@ -79,27 +79,47 @@ def user_has_any_mistakes(user_id: int) -> bool:
         return row is not None
 
 
-def get_global_weak_words(user_id: int, limit: int = 50):
+def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
     with get_engine_safe().connect() as db:
         rows = db.execute(
             text(
                 """
-                SELECT
-                    a.word_id,
-                    w.word
-                FROM spelling_attempts a
-                JOIN spelling_words w
-                  ON w.word_id = a.word_id
-                WHERE a.user_id = :uid
-                  AND a.correct = FALSE
-                GROUP BY a.word_id, w.word
+                SELECT DISTINCT word_id
+                FROM spelling_attempts
+                WHERE user_id = :uid
+                  AND correct = FALSE
                 LIMIT :limit
                 """
             ),
             {"uid": user_id, "limit": limit},
         ).fetchall()
+    return [
+        r._mapping["word_id"]
+        for r in rows
+        if r._mapping.get("word_id") is not None
+    ]
 
-        return rows
+
+def _load_weak_word_pool(user_id: int) -> list[dict]:
+    word_ids = get_global_weak_word_ids(user_id) or []
+    if not word_ids:
+        return []
+    word_details = get_words_by_ids(word_ids)
+    by_id = {d.get("word_id"): d for d in word_details}
+    pool = []
+    for wid in word_ids:
+        d = by_id.get(wid)
+        if not d:
+            continue
+        pool.append(
+            {
+                "word_id": wid,
+                "word": d.get("word") or "",
+                "hint": d.get("hint"),
+                "example_sentence": d.get("example_sentence"),
+            }
+        )
+    return pool
 
 def _fetch_spelling_words(lesson_id: int):
     return safe_rows(
@@ -986,20 +1006,49 @@ def render_weak_words_page(user_id: int) -> None:
     st.title("🧠 Weak Words")
     st.caption("Focus on the words you’ve struggled with recently.")
 
-    weak_rows = get_global_weak_words(user_id) or []
-    if weak_rows:
-        weak_word_ids = [row._mapping["word_id"] for row in weak_rows]
-    else:
-        weak_word_ids = []
-    if st.session_state.get("weak_word_ids") != weak_word_ids:
-        st.session_state.weak_word_ids = weak_word_ids
-        st.session_state.practice_index = 0
+    if st.session_state.get("weak_page_user_id") != user_id:
+        st.session_state.weak_page_user_id = user_id
+        st.session_state.weak_page_pool = None
+        st.session_state.weak_page_index = 0
+
+    if st.session_state.get("weak_page_pool") is None:
+        st.session_state.weak_page_pool = _load_weak_word_pool(user_id)
 
     if st.button("⬅️ Back to Home"):
+        st.session_state.weak_page_index = 0
+        st.session_state.weak_page_pool = None
         st.session_state.page = "home"
         st.experimental_rerun()
 
-    render_practice_question(weak_word_ids)
+    pool = st.session_state.get("weak_page_pool") or []
+    if not pool:
+        st.info("No weak words yet — great job!")
+        return
+
+    idx = st.session_state.get("weak_page_index", 0)
+    if idx >= len(pool):
+        st.success("🎉 You’ve completed all weak words!")
+        if st.button("🔁 Restart Weak Words"):
+            st.session_state.weak_page_index = 0
+            st.session_state.weak_page_pool = None
+            st.experimental_rerun()
+        return
+
+    current = pool[idx]
+
+    st.markdown(f"**Word {idx + 1} of {len(pool)}**")
+
+    def _handle_next(last_correct: bool):
+        if last_correct:
+            st.session_state.weak_page_index = idx + 1
+
+    render_spelling_question(
+        word=current["word"],
+        example_sentence=current.get("example_sentence"),
+        hint=current.get("hint"),
+        word_id=current["word_id"],
+        on_next=_handle_next,
+    )
 
 
 ###########################################################
