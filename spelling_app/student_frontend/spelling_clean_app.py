@@ -1001,8 +1001,21 @@ def render_weak_words_page(user_id: int) -> None:
         return
 
     idx = st.session_state.get("weak_page_index", 0)
+    pool = st.session_state.weak_page_pool
+    idx = st.session_state.weak_page_index
+
+    if idx < len(pool):
+        current_entry = pool[idx]
+        if hasattr(current_entry, "_mapping"):
+            current_word = current_entry._mapping["word"]
+        else:
+            current_word = current_entry.get("word", "")
+        st.session_state.weak_current_word = current_word
+    else:
+        st.session_state.weak_current_word = None
+
     if idx >= len(weak_pool):
-        st.success("🎉 You’ve completed all weak words!")
+        st.success("You’ve reviewed all your weak words. Great job!")
         if st.button("🔁 Restart Weak Words"):
             st.session_state.weak_page_index = 0
             st.session_state.weak_page_submitted = False
@@ -1014,14 +1027,13 @@ def render_weak_words_page(user_id: int) -> None:
 
     current = weak_pool[idx]
     word_id = current["word_id"]
-    word = current["word"]
 
     if st.session_state.get("weak_page_current_word_id") != word_id:
         st.session_state.weak_page_current_word_id = word_id
         st.session_state.weak_page_submitted = False
         st.session_state.weak_page_last_correct = None
         st.session_state.weak_page_start_time = time.time()
-        st.session_state.pop(f"weak_page_input_{word_id}", None)
+        st.session_state.weak_input = ""
 
     st.markdown(f"**Word {idx + 1} of {len(weak_pool)}**")
     st.subheader("Spell the word:")
@@ -1030,63 +1042,37 @@ def render_weak_words_page(user_id: int) -> None:
         with st.expander("💡 Hint"):
             st.markdown(escape(str(current["hint"])))
 
-    user_input = st.text_input(
+    st.text_input(
         "Type the complete word",
-        key=f"weak_page_input_{word_id}",
-        disabled=st.session_state.get("weak_page_submitted", False),
+        key="weak_input",
     )
 
-    if not st.session_state.get("weak_page_submitted", False):
-        if st.button("✅ Submit"):
-            time_taken = int(time.time() - st.session_state.get("weak_page_start_time", time.time()))
-            is_correct = user_input.strip().lower() == word.lower()
+    if st.button("Submit"):
+        user_input = st.session_state.get("weak_input", "").strip().lower()
+        correct_word = st.session_state.weak_current_word
+        if correct_word is None:
+            st.error("Try again")
+            return
+        correct_word = correct_word.lower()
+        time_taken = int(time.time() - st.session_state.get("weak_page_start_time", time.time()))
+        is_correct = user_input == correct_word
 
-            record_attempt(
-                user_id=st.session_state.user_id,
-                word_id=word_id,
-                correct=is_correct,
-                time_taken=time_taken,
-                blanks_count=0,
-                wrong_letters_count=0 if is_correct else 1,
-            )
+        record_attempt(
+            user_id=st.session_state.user_id,
+            word_id=word_id,
+            correct=is_correct,
+            time_taken=time_taken,
+            blanks_count=0,
+            wrong_letters_count=0 if is_correct else 1,
+        )
 
-            st.session_state.weak_page_submitted = True
-            st.session_state.weak_page_last_correct = is_correct
+        if is_correct:
+            st.success("Correct!")
+            st.session_state.weak_page_index += 1
+            st.session_state.weak_input = ""
             st.experimental_rerun()
-
-    if st.session_state.get("weak_page_submitted", False):
-        is_correct = st.session_state.get("weak_page_last_correct", False)
-        if is_correct:
-            st.success("✅ Correct!")
         else:
-            st.error(f"❌ Not quite right — the correct answer is “{word}”")
-
-        if current.get("example_sentence"):
-            st.markdown(
-                f"""
-                <div class="example-box">
-                    📘 <strong>Example sentence:</strong><br>
-                    {escape(str(current["example_sentence"]))}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        if is_correct:
-            if st.button("➡️ Next Word"):
-                st.session_state.weak_page_index = idx + 1
-                st.session_state.weak_page_submitted = False
-                st.session_state.weak_page_last_correct = None
-                st.session_state.weak_page_current_word_id = None
-                st.session_state.weak_page_start_time = time.time()
-                st.experimental_rerun()
-        else:
-            if st.button("🔁 Try Again"):
-                st.session_state.weak_page_submitted = False
-                st.session_state.weak_page_last_correct = None
-                st.session_state.weak_page_start_time = time.time()
-                st.session_state.pop(f"weak_page_input_{word_id}", None)
-                st.experimental_rerun()
+            st.error("Try again")
 
 
 ###########################################################
