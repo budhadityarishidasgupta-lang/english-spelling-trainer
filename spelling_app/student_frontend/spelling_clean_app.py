@@ -2170,7 +2170,8 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_word_pick = current
 
     wid = st.session_state.current_wid
-    if st.session_state.get("mode") != "weak_words":
+    mode = st.session_state.get("mode")
+    if mode != "weak_words":
         lesson_word_ids = {word["word_id"] for word in words}
         if lesson_id and wid not in lesson_word_ids:
             return
