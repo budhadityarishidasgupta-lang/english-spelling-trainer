@@ -948,131 +948,86 @@ def render_student_home(db, user_id: int) -> None:
             st.experimental_rerun()
 
 
-def _load_weak_word_pool(user_id: int) -> list[dict]:
-    weak_rows = get_global_weak_words(user_id) or []
-    word_ids = [
-        row._mapping["word_id"]
-        for row in weak_rows
-        if row._mapping.get("word_id") is not None
-    ]
-    word_details = get_words_by_ids(word_ids)
-    detail_map = {row.get("word_id"): row for row in word_details}
+def render_practice_question(word_pool: list[int], mode: str = "lesson") -> None:
+    if mode:
+        st.session_state.mode = mode
+    if "practice_index" not in st.session_state or st.session_state.practice_index is None:
+        st.session_state.practice_index = 0
 
-    pool = []
-    for row in weak_rows:
-        word_id = row._mapping.get("word_id")
-        if word_id is None:
-            continue
-        details = detail_map.get(word_id, {})
-        pool.append(
-            {
-                "word_id": word_id,
-                "word": details.get("word") or row._mapping["word"] or "",
-                "example_sentence": details.get("example_sentence"),
-                "hint": details.get("hint"),
-            }
-        )
-    return pool
+    if not word_pool:
+        st.info("No weak words yet — great job!")
+        return
+
+    practice_index = st.session_state.practice_index
+    if practice_index >= len(word_pool):
+        if st.session_state.mode == "weak_words":
+            st.success("You’ve practised all your weak words. Great job!")
+            st.session_state.mode = None
+            st.session_state.page = "home"
+            st.stop()
+        return
+
+    lesson_word_ids = word_pool
+    if st.session_state.mode == "weak_words":
+        word_id = st.session_state.practice_word_pool[practice_index]
+    else:
+        word_id = lesson_word_ids[practice_index]
+
+    word_rows = get_words_by_ids([word_id])
+    if not word_rows:
+        st.warning("No practice words are available right now.")
+        return
+
+    current = word_rows[0]
+
+    def handle_next(_):
+        st.session_state.practice_index += 1
+
+    render_spelling_question(
+        word_id=word_id,
+        word=current["word"],
+        example_sentence=current.get("example_sentence"),
+        hint=current.get("hint"),
+        on_next=handle_next,
+    )
 
 
 def render_weak_words_page(user_id: int) -> None:
     st.title("🧠 Weak Words")
     st.caption("Focus on the words you’ve struggled with recently.")
 
-    if st.session_state.get("weak_page_user_id") != user_id:
-        st.session_state.weak_page_user_id = user_id
-        st.session_state.weak_page_pool = None
-        st.session_state.weak_page_index = 0
-        st.session_state.weak_page_submitted = False
-        st.session_state.weak_page_last_correct = None
-        st.session_state.weak_page_current_word_id = None
-        st.session_state.weak_page_start_time = time.time()
-
-    if st.session_state.get("weak_page_pool") is None:
-        st.session_state.weak_page_pool = _load_weak_word_pool(user_id)
+    weak_rows = get_global_weak_words(user_id) or []
+    if weak_rows:
+        previous_mode = st.session_state.get("mode")
+        practice_word_pool = [
+            row._mapping["word_id"] for row in weak_rows
+        ]
+        st.session_state.mode = "weak_words"
+        if (
+            previous_mode != "weak_words"
+            or st.session_state.get("practice_word_pool") != practice_word_pool
+        ):
+            st.session_state.practice_word_pool = practice_word_pool
+            st.session_state.practice_index = 0
+        else:
+            st.session_state.practice_word_pool = practice_word_pool
+        st.session_state.practice_lesson_id = None
+    else:
+        st.session_state.practice_word_pool = []
 
     if st.button("⬅️ Back to Home"):
         st.session_state.page = "home"
         st.experimental_rerun()
 
-    weak_pool = st.session_state.get("weak_page_pool") or []
+    weak_pool = st.session_state.get("practice_word_pool") or []
     if not weak_pool:
         st.info("No weak words yet — great job!")
         return
 
-    idx = st.session_state.get("weak_page_index", 0)
-    pool = st.session_state.weak_page_pool
-    idx = st.session_state.weak_page_index
-
-    if idx < len(pool):
-        current_entry = pool[idx]
-        if hasattr(current_entry, "_mapping"):
-            current_word = current_entry._mapping["word"]
-        else:
-            current_word = current_entry.get("word", "")
-        st.session_state.weak_current_word = current_word
-    else:
-        st.session_state.weak_current_word = None
-
-    if idx >= len(weak_pool):
-        st.success("You’ve reviewed all your weak words. Great job!")
-        if st.button("🔁 Restart Weak Words"):
-            st.session_state.weak_page_index = 0
-            st.session_state.weak_page_submitted = False
-            st.session_state.weak_page_last_correct = None
-            st.session_state.weak_page_current_word_id = None
-            st.session_state.weak_page_start_time = time.time()
-            st.experimental_rerun()
-        return
-
-    current = weak_pool[idx]
-    word_id = current["word_id"]
-
-    if st.session_state.get("weak_page_current_word_id") != word_id:
-        st.session_state.weak_page_current_word_id = word_id
-        st.session_state.weak_page_submitted = False
-        st.session_state.weak_page_last_correct = None
-        st.session_state.weak_page_start_time = time.time()
-        st.session_state.weak_input = ""
-
-    st.markdown(f"**Word {idx + 1} of {len(weak_pool)}**")
-    st.subheader("Spell the word:")
-
-    if current.get("hint"):
-        with st.expander("💡 Hint"):
-            st.markdown(escape(str(current["hint"])))
-
-    st.text_input(
-        "Type the complete word",
-        key="weak_input",
+    render_practice_question(
+        word_pool=st.session_state.practice_word_pool,
+        mode="weak_words",
     )
-
-    if st.button("Submit"):
-        user_input = st.session_state.get("weak_input", "").strip().lower()
-        correct_word = st.session_state.weak_current_word
-        if correct_word is None:
-            st.error("Try again")
-            return
-        correct_word = correct_word.lower()
-        time_taken = int(time.time() - st.session_state.get("weak_page_start_time", time.time()))
-        is_correct = user_input == correct_word
-
-        record_attempt(
-            user_id=st.session_state.user_id,
-            word_id=word_id,
-            correct=is_correct,
-            time_taken=time_taken,
-            blanks_count=0,
-            wrong_letters_count=0 if is_correct else 1,
-        )
-
-        if is_correct:
-            st.success("Correct!")
-            st.session_state.weak_page_index += 1
-            st.session_state.weak_input = ""
-            st.experimental_rerun()
-        else:
-            st.error("Try again")
 
 
 ###########################################################
