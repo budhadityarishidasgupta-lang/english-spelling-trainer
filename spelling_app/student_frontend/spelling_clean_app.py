@@ -948,30 +948,20 @@ def render_student_home(db, user_id: int) -> None:
             st.experimental_rerun()
 
 
-def render_practice_question(word_pool: list[int], mode: str = "lesson") -> None:
-    if mode:
-        st.session_state.mode = mode
+def render_practice_question(word_ids: list[int]) -> None:
     if "practice_index" not in st.session_state or st.session_state.practice_index is None:
         st.session_state.practice_index = 0
 
-    if not word_pool:
-        st.info("No weak words yet — great job!")
-        return
+    practice_word_ids = word_ids
+    if not practice_word_ids:
+        st.info("No practice words are available right now.")
+        st.stop()
 
     practice_index = st.session_state.practice_index
-    if practice_index >= len(word_pool):
-        if st.session_state.mode == "weak_words":
-            st.success("You’ve practised all your weak words. Great job!")
-            st.session_state.mode = None
-            st.session_state.page = "home"
-            st.stop()
+    if practice_index >= len(practice_word_ids):
         return
 
-    lesson_word_ids = word_pool
-    if st.session_state.mode == "weak_words":
-        word_id = st.session_state.practice_word_pool[practice_index]
-    else:
-        word_id = lesson_word_ids[practice_index]
+    word_id = practice_word_ids[practice_index]
 
     word_rows = get_words_by_ids([word_id])
     if not word_rows:
@@ -998,36 +988,18 @@ def render_weak_words_page(user_id: int) -> None:
 
     weak_rows = get_global_weak_words(user_id) or []
     if weak_rows:
-        previous_mode = st.session_state.get("mode")
-        practice_word_pool = [
-            row._mapping["word_id"] for row in weak_rows
-        ]
-        st.session_state.mode = "weak_words"
-        if (
-            previous_mode != "weak_words"
-            or st.session_state.get("practice_word_pool") != practice_word_pool
-        ):
-            st.session_state.practice_word_pool = practice_word_pool
-            st.session_state.practice_index = 0
-        else:
-            st.session_state.practice_word_pool = practice_word_pool
-        st.session_state.practice_lesson_id = None
+        weak_word_ids = [row._mapping["word_id"] for row in weak_rows]
     else:
-        st.session_state.practice_word_pool = []
+        weak_word_ids = []
+    if st.session_state.get("weak_word_ids") != weak_word_ids:
+        st.session_state.weak_word_ids = weak_word_ids
+        st.session_state.practice_index = 0
 
     if st.button("⬅️ Back to Home"):
         st.session_state.page = "home"
         st.experimental_rerun()
 
-    weak_pool = st.session_state.get("practice_word_pool") or []
-    if not weak_pool:
-        st.info("No weak words yet — great job!")
-        return
-
-    render_practice_question(
-        word_pool=st.session_state.practice_word_pool,
-        mode="weak_words",
-    )
+    render_practice_question(weak_word_ids)
 
 
 ###########################################################
