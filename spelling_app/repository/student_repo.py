@@ -347,9 +347,10 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
             sort_order,
             is_active
         FROM spelling_lessons
-        WHERE course_id = :course_id
-          AND is_active = TRUE
-          AND lesson_name !~ '^L[0-9]+-'
+    WHERE course_id = :course_id
+      AND is_active = TRUE
+      AND lesson_name !~ '^L[0-9]+-'
+      AND (lesson_code IS NULL OR lesson_code NOT ILIKE '__SYSTEM%')
         ORDER BY sort_order, lesson_id
         """
     )
