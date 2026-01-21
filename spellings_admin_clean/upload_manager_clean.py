@@ -273,11 +273,13 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         # 4) Map
         if not dry_run:
-            if link_word_to_lesson(
+            link_result = link_word_to_lesson(
                 word_id=word_id,
                 lesson_id=lesson_id,
                 course_id=course_id,
-            ):
+            )
+
+            if link_result["inserted"]:
                 mappings_added += 1
 
         # 5) Hint append
@@ -293,6 +295,10 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
         "mappings_added": mappings_added if not dry_run else 0,
         "hints_appended": hints_appended if not dry_run else 0,
         "lessons_detected": sorted(lessons_detected),
+        "note": (
+            "If mappings_added is 0, mappings already existed. "
+            "Word Pool upload is idempotent."
+        ),
     }
 
 
