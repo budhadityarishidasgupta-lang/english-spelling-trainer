@@ -70,10 +70,14 @@ def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | N
     lesson_code_raw = row.get("lesson_code")
     lesson_code = str(lesson_code_raw).strip() if lesson_code_raw else None
 
-    if lesson_code:
-        lesson = get_lesson_by_code(course_id=course_id, lesson_code=lesson_code)
-    else:
-        lesson = get_lesson_by_name(course_id=course_id, lesson_name=lesson_key)
+    # Lesson identity rule:
+    # lesson_name is the stable identifier within a course.
+    # lesson_code is informational only (not persisted in DB).
+
+    lesson = get_lesson_by_name(
+        course_id=course_id,
+        lesson_name=lesson_key,
+    )
 
     if lesson:
         return lesson, False
@@ -82,7 +86,6 @@ def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | N
     created_lesson = create_spelling_lesson(
         course_id=course_id,
         lesson_name=lesson_key,
-        lesson_code=lesson_code,
         sort_order=sort_order,
     )
 
