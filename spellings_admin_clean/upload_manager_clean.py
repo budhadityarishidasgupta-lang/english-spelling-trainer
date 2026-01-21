@@ -186,6 +186,8 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
     if not ok:
         return {"status": "error", "error": err}
 
+    lesson_cache: dict[str, int] = {}
+
     lessons_created = 0
     words_created = 0
     mappings_added = 0
@@ -202,23 +204,35 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         lessons_detected.add(lesson_name)
 
-        # 1) Resolve lesson_id via lesson_name (stable identity)
-        lesson_row = get_lesson_by_name(course_id=course_id, lesson_name=lesson_name)
-        lesson_id = _extract_lesson_id(lesson_row)
+        # ------------------------------------------------------------
+        # Resolve lesson_id using in-memory cache (authoritative)
+        # ------------------------------------------------------------
 
-        # 2) Create lesson if missing (requires lesson_code), then re-fetch
+        lesson_key = f"{course_id}::{lesson_name}"
+
+        lesson_id = lesson_cache.get(lesson_key)
+
         if not lesson_id and not dry_run:
+            # Create lesson once
             create_spelling_lesson(
                 course_id=course_id,
                 lesson_name=lesson_name,
-                lesson_code=lesson_code,  # required by schema
+                lesson_code=lesson_code,
                 sort_order=_get_next_sort_order(course_id),
             )
             lessons_created += 1
-            lesson_row = get_lesson_by_name(course_id=course_id, lesson_name=lesson_name)
+
+            # Fetch once after creation
+            lesson_row = get_lesson_by_name(
+                course_id=course_id,
+                lesson_name=lesson_name,
+            )
             lesson_id = _extract_lesson_id(lesson_row)
 
-        # If still no lesson_id (dry run or failure), skip mapping/hints safely
+            if lesson_id:
+                lesson_cache[lesson_key] = lesson_id
+
+        # Skip mapping if still unresolved (dry run safety)
         if not lesson_id:
             continue
 
