@@ -173,46 +173,47 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
 
 
 # ---------------------------
-# LINK WORD → LESSON
+# LINK WORD → LESSON  ✅ FIXED
 # ---------------------------
 
-def link_word_to_lesson(word_id: int, lesson_id: int):
+def link_word_to_lesson(word_id: int, lesson_id: int) -> bool:
     """
     Correct mapping insertion.
-    Uses columns: lesson_id, word_id, sort_order.
+    IMPORTANT:
+    - Uses spelling_lesson_words (student-facing table)
+    - Returns True ONLY if a new mapping was created
     """
+
     existing = execute(
         """
         SELECT 1
-        FROM spelling_lesson_items
+        FROM spelling_lesson_words
         WHERE word_id = :word_id
           AND lesson_id = :lesson_id
         LIMIT 1;
         """,
         {"lesson_id": lesson_id, "word_id": word_id},
     )
+
     if isinstance(existing, list) and existing:
         print(f"[LINK] word_id={word_id} → lesson_id={lesson_id} (already mapped)")
-        return
+        return False
 
     execute(
         """
-        INSERT INTO spelling_lesson_items (lesson_id, word_id, sort_order)
-        SELECT
-            :lesson_id,
-            :word_id,
-            COALESCE(MAX(sort_order) + 1, 1)
-        FROM spelling_lesson_items
-        WHERE lesson_id = :lesson_id
+        INSERT INTO spelling_lesson_words (lesson_id, word_id)
+        VALUES (:lesson_id, :word_id)
         ON CONFLICT DO NOTHING;
         """,
         {"lesson_id": lesson_id, "word_id": word_id},
     )
+
     print(f"[LINK] word_id={word_id} → lesson_id={lesson_id}")
+    return True
 
 
 # ---------------------------
-# PROCESS UPLOADED CSV
+# PROCESS UPLOADED CSV (LEGACY – UNCHANGED)
 # ---------------------------
 
 def process_uploaded_csv(uploaded_file, course_id: int):
@@ -248,11 +249,14 @@ def process_uploaded_csv(uploaded_file, course_id: int):
 
         pattern_raw = row.get("pattern")
         pattern = str(pattern_raw).strip() if pattern_raw else None
-        pattern = pattern or None
 
         pattern_code_raw = row.get("pattern_code")
         pattern_code = _safe_int(pattern_code_raw)
-        lesson_name = (str(pattern_code_raw).strip() if pattern_code_raw is not None else None) or "Uncategorized"
+        lesson_name = (
+            str(pattern_code_raw).strip()
+            if pattern_code_raw is not None
+            else "Uncategorized"
+        )
 
         level = _safe_int(row.get("difficulty") or row.get("level"))
 
@@ -291,9 +295,9 @@ def process_uploaded_csv(uploaded_file, course_id: int):
             print(f"[WARN] Word creation failed for '{word}'.")
             continue
 
-        # 3) LINK WORD → LESSON
-        link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-        mappings_added += 1
+        # 3) LINK WORD → LESSON  ✅ FIXED
+        if link_word_to_lesson(word_id=word_id, lesson_id=lesson_id):
+            mappings_added += 1
 
         if pattern:
             patterns_set.add(pattern)
@@ -310,7 +314,7 @@ def process_uploaded_csv(uploaded_file, course_id: int):
 
 
 # ---------------------------
-# LESSON QUERIES
+# LESSON QUERIES (UNCHANGED)
 # ---------------------------
 
 from spelling_app.repository.spelling_lesson_repo import (
