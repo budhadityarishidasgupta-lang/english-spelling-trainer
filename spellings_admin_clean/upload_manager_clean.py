@@ -166,20 +166,20 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
 # ============================================================
 
 def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -> dict:
-    raise RuntimeError("HIT NEW WORD POOL IMPLEMENTATION")
     """
     Single CSV ingestion:
     - required: word, lesson_code, lesson_name
     - optional: example, example_sentence, hint, pattern, pattern_code, level/difficulty
     Behaviour:
     - Lesson identity: (course_id + lesson_name)
-    - lesson_code is required metadata for creation (schema), but NOT identity
+    - lesson_code is required metadata for creation, but NOT identity
     - create word if missing
     - map word to lesson (idempotent)
     - if hint present: append/concat into overrides
     """
     assert course_id is not None, "course_id must be provided by Admin UI"
 
+    # Always work from fresh buffer
     raw_bytes = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
     df = _read_csv_with_encoding_fallback(io.BytesIO(raw_bytes))
 
@@ -187,13 +187,30 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
     if not ok:
         return {"status": "error", "error": err}
 
-    lesson_cache: dict[str, int] = {}
-
     lessons_created = 0
     words_created = 0
     mappings_added = 0
     hints_appended = 0
     lessons_detected: set[str] = set()
+
+    # Cache resolved lesson_ids by lesson_name (within this upload)
+    lesson_id_cache: dict[str, int] = {}
+
+    # DB helper: resolve lesson_id by course_id + lesson_name (authoritative)
+    from sqlalchemy import text
+    from shared.db import engine as _engine
+
+    def _resolve_lesson_id_by_name(cid: int, lname: str) -> int | None:
+        sql = text("""
+            SELECT lesson_id
+            FROM spelling_lessons
+            WHERE course_id = :cid AND lesson_name = :lname
+            ORDER BY lesson_id DESC
+            LIMIT 1
+        """)
+        with _engine.connect() as conn:
+            row = conn.execute(sql, {"cid": int(cid), "lname": lname}).fetchone()
+        return int(row[0]) if row else None
 
     for _, row in df.iterrows():
         word = _clean_str(row.get("word"))
@@ -205,46 +222,39 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         lessons_detected.add(lesson_name)
 
-        # ------------------------------------------------------------
-        # Resolve lesson_id using in-memory cache (authoritative)
-        # ------------------------------------------------------------
+        # 1) Resolve lesson_id from cache or DB
+        lesson_id = lesson_id_cache.get(lesson_name)
+        if not lesson_id:
+            lesson_id = _resolve_lesson_id_by_name(course_id, lesson_name)
 
-        lesson_key = f"{course_id}::{lesson_name}"
-
-        lesson_id = lesson_cache.get(lesson_key)
-
+        # 2) Create lesson ONCE if missing
         if not lesson_id and not dry_run:
-            # Create lesson once
             create_spelling_lesson(
                 course_id=course_id,
                 lesson_name=lesson_name,
-                lesson_code=lesson_code,
+                lesson_code=lesson_code,  # required by schema
                 sort_order=_get_next_sort_order(course_id),
             )
             lessons_created += 1
 
-            # Fetch once after creation
-            lesson_row = get_lesson_by_name(
-                course_id=course_id,
-                lesson_name=lesson_name,
-            )
-            lesson_id = _extract_lesson_id(lesson_row)
+            # Resolve again after creation
+            lesson_id = _resolve_lesson_id_by_name(course_id, lesson_name)
 
-            if lesson_id:
-                lesson_cache[lesson_key] = lesson_id
+        # Cache for the rest of the upload
+        if lesson_id:
+            lesson_id_cache[lesson_name] = lesson_id
 
-        # Skip mapping if still unresolved (dry run safety)
+        # If still no lesson_id (dry run or unexpected), skip safely
         if not lesson_id:
             continue
 
-        # Word payload
+        # 3) Word
         pattern = _clean_str(row.get("pattern")) or None
         pattern_code = _safe_int(row.get("pattern_code"))
         level = _safe_int(row.get("level")) or _safe_int(row.get("difficulty"))
         example_sentence = _clean_str(row.get("example_sentence")) or _clean_str(row.get("example")) or None
         hint = _clean_str(row.get("hint")) or None
 
-        # 3) Ensure word exists
         word_id, created = get_or_create_word(
             word=word,
             pattern=pattern,
@@ -253,7 +263,7 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
             lesson_name=lesson_name,
             course_id=course_id,
             example_sentence=example_sentence,
-            hint=None,  # never overwrite legacy hint field here
+            hint=None,  # do not overwrite legacy hint column
             return_created=True,
         )
         if not word_id:
@@ -261,17 +271,16 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
         if created:
             words_created += 1
 
-        # 4) Map word -> lesson
+        # 4) Map
         if not dry_run:
             link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
             mappings_added += 1
 
-        # 5) Append/concat hint into overrides
-        if hint:
-            if not dry_run:
-                hints_appended += upsert_manual_hint_overrides_concat(
-                    rows=[{"word_id": int(word_id), "course_id": int(course_id), "hint_text": hint}]
-                )
+        # 5) Hint append
+        if hint and not dry_run:
+            hints_appended += upsert_manual_hint_overrides_concat(
+                rows=[{"word_id": int(word_id), "course_id": int(course_id), "hint_text": hint}]
+            )
 
     return {
         "status": "success",
