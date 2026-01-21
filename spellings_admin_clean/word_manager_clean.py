@@ -176,43 +176,32 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
 # LINK WORD → LESSON  ✅ FIXED
 # ---------------------------
 
-def link_word_to_lesson(word_id: int, lesson_id: int, course_id: int) -> dict:
+def link_word_to_lesson(word_id: int, lesson_id: int) -> bool:
     """
     Canonical Word → Lesson mapping.
-
-    Returns:
-    {
-      "inserted": bool,
-      "exists": bool
-    }
+    Writes to spelling_lesson_words (lesson_id, word_id).
+    Returns True ONLY if a new row was inserted.
     """
 
     result = execute(
         """
-        INSERT INTO spelling_lesson_words (course_id, lesson_id, word_id)
-        VALUES (:course_id, :lesson_id, :word_id)
+        INSERT INTO spelling_lesson_words (lesson_id, word_id)
+        VALUES (:lesson_id, :word_id)
         ON CONFLICT DO NOTHING
         RETURNING 1;
         """,
         {
-            "course_id": course_id,
             "lesson_id": lesson_id,
             "word_id": word_id,
         },
     )
 
     if isinstance(result, list) and result:
-        print(
-            f"[LINK][NEW] course_id={course_id} "
-            f"lesson_id={lesson_id} word_id={word_id}"
-        )
-        return {"inserted": True, "exists": False}
+        print(f"[LINK][NEW] word_id={word_id} → lesson_id={lesson_id}")
+        return True
 
-    print(
-        f"[LINK][EXISTS] course_id={course_id} "
-        f"lesson_id={lesson_id} word_id={word_id}"
-    )
-    return {"inserted": False, "exists": True}
+    print(f"[LINK][SKIP] word_id={word_id} → lesson_id={lesson_id}")
+    return False
 
 
 # ---------------------------
@@ -302,7 +291,6 @@ def process_uploaded_csv(uploaded_file, course_id: int):
         if link_word_to_lesson(
             word_id=word_id,
             lesson_id=lesson_id,
-            course_id=course_id,
         ):
             mappings_added += 1
 
