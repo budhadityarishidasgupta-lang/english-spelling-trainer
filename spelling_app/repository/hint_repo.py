@@ -153,3 +153,78 @@ def resolve_hint_preview(word_id: int, course_id: Optional[int]) -> Optional[str
     with engine.connect() as conn:
         row = conn.execute(sql, {"wid": int(word_id)}).fetchone()
     return row[0] if row else None
+
+
+# ============================================================
+# NEW: Manual hint upload (append/concat) into overrides
+# ============================================================
+
+def upsert_manual_hint_overrides_concat(rows: List[Dict[str, Any]]) -> int:
+    """
+    Manual hint ingestion that PRESERVES existing hints.
+    Behaviour:
+    - Reads existing hint (override first, else legacy spelling_words.hint)
+    - Concats with new hint if existing present and new hint not already included
+    - Upserts into spelling_hint_overrides (source='manual')
+    """
+    if not rows:
+        return 0
+
+    _ensure_hint_tables()
+
+    def _norm(s: str) -> str:
+        return (s or "").strip()
+
+    count = 0
+    with engine.begin() as conn:
+        for r in rows:
+            wid = int(r["word_id"])
+            cid = int(r["course_id"]) if r.get("course_id") not in (None, "", "null", "NULL") else None
+            new_hint = _norm(r.get("hint_text") or r.get("hint") or "")
+            if not new_hint:
+                continue
+
+            # existing override?
+            ex = conn.execute(
+                text("""
+                    SELECT hint_text
+                    FROM spelling_hint_overrides
+                    WHERE word_id = :wid AND course_id = :cid
+                    LIMIT 1
+                """),
+                {"wid": wid, "cid": cid},
+            ).fetchone()
+            existing = ex[0] if ex else None
+
+            # fallback legacy hint if no override
+            if not existing:
+                legacy = conn.execute(
+                    text("SELECT hint FROM spelling_words WHERE word_id = :wid"),
+                    {"wid": wid},
+                ).fetchone()
+                existing = legacy[0] if legacy else None
+
+            existing = _norm(existing or "")
+
+            # concat safely
+            if existing and new_hint.lower() not in existing.lower():
+                merged = f"{existing} {new_hint}".strip()
+            elif existing:
+                merged = existing
+            else:
+                merged = new_hint
+
+            conn.execute(
+                text("""
+                    INSERT INTO spelling_hint_overrides (word_id, course_id, hint_text, source, updated_at)
+                    VALUES (:wid, :cid, :hint, 'manual', now())
+                    ON CONFLICT (word_id, course_id)
+                    DO UPDATE SET
+                        hint_text = EXCLUDED.hint_text,
+                        source = 'manual',
+                        updated_at = now()
+                """),
+                {"wid": wid, "cid": cid, "hint": merged},
+            )
+            count += 1
+    return count
