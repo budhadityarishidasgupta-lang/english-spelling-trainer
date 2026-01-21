@@ -331,39 +331,30 @@ def get_lesson_catalogue(course_id: int) -> List[Dict[str, Any]]:
     return _rows_to_dicts(rows)
 
 def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
-    """
-    AUTHORITATIVE lesson fetch.
-    Lessons must ALWAYS be visible regardless of word mappings.
-    """
-    from sqlalchemy import text
-
     sql = text(
         """
         SELECT
-            lesson_id,
-            lesson_name,
-            display_name,
-            course_id,
-            sort_order,
-            is_active
-        FROM spelling_lessons
-    WHERE course_id = :course_id
-      AND is_active = TRUE
-      AND lesson_name !~ '^L[0-9]+-'
-      AND (lesson_code IS NULL OR lesson_code NOT ILIKE '__SYSTEM%')
-        ORDER BY sort_order, lesson_id
+            l.lesson_id,
+            l.lesson_name,
+            l.display_name,
+            l.course_id,
+            l.sort_order,
+            l.is_active
+        FROM spelling_lessons l
+        WHERE l.course_id = :course_id
+          AND l.is_active = TRUE
+          AND l.lesson_name NOT ILIKE '__SYSTEM__%'
+          AND EXISTS (
+              SELECT 1
+              FROM spelling_lesson_words lw
+              WHERE lw.lesson_id = l.lesson_id
+          )
+        ORDER BY l.sort_order, l.lesson_id
         """
     )
 
-    with engine.connect() as conn:
-        lessons = conn.execute(sql, {"course_id": course_id}).mappings().all()
-
-    lessons_dict = [dict(lesson) for lesson in lessons]
-
-    for lesson in lessons_dict:
-        lesson["word_count"] = get_lesson_word_count(lesson["lesson_id"])
-
-    return lessons_dict
+    with engine.begin() as conn:
+        return conn.execute(sql, {"course_id": course_id}).mappings().all()
 
 
 def get_words_for_lesson(lesson_id: int, course_id: int) -> List[Dict[str, Any]]:
