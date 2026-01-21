@@ -178,17 +178,19 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
 
 def link_word_to_lesson(word_id: int, lesson_id: int) -> bool:
     """
-    Canonical Word → Lesson mapping.
-    Writes to spelling_lesson_words (lesson_id, word_id).
-    Returns True ONLY if a new row was inserted.
+    Canonical Word → Lesson mapping for SPELLINGS.
+    Uses spelling_lesson_items (lesson_id, word_id, sort_order).
+    Returns True ONLY if a new mapping was created.
     """
 
-    result = execute(
+    # Check existing mapping
+    existing = execute(
         """
-        INSERT INTO spelling_lesson_words (lesson_id, word_id)
-        VALUES (:lesson_id, :word_id)
-        ON CONFLICT DO NOTHING
-        RETURNING 1;
+        SELECT 1
+        FROM spelling_lesson_items
+        WHERE lesson_id = :lesson_id
+          AND word_id = :word_id
+        LIMIT 1;
         """,
         {
             "lesson_id": lesson_id,
@@ -196,12 +198,29 @@ def link_word_to_lesson(word_id: int, lesson_id: int) -> bool:
         },
     )
 
-    if isinstance(result, list) and result:
-        print(f"[LINK][NEW] word_id={word_id} → lesson_id={lesson_id}")
-        return True
+    if isinstance(existing, list) and existing:
+        print(f"[LINK][EXISTS] word_id={word_id} → lesson_id={lesson_id}")
+        return False
 
-    print(f"[LINK][SKIP] word_id={word_id} → lesson_id={lesson_id}")
-    return False
+    # Insert with deterministic sort_order
+    execute(
+        """
+        INSERT INTO spelling_lesson_items (lesson_id, word_id, sort_order)
+        SELECT
+            :lesson_id,
+            :word_id,
+            COALESCE(MAX(sort_order) + 1, 1)
+        FROM spelling_lesson_items
+        WHERE lesson_id = :lesson_id;
+        """,
+        {
+            "lesson_id": lesson_id,
+            "word_id": word_id,
+        },
+    )
+
+    print(f"[LINK][NEW] word_id={word_id} → lesson_id={lesson_id}")
+    return True
 
 
 # ---------------------------
