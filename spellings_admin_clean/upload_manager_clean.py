@@ -273,8 +273,12 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         # 4) Map
         if not dry_run:
-            link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-            mappings_added += 1
+            if link_word_to_lesson(
+                word_id=word_id,
+                lesson_id=lesson_id,
+                course_id=course_id,
+            ):
+                mappings_added += 1
 
         # 5) Hint append
         if hint and not dry_run:
