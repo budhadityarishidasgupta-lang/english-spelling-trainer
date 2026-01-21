@@ -166,6 +166,7 @@ def process_spelling_csv(uploaded_file, course_id: int) -> dict:
 # ============================================================
 
 def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -> dict:
+    raise RuntimeError("HIT NEW WORD POOL IMPLEMENTATION")
     """
     Single CSV ingestion:
     - required: word, lesson_code, lesson_name
