@@ -331,8 +331,10 @@ def render_course_management():
             list(course_options.keys()),
         )
         selected_course_id = course_options.get(selected_course_label)
+        st.session_state.selected_course_id = selected_course_id
     else:
         st.info("No courses yet.")
+        st.session_state.selected_course_id = None
 
     new_course_name = st.text_input("New Course Name")
 
@@ -426,6 +428,9 @@ def render_course_management():
                     else:
                         st.caption("Archived")
 
+    return selected_course_id
+
+def render_csv_ingestion(selected_course_id):
     # NEW: Streamlined admin ingestion (enhancement, not rebuild)
     # We remove the old UI cards (Words/Lessons uploads) and replace with Word Pool + Lesson Metadata.
     word_pool_tab, lesson_meta_tab, hint_ops_tab = st.tabs(
@@ -604,6 +609,22 @@ def render_course_management():
         if st.button("✅ Approve all drafts (this course / global)", use_container_width=True):
             approved = approve_drafts_to_overrides(course_id_val)
             st.success(f"Approved {approved} drafts to overrides.")
+
+
+def render_admin_management():
+    admin_tab, ingestion_tab = st.tabs(
+        ["Admin Management", "CSV Ingestion"]
+    )
+
+    selected_course_id = None
+    with admin_tab:
+        selected_course_id = render_course_management()
+        render_student_management()
+
+    with ingestion_tab:
+        if selected_course_id is None:
+            selected_course_id = st.session_state.get("selected_course_id")
+        render_csv_ingestion(selected_course_id)
 
     with st.expander("Debug DB Status"):
         words = fetch_all("SELECT COUNT(*) AS c FROM spelling_words")
@@ -1138,7 +1159,7 @@ def main():
 
     page = st.session_state.admin_page
     if page == "course_management":
-        render_course_management()
+        render_admin_management()
     elif page == "students":
         render_student_management()
     elif page == "help_texts":
