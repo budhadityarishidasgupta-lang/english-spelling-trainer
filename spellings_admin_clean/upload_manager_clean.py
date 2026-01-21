@@ -223,6 +223,7 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
                 created = create_spelling_lesson(
                     course_id=course_id,
                     lesson_name=lesson_name,
+                    lesson_code=lesson_code,  # REQUIRED by schema, NOT used for identity
                     sort_order=_get_next_sort_order(course_id),
                 )
                 lesson_id = int(created["lesson_id"])
