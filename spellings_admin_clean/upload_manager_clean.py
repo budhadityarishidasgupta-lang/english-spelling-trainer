@@ -62,37 +62,10 @@ def _safe_int(value):
         return None
 
 
-def _get_or_create_lesson(course_id: int, lesson_name: str, lesson_code: str | None = None):
-    assert course_id is not None, "course_id is required for lesson lookup"
-    lesson_key = lesson_name
-    row = {"lesson_code": lesson_code}
-
-    lesson_code_raw = row.get("lesson_code")
-    lesson_code = str(lesson_code_raw).strip() if lesson_code_raw else None
-
-    # Lesson identity rule:
-    # lesson_name is the stable identifier within a course.
-    # lesson_code is informational only (not persisted in DB).
-
-    lesson = get_lesson_by_name(
-        course_id=course_id,
-        lesson_name=lesson_key,
-    )
-
-    if lesson:
-        return lesson, False
-
-    sort_order = _get_next_sort_order(course_id)
-    created_lesson = create_spelling_lesson(
-        course_id=course_id,
-        lesson_name=lesson_key,
-        sort_order=sort_order,
-    )
-
-    if created_lesson:
-        return created_lesson, True
-
-    return {"lesson_id": None, "course_id": course_id, "lesson_name": lesson_key}, True
+def _clean_str(v) -> str:
+    s = "" if v is None else str(v)
+    s = s.strip()
+    return "" if s.lower() in ("nan", "none", "null") else s
 
 
 def _read_csv_with_encoding_fallback(uploaded_file, **read_kwargs) -> pd.DataFrame:
@@ -104,16 +77,43 @@ def _read_csv_with_encoding_fallback(uploaded_file, **read_kwargs) -> pd.DataFra
 
     return _normalize_headers(df)
 
+
 def _require_columns(df: pd.DataFrame, required: list[str]) -> tuple[bool, str | None]:
     missing = [c for c in required if c not in df.columns]
     if missing:
         return False, f"CSV missing required columns: {', '.join(missing)}"
     return True, None
 
-def _clean_str(v) -> str:
-    s = "" if v is None else str(v)
-    s = s.strip()
-    return "" if s.lower() in ("nan", "none", "null") else s
+
+def _extract_lesson_id(lesson_row) -> int | None:
+    """
+    Be defensive: repo functions may return dict-like row, SQLAlchemy Row, or tuple.
+    We only need lesson_id.
+    """
+    if lesson_row is None:
+        return None
+
+    # dict-like (most likely in this repo)
+    try:
+        if isinstance(lesson_row, dict) and "lesson_id" in lesson_row:
+            return int(lesson_row["lesson_id"])
+    except Exception:
+        pass
+
+    # SQLAlchemy Row supports mapping access
+    try:
+        return int(lesson_row["lesson_id"])
+    except Exception:
+        pass
+
+    # tuple/list fallback: assume lesson_id is first column
+    try:
+        if isinstance(lesson_row, (tuple, list)) and len(lesson_row) > 0:
+            return int(lesson_row[0])
+    except Exception:
+        pass
+
+    return None
 
 
 def validate_csv_columns(uploaded_file) -> tuple[bool, str | None]:
@@ -171,11 +171,11 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
     - required: word, lesson_code, lesson_name
     - optional: example, example_sentence, hint, pattern, pattern_code, level/difficulty
     Behaviour:
-    - create lesson if missing (by lesson_code first)
-    - do NOT overwrite existing lesson fields here
+    - Lesson identity: (course_id + lesson_name)
+    - lesson_code is required metadata for creation (schema), but NOT identity
     - create word if missing
     - map word to lesson (idempotent)
-    - if hint present: append to existing hint via overrides concat
+    - if hint present: append/concat into overrides
     """
     assert course_id is not None, "course_id must be provided by Admin UI"
 
@@ -192,7 +192,6 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
     hints_appended = 0
     lessons_detected: set[str] = set()
 
-    # Iterate rows
     for _, row in df.iterrows():
         word = _clean_str(row.get("word"))
         lesson_code = _clean_str(row.get("lesson_code"))
@@ -203,26 +202,12 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         lessons_detected.add(lesson_name)
 
-        # ------------------------------------------------------------
-        # Resolve lesson_id deterministically using lesson_name
-        # lesson_name is the stable identity within a course
-        # ------------------------------------------------------------
+        # 1) Resolve lesson_id via lesson_name (stable identity)
+        lesson_row = get_lesson_by_name(course_id=course_id, lesson_name=lesson_name)
+        lesson_id = _extract_lesson_id(lesson_row)
 
-        # ------------------------------------------------------------
-        # Resolve lesson_id deterministically using lesson_name
-        # create_spelling_lesson() does NOT return a row
-        # ------------------------------------------------------------
-
-        lesson_row = get_lesson_by_name(
-            course_id=course_id,
-            lesson_name=lesson_name,
-        )
-        if lesson_row:
-            lesson_id = int(lesson_row["lesson_id"])
-        else:
-            if dry_run:
-                lesson_id = None
-        else:
+        # 2) Create lesson if missing (requires lesson_code), then re-fetch
+        if not lesson_id and not dry_run:
             create_spelling_lesson(
                 course_id=course_id,
                 lesson_name=lesson_name,
@@ -230,25 +215,21 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
                 sort_order=_get_next_sort_order(course_id),
             )
             lessons_created += 1
+            lesson_row = get_lesson_by_name(course_id=course_id, lesson_name=lesson_name)
+            lesson_id = _extract_lesson_id(lesson_row)
 
-            # Re-fetch after creation (authoritative)
-            created_row = get_lesson_by_name(
-                course_id=course_id,
-                lesson_name=lesson_name,
-            )
-            lesson_id = int(created_row["lesson_id"]) if created_row else None
-
-        # If we still don't have a lesson_id (dry run), skip mapping
+        # If still no lesson_id (dry run or failure), skip mapping/hints safely
         if not lesson_id:
             continue
-        
-        # Word
+
+        # Word payload
         pattern = _clean_str(row.get("pattern")) or None
         pattern_code = _safe_int(row.get("pattern_code"))
         level = _safe_int(row.get("level")) or _safe_int(row.get("difficulty"))
         example_sentence = _clean_str(row.get("example_sentence")) or _clean_str(row.get("example")) or None
         hint = _clean_str(row.get("hint")) or None
 
+        # 3) Ensure word exists
         word_id, created = get_or_create_word(
             word=word,
             pattern=pattern,
@@ -257,7 +238,7 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
             lesson_name=lesson_name,
             course_id=course_id,
             example_sentence=example_sentence,
-            hint=None,  # IMPORTANT: do not overwrite legacy hint column here
+            hint=None,  # never overwrite legacy hint field here
             return_created=True,
         )
         if not word_id:
@@ -265,19 +246,17 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
         if created:
             words_created += 1
 
-        # Map word -> lesson
+        # 4) Map word -> lesson
         if not dry_run:
             link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
             mappings_added += 1
 
-        # Hint: append/concat into overrides table (preserves existing)
+        # 5) Append/concat hint into overrides
         if hint:
             if not dry_run:
                 hints_appended += upsert_manual_hint_overrides_concat(
                     rows=[{"word_id": int(word_id), "course_id": int(course_id), "hint_text": hint}]
                 )
-            else:
-                hints_appended += 1
 
     return {
         "status": "success",
@@ -334,26 +313,24 @@ def process_lesson_metadata_csv(uploaded_file, course_id: int, overwrite: bool =
         if not existing:
             if not dry_run:
                 so = sort_order if sort_order is not None else _get_next_sort_order(course_id)
-                created = create_spelling_lesson(
+                create_spelling_lesson(
                     course_id=course_id,
                     lesson_name=lesson_name,
                     lesson_code=lesson_code,
                     sort_order=so,
                 )
-                if created:
-                    # display_name may exist; set if possible
-                    execute(
-                        """
-                        UPDATE spelling_lessons
-                        SET display_name = :display_name
-                        WHERE course_id = :course_id AND LOWER(lesson_code) = LOWER(:lesson_code)
-                        """,
-                        {"display_name": display_name, "course_id": course_id, "lesson_code": lesson_code},
-                    )
+                # display_name may exist; set if possible
+                execute(
+                    """
+                    UPDATE spelling_lessons
+                    SET display_name = :display_name
+                    WHERE course_id = :course_id AND LOWER(lesson_code) = LOWER(:lesson_code)
+                    """,
+                    {"display_name": display_name, "course_id": course_id, "lesson_code": lesson_code},
+                )
             lessons_created += 1
             continue
 
-        # Existing lesson
         if not overwrite:
             skipped += 1
             continue
@@ -362,8 +339,6 @@ def process_lesson_metadata_csv(uploaded_file, course_id: int, overwrite: bool =
             lessons_updated += 1
             continue
 
-        # Overwrite allowed fields only if columns exist in DB; we use safe UPDATEs
-        # display_name + sort_order + is_active are used elsewhere in app.
         execute(
             """
             UPDATE spelling_lessons
