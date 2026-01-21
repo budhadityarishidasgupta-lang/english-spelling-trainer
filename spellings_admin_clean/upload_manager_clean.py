@@ -208,31 +208,40 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
         # lesson_name is the stable identity within a course
         # ------------------------------------------------------------
 
+        # ------------------------------------------------------------
+        # Resolve lesson_id deterministically using lesson_name
+        # create_spelling_lesson() does NOT return a row
+        # ------------------------------------------------------------
+
         lesson_row = get_lesson_by_name(
             course_id=course_id,
             lesson_name=lesson_name,
         )
-
         if lesson_row:
-            # get_lesson_by_name returns a row/dict with lesson_id
             lesson_id = int(lesson_row["lesson_id"])
         else:
             if dry_run:
                 lesson_id = None
-            else:
-                created = create_spelling_lesson(
-                    course_id=course_id,
-                    lesson_name=lesson_name,
-                    lesson_code=lesson_code,  # REQUIRED by schema, NOT used for identity
-                    sort_order=_get_next_sort_order(course_id),
-                )
-                lesson_id = int(created["lesson_id"])
-                lessons_created += 1
+        else:
+            create_spelling_lesson(
+                course_id=course_id,
+                lesson_name=lesson_name,
+                lesson_code=lesson_code,  # required by schema
+                sort_order=_get_next_sort_order(course_id),
+            )
+            lessons_created += 1
+
+            # Re-fetch after creation (authoritative)
+            created_row = get_lesson_by_name(
+                course_id=course_id,
+                lesson_name=lesson_name,
+            )
+            lesson_id = int(created_row["lesson_id"]) if created_row else None
 
         # If we still don't have a lesson_id (dry run), skip mapping
         if not lesson_id:
             continue
-
+        
         # Word
         pattern = _clean_str(row.get("pattern")) or None
         pattern_code = _safe_int(row.get("pattern_code"))
