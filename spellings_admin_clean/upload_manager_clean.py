@@ -203,23 +203,33 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
 
         lessons_detected.add(lesson_name)
 
-        # Lesson (code-first)
-        lesson = get_lesson_by_code(course_id=course_id, lesson_code=lesson_code)
-        if not lesson:
-            # create lesson only if missing
-            if not dry_run:
-                sort_order = _get_next_sort_order(course_id)
-                lesson = create_spelling_lesson(
+        # ------------------------------------------------------------
+        # Resolve lesson_id deterministically using lesson_name
+        # lesson_name is the stable identity within a course
+        # ------------------------------------------------------------
+
+        lesson_row = get_lesson_by_name(
+            course_id=course_id,
+            lesson_name=lesson_name,
+        )
+
+        if lesson_row:
+            # get_lesson_by_name returns a row/dict with lesson_id
+            lesson_id = int(lesson_row["lesson_id"])
+        else:
+            if dry_run:
+                lesson_id = None
+            else:
+                created = create_spelling_lesson(
                     course_id=course_id,
                     lesson_name=lesson_name,
-                    lesson_code=lesson_code,
-                    sort_order=sort_order,
+                    sort_order=_get_next_sort_order(course_id),
                 )
-            lessons_created += 1 if lesson is None else 0
+                lesson_id = int(created["lesson_id"])
+                lessons_created += 1
 
-        lesson_id = (lesson or {}).get("lesson_id")
+        # If we still don't have a lesson_id (dry run), skip mapping
         if not lesson_id:
-            # If dry run, we can't map without IDs; skip mapping/hints but keep summary.
             continue
 
         # Word
@@ -248,7 +258,7 @@ def process_word_pool_csv(uploaded_file, course_id: int, dry_run: bool = True) -
         # Map word -> lesson
         if not dry_run:
             link_word_to_lesson(word_id=word_id, lesson_id=lesson_id)
-        mappings_added += 1
+            mappings_added += 1
 
         # Hint: append/concat into overrides table (preserves existing)
         if hint:
