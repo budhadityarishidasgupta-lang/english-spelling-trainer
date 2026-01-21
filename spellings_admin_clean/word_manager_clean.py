@@ -176,41 +176,23 @@ def get_or_create_lesson(course_id: int, lesson_name: str):
 # LINK WORD → LESSON  ✅ FIXED
 # ---------------------------
 
-def link_word_to_lesson(word_id: int, lesson_id: int, course_id: int) -> bool:
+def link_word_to_lesson(word_id: int, lesson_id: int, course_id: int) -> dict:
     """
     Canonical Word → Lesson mapping.
-    Writes to spelling_lesson_words (student-facing table).
-    Returns True ONLY if a new mapping was created.
+
+    Returns:
+    {
+      "inserted": bool,
+      "exists": bool
+    }
     """
 
-    existing = execute(
-        """
-        SELECT 1
-        FROM spelling_lesson_words
-        WHERE course_id = :course_id
-          AND lesson_id = :lesson_id
-          AND word_id = :word_id
-        LIMIT 1;
-        """,
-        {
-            "course_id": course_id,
-            "lesson_id": lesson_id,
-            "word_id": word_id,
-        },
-    )
-
-    if isinstance(existing, list) and existing:
-        print(
-            f"[LINK] course_id={course_id} "
-            f"word_id={word_id} → lesson_id={lesson_id} (already mapped)"
-        )
-        return False
-
-    execute(
+    result = execute(
         """
         INSERT INTO spelling_lesson_words (course_id, lesson_id, word_id)
         VALUES (:course_id, :lesson_id, :word_id)
-        ON CONFLICT DO NOTHING;
+        ON CONFLICT DO NOTHING
+        RETURNING 1;
         """,
         {
             "course_id": course_id,
@@ -219,11 +201,18 @@ def link_word_to_lesson(word_id: int, lesson_id: int, course_id: int) -> bool:
         },
     )
 
+    if isinstance(result, list) and result:
+        print(
+            f"[LINK][NEW] course_id={course_id} "
+            f"lesson_id={lesson_id} word_id={word_id}"
+        )
+        return {"inserted": True, "exists": False}
+
     print(
-        f"[LINK] course_id={course_id} "
-        f"word_id={word_id} → lesson_id={lesson_id}"
+        f"[LINK][EXISTS] course_id={course_id} "
+        f"lesson_id={lesson_id} word_id={word_id}"
     )
-    return True
+    return {"inserted": False, "exists": True}
 
 
 # ---------------------------
