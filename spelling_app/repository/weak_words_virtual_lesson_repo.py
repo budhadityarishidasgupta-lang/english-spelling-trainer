@@ -107,16 +107,13 @@ def ensure_system_weak_words_lesson(course_id: int) -> Optional[int]:
 
 
 def get_recent_wrong_word_ids(user_id: int, limit: int = 50) -> List[int]:
-    """Distinct word_ids the user recently got wrong (global, across lessons)."""
     rows = fetch_all(
         text(
             """
-            SELECT a.word_id
+            SELECT DISTINCT a.word_id
             FROM spelling_attempts a
             WHERE a.user_id = :uid
               AND a.correct = FALSE
-            GROUP BY a.word_id
-            ORDER BY MAX(a.attempt_id) DESC
             LIMIT :limit
             """
         ),
