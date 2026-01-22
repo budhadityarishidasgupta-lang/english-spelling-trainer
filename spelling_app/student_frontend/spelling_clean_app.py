@@ -2520,10 +2520,14 @@ def main():
     lessons = []
     for row in raw_lessons:
         lesson = dict(row_to_dict(row))
+        lesson_id = lesson.get("lesson_id")
+        if not lesson_id:
+            # Skip malformed / legacy lesson rows safely
+            continue
         mastery = get_lesson_mastery(
             user_id=st.session_state.user_id,
             course_id=active_course_id,
-            lesson_id=lesson["lesson_id"],
+            lesson_id=lesson_id,
         )
         lesson["progress_pct"] = mastery or 0
         lessons.append(lesson)
