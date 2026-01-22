@@ -21,6 +21,7 @@ import streamlit as st
 from datetime import datetime, date, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+from collections.abc import Mapping
 
 from html import escape
 import html
@@ -239,11 +240,29 @@ SESSION_KEYS.extend([
 
 
 def row_to_dict(row):
-    """Convert SQLAlchemy Row / RowMapping → mutable dict."""
+    """Convert SQLAlchemy Row / RowMapping / Tuple / Dict → plain dict safely."""
+    if row is None:
+        return {}
+
+    # SQLAlchemy Row has _mapping
     if hasattr(row, "_mapping"):
         return dict(row._mapping)
-    if isinstance(row, dict):
+
+    # SQLAlchemy RowMapping (and any mapping-like object)
+    if isinstance(row, Mapping):
         return dict(row)
+
+    # Already a dict
+    if isinstance(row, dict):
+        return row
+
+    # Tuple fallback (only works if it's (k,v) pairs)
+    if isinstance(row, tuple):
+        try:
+            return dict(row)
+        except Exception:
+            return {}
+
     return {}
 
 
@@ -1952,18 +1971,20 @@ def render_practice_mode(lesson_id: int, course_id: int):
     lesson_name = st.session_state.get("active_lesson_name")
 
     raw_lessons = get_lessons_for_course(course_id) if course_id else []
+    lessons = [row_to_dict(r) for r in raw_lessons if row_to_dict(r)]
 
-    lessons = []
-    for row in raw_lessons:
-        lesson_data = dict(row_to_dict(row))
+    for lesson_data in lessons:
+        lid = lesson_data.get("lesson_id")
+        if not lid:
+            continue
         mastery = get_lesson_mastery(
             user_id=user_id,
             course_id=course_id,
-            lesson_id=lesson_data["lesson_id"],
+            lesson_id=lid,
         )
-        lesson_data["progress_pct"] = mastery or 0
-        lessons.append(lesson_data)
-    lesson_lookup = {lesson["lesson_id"]: lesson for lesson in lessons}
+        lesson_data["progress_pct"] = mastery
+
+    lesson_lookup = {l.get("lesson_id"): l for l in lessons if l.get("lesson_id")}
     lesson = lesson_lookup.get(lesson_id, {})
 
     if not lesson_name:
@@ -2468,11 +2489,13 @@ def main():
             st.rerun()
 
     if st.session_state.get("lesson_started"):
-        lessons = get_lessons_for_course(st.session_state.active_course_id)
+        raw_lessons = get_lessons_for_course(st.session_state.active_course_id)
+        lessons = [row_to_dict(r) for r in raw_lessons if row_to_dict(r)]
 
         lesson_map = {
             l["lesson_id"]: (l.get("display_name") or l.get("lesson_name"))
             for l in lessons
+            if l.get("lesson_id") is not None
         }
 
         selected_lesson_id = st.sidebar.selectbox(
