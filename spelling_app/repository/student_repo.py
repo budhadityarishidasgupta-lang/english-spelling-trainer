@@ -330,24 +330,30 @@ def get_lesson_catalogue(course_id: int) -> List[Dict[str, Any]]:
     )
     return _rows_to_dicts(rows)
 
-def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
-    sql = text(
-        """
+def get_lessons_for_course(course_id: int):
+    """
+    Return ALL lessons for a course that have at least one word.
+    This is the ONLY place lesson filtering is allowed.
+    """
+    sql = """
         SELECT
-            lesson_id,
-            course_id,
-            lesson_name,
-            display_name,
-            sort_order
-        FROM spelling_lessons
-        WHERE course_id = :course_id
-          AND is_active = TRUE
-        ORDER BY sort_order, lesson_id
-        """
-    )
-
-    with engine.begin() as conn:
-        return conn.execute(sql, {"course_id": course_id}).mappings().all()
+            l.lesson_id,
+            l.lesson_name,
+            l.display_name,
+            l.course_id,
+            COUNT(sli.word_id) AS word_count
+        FROM spelling_lessons l
+        JOIN spelling_lesson_items sli
+          ON sli.lesson_id = l.lesson_id
+        WHERE l.course_id = :course_id
+        GROUP BY
+            l.lesson_id,
+            l.lesson_name,
+            l.display_name,
+            l.course_id
+        ORDER BY l.lesson_id
+    """
+    return fetch_all(sql, {"course_id": course_id})
 
 
 def get_words_for_lesson(lesson_id: int, course_id: int) -> List[Dict[str, Any]]:
