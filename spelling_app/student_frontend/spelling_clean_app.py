@@ -22,10 +22,8 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from dotenv import load_dotenv
 from html import escape
 import html
-load_dotenv()
 
 # ---- CORRECT IMPORTS (FINAL) ----
 from shared.db import engine, execute, fetch_all, safe_rows
@@ -241,17 +239,11 @@ SESSION_KEYS.extend([
 
 
 def row_to_dict(row):
-    """Convert SQLAlchemy Row / Tuple / Dict → Dict safely."""
+    """Convert SQLAlchemy Row / RowMapping → mutable dict."""
     if hasattr(row, "_mapping"):
         return dict(row._mapping)
     if isinstance(row, dict):
-        return row
-    if isinstance(row, tuple):
-        # Generic fallback: treat as positional; caller must know order
-        try:
-            return dict(row)
-        except Exception:
-            return {}
+        return dict(row)
     return {}
 
 
@@ -426,20 +418,6 @@ def render_letter_highlight_html(correct_word: str, user_answer: str) -> str:
         spans.append(f"<span class='letter-span {cls}'>{html.escape(ch)}</span>")
 
     return "".join(spans)
-    st.session_state["q_index"] = 0
-    st.session_state.current_word = None
-    st.session_state.current_wid = None
-    st.session_state.current_word_pick = None
-    st.session_state.masked_word = None
-    st.session_state.submitted = False
-    st.session_state.checked = False
-    st.session_state.feedback = None
-    st.session_state.streak = 0
-    st.session_state.word_state = "editing"
-    st.session_state.correct = False
-    st.session_state.hint_level = 0
-    st.session_state.result_processed = False
-    st.session_state.start_time = time.time()
 
 
 def render_hint_block(hint: str):
@@ -915,6 +893,10 @@ def ensure_default_mode():
         st.session_state.practice_mode = "lesson"
 
 
+def normalized_practice_mode():
+    return (st.session_state.get("practice_mode") or "practice").lower()
+
+
 def render_mode_selector_sidebar():
     """
     Renders a simple mode selector in the sidebar.
@@ -1227,7 +1209,7 @@ def render_practice_page():
         st.caption(" • ".join(info_bits))
 
 
-    if practice_mode != "Daily-5":
+    if normalized_practice_mode() != "daily-5":
         if practice_mode == "Weak Words":
             # Weak Words counter should reflect only weak words in this lesson
             lesson_id = st.session_state.get("active_lesson_id")
@@ -1969,14 +1951,18 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     lesson_name = st.session_state.get("active_lesson_name")
 
-    lessons = get_lessons_for_course(course_id) if course_id else []
-    for lesson_data in lessons:
+    raw_lessons = get_lessons_for_course(course_id) if course_id else []
+
+    lessons = []
+    for row in raw_lessons:
+        lesson_data = row_to_dict(row)
         mastery = get_lesson_mastery(
             user_id=user_id,
             course_id=course_id,
             lesson_id=lesson_data.get("lesson_id"),
         )
         lesson_data["progress_pct"] = mastery
+        lessons.append(lesson_data)
     lesson_lookup = {lesson["lesson_id"]: lesson for lesson in lessons}
     lesson = lesson_lookup.get(lesson_id, {})
 
@@ -2092,7 +2078,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     difficulty_map = build_difficulty_map(words, stats_map)
     weak_word_ids = get_weak_word_ids(stats_map)
 
-    if practice_mode == "Daily-5":
+    if normalized_practice_mode() == "daily-5":
         daily_ids = get_daily_five_words(user_id)
         words = get_words_by_ids(daily_ids)
         st.session_state.practice_words = words
@@ -2114,7 +2100,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         return
 
     is_weak_mode = st.session_state.active_mode == "weak_words"
-    if st.session_state.practice_mode == "daily5":
+    if normalized_practice_mode() == "daily-5":
         practice_words = st.session_state.get("daily5_words", [])
         total_words = len(practice_words)
         daily5_index = st.session_state.get("daily5_index", 0)
@@ -2134,7 +2120,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     else:
         bar_color = "#22c55e"
 
-    if st.session_state.practice_mode == "daily5":
+    if normalized_practice_mode() == "daily-5":
         daily5_words = st.session_state.get("daily5_words", [])
 
         if st.session_state.daily5_index >= len(daily5_words):
@@ -2190,8 +2176,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
     wid = st.session_state.current_wid
     mode = st.session_state.get("mode")
     if mode != "weak_words":
-        lesson_word_ids = {word["word_id"] for word in words}
+        lesson_word_ids = {w.get("word_id") for w in words if w.get("word_id")}
         if lesson_id and wid not in lesson_word_ids:
+            st.warning("Word not mapped to this lesson. Skipping.")
             return
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
@@ -2205,7 +2192,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         total_weak_words = len(practice_words)
         st.caption(f"{idx + 1} / {total_weak_words}")
     else:
-        if st.session_state.practice_mode == "daily5":
+        if normalized_practice_mode() == "daily-5":
             st.caption(f"Daily 5 — {st.session_state.get('daily5_index', 0) + 1} / 5")
         st.markdown(
             f"""
@@ -2242,7 +2229,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.weak_index += 1
         else:
             st.session_state.practice_index += 1
-        if st.session_state.practice_mode == "daily5":
+        if normalized_practice_mode() == "daily-5":
             st.session_state.daily5_index += 1
 
     render_spelling_question(
