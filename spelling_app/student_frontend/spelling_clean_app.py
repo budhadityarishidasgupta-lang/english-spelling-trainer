@@ -1955,13 +1955,13 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     lessons = []
     for row in raw_lessons:
-        lesson_data = row_to_dict(row)
+        lesson_data = dict(row_to_dict(row))
         mastery = get_lesson_mastery(
             user_id=user_id,
             course_id=course_id,
-            lesson_id=lesson_data.get("lesson_id"),
+            lesson_id=lesson_data["lesson_id"],
         )
-        lesson_data["progress_pct"] = mastery
+        lesson_data["progress_pct"] = mastery or 0
         lessons.append(lesson_data)
     lesson_lookup = {lesson["lesson_id"]: lesson for lesson in lessons}
     lesson = lesson_lookup.get(lesson_id, {})
@@ -2515,14 +2515,18 @@ def main():
 
     st.session_state.selected_course_title = course_map[active_course_id]
 
-    lessons = get_lessons_for_course(active_course_id)
-    for lesson_data in lessons:
+    raw_lessons = get_lessons_for_course(active_course_id)
+
+    lessons = []
+    for row in raw_lessons:
+        lesson = dict(row_to_dict(row))
         mastery = get_lesson_mastery(
             user_id=st.session_state.user_id,
             course_id=active_course_id,
-            lesson_id=lesson_data.get("lesson_id"),
+            lesson_id=lesson["lesson_id"],
         )
-        lesson_data["progress_pct"] = mastery
+        lesson["progress_pct"] = mastery or 0
+        lessons.append(lesson)
 
     # Guard: selected lesson must belong to this course
     if st.session_state.get("selected_lesson_id"):
