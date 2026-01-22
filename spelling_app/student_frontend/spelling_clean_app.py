@@ -2519,30 +2519,17 @@ def main():
 
     lessons = []
     for row in raw_lessons:
-        lesson = dict(row_to_dict(row))
-        lesson_id = lesson.get("lesson_id")
-        if not lesson_id:
-            # Skip malformed / legacy lesson rows safely
-            continue
+        lesson_data = row_to_dict(row)
         mastery = get_lesson_mastery(
             user_id=st.session_state.user_id,
             course_id=active_course_id,
-            lesson_id=lesson_id,
+            lesson_id=lesson_data["lesson_id"],
         )
-        lesson["progress_pct"] = mastery or 0
-        lessons.append(lesson)
-
-    # Guard: selected lesson must belong to this course
-    if st.session_state.get("selected_lesson_id"):
-        valid_lesson_ids = {l["lesson_id"] for l in lessons}
-        if st.session_state.selected_lesson_id not in valid_lesson_ids:
-            st.session_state.selected_lesson_id = None
+        lesson_data["progress_pct"] = mastery
+        lessons.append(lesson_data)
 
     if not lessons:
         st.info("No lessons available in this course yet.")
-        if st.button("Back to courses"):
-            st.session_state.active_course_id = None
-            st.experimental_rerun()
         return
 
     st.markdown("### Lesson catalogue")
