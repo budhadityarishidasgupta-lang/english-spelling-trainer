@@ -11,7 +11,7 @@ Safety
 ------
 - No schema changes.
 - Uses existing tables: spelling_lessons, spelling_lesson_items, spelling_attempts.
-- Hidden from admin/student lesson lists via lesson_code prefix "__SYSTEM" (filtered elsewhere).
+- Hidden from admin/student lesson lists via lesson_name prefix "__SYSTEM" (filtered elsewhere).
 """
 
 from __future__ import annotations
@@ -23,12 +23,12 @@ from sqlalchemy import text
 from shared.db import execute, fetch_all
 
 from spelling_app.repository.spelling_lesson_repo import (
-    create_spelling_lesson,
-    get_lesson_by_code,
+    create_lesson,
 )
 
-SYSTEM_LESSON_CODE = "__SYSTEM_WEAK_WORDS__"
-SYSTEM_LESSON_NAME = "Weak Words"
+# We use lesson_name as the system identifier (DB has NO lesson_code column).
+SYSTEM_LESSON_NAME = "__SYSTEM_WEAK_WORDS__"
+SYSTEM_LESSON_DISPLAY = "Weak Words"
 
 
 def _rows_to_word_ids(rows) -> List[int]:
@@ -90,20 +90,49 @@ def pick_course_for_system_lesson(user_id: int) -> Optional[int]:
 
 
 def ensure_system_weak_words_lesson(course_id: int) -> Optional[int]:
-    """Return the system weak-words lesson_id, creating it if needed."""
-    existing = get_lesson_by_code(course_id=course_id, lesson_code=SYSTEM_LESSON_CODE)
-    if existing and existing.get("lesson_id"):
-        return int(existing["lesson_id"])
+    """
+    Return the system weak-words lesson_id, creating it if needed.
+    This lesson is hidden in the UI by lesson_name prefix filtering elsewhere.
+    """
+    # Find by lesson_name (system identifier)
+    row = fetch_all(
+        """
+        SELECT lesson_id
+        FROM spelling_lessons
+        WHERE course_id = :cid
+          AND lesson_name = :lname
+        LIMIT 1
+        """,
+        {"cid": course_id, "lname": SYSTEM_LESSON_NAME},
+    )
+    if row:
+        m = getattr(row[0], "_mapping", row[0])
+        # row could be Row/RowMapping/dict-like
+        existing_lid = m.get("lesson_id") if hasattr(m, "get") else m[0]
+        if existing_lid:
+            return int(existing_lid)
 
-    created = create_spelling_lesson(
+    # Create using create_lesson() (does NOT require lesson_code)
+    lesson_id = create_lesson(
         course_id=course_id,
         lesson_name=SYSTEM_LESSON_NAME,
-        lesson_code=SYSTEM_LESSON_CODE,
-        sort_order=9999,
+        display_name=SYSTEM_LESSON_DISPLAY,
     )
-    if not created or not created.get("lesson_id"):
-        return None
-    return int(created["lesson_id"])
+
+    # Best-effort: push it to bottom of ordering if sort_order exists
+    try:
+        execute(
+            """
+            UPDATE spelling_lessons
+            SET sort_order = 9999, is_active = TRUE
+            WHERE lesson_id = :lid
+            """,
+            {"lid": lesson_id},
+        )
+    except Exception:
+        pass
+
+    return int(lesson_id)
 
 
 def get_recent_wrong_word_ids(user_id: int, limit: int = 50) -> List[int]:
