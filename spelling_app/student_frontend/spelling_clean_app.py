@@ -82,25 +82,28 @@ def user_has_any_mistakes(user_id: int) -> bool:
 
 
 def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
+    """
+    Returns word_ids where the student has made mistakes.
+    This is GLOBAL (across lessons & courses) by design.
+    """
     with get_engine_safe().connect() as db:
         rows = db.execute(
             text(
                 """
-                SELECT DISTINCT word_id
+                SELECT
+                    word_id
                 FROM spelling_attempts
                 WHERE user_id = :uid
-                  AND correct = FALSE
+                  AND correct IS DISTINCT FROM TRUE
+                GROUP BY word_id
+                ORDER BY COUNT(*) DESC
                 LIMIT :limit
                 """
             ),
             {"uid": user_id, "limit": limit},
         ).fetchall()
 
-    return [
-        r._mapping["word_id"]
-        for r in rows
-        if r._mapping.get("word_id") is not None
-    ]
+    return [r._mapping["word_id"] for r in rows]
 
 
 def _load_weak_word_pool(user_id: int) -> list[dict]:
@@ -108,8 +111,7 @@ def _load_weak_word_pool(user_id: int) -> list[dict]:
     if not word_ids:
         return []
 
-    # Fetch directly from spelling_words
-    words = get_words_by_ids(word_ids)  # existing helper
+    words = get_words_by_ids(word_ids)
     by_id = {w["word_id"]: w for w in words}
 
     pool = []
@@ -127,6 +129,7 @@ def _load_weak_word_pool(user_id: int) -> list[dict]:
         )
 
     return pool
+
 
 def _fetch_spelling_words(lesson_id: int):
     return safe_rows(
