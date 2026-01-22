@@ -1863,8 +1863,22 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
         with col_right:
             st.markdown("#### 🪨 Weak Words Summary")
             st.metric("Weak Words", len(weak_word_ids))
-            if st.button("Practice Weak Words"):
-                st.session_state.page = "weak_words"
+            if st.button("Weak Words"):
+                # Ensure system weak-words lesson is prepared
+                result = prepare_system_weak_words_lesson_for_user(
+                    user_id=st.session_state.user_id,
+                    limit=50,
+                )
+
+                if not result or result.get("word_count", 0) == 0:
+                    st.info("No weak words yet — great job!")
+                    st.stop()
+
+                # Route into normal lesson engine
+                st.session_state.course_id = result["course_id"]
+                st.session_state.lesson_id = result["lesson_id"]
+                st.session_state.page = "practice"
+
                 st.experimental_rerun()
             st.caption("Weak words are those below 60% accuracy or missed twice recently.")
 
@@ -2422,6 +2436,12 @@ def main():
         st.experimental_rerun()
 
     user_id = st.session_state.get("user_id")
+
+    # Pre-warm weak words system lesson (safe, idempotent)
+    prepare_system_weak_words_lesson_for_user(
+        user_id=st.session_state.user_id,
+        limit=50,
+    )
 
     if st.session_state.page == "home":
         with get_engine_safe().connect() as db:
