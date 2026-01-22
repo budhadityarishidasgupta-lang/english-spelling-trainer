@@ -346,6 +346,7 @@ def get_lessons_for_course(course_id: int):
         JOIN spelling_lesson_items sli
           ON sli.lesson_id = l.lesson_id
         WHERE l.course_id = :course_id
+          AND l.is_active = TRUE
         GROUP BY
             l.lesson_id,
             l.lesson_name,
