@@ -334,22 +334,15 @@ def get_lessons_for_course(course_id: int) -> List[Dict[str, Any]]:
     sql = text(
         """
         SELECT
-            l.lesson_id,
-            l.lesson_name,
-            l.display_name,
-            l.course_id,
-            l.sort_order,
-            l.is_active
-        FROM spelling_lessons l
-        WHERE l.course_id = :course_id
-          AND l.is_active = TRUE
-          AND l.lesson_name NOT ILIKE '__SYSTEM__%'
-          AND EXISTS (
-              SELECT 1
-              FROM spelling_lesson_words lw
-              WHERE lw.lesson_id = l.lesson_id
-          )
-        ORDER BY l.sort_order, l.lesson_id
+            lesson_id,
+            course_id,
+            lesson_name,
+            display_name,
+            sort_order
+        FROM spelling_lessons
+        WHERE course_id = :course_id
+          AND is_active = TRUE
+        ORDER BY sort_order, lesson_id
         """
     )
 
