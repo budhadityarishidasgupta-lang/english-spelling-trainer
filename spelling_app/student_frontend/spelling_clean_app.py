@@ -1042,11 +1042,25 @@ def render_weak_words_page(user_id: int) -> None:
         st.info("No weak words yet — great job!")
         return
 
-    words = get_words_by_ids(word_ids)
+    # Weak words must NOT be course-filtered
+    words = get_words_by_ids(
+        [int(wid) for wid in word_ids if wid is not None]
+    )
 
-    if not words:
+    # SAFETY: RowMapping / tuple → dict
+    clean_words = []
+    for w in words:
+        if hasattr(w, "_mapping"):
+            clean_words.append(dict(w._mapping))
+        elif isinstance(w, dict):
+            clean_words.append(w)
+
+    if not clean_words:
         st.warning("Weak words exist but could not be loaded.")
         return
+
+    st.session_state.weak_word_pool = clean_words
+    st.session_state.weak_word_index = 0
 
     idx = st.session_state.get("weak_index", 0)
 
