@@ -981,20 +981,11 @@ def render_student_home(db, user_id: int) -> None:
                 limit=50,
             )
             # --- WEAK WORDS FIX (DO NOT TOUCH OTHER FLOWS) ---
-            word_ids = prepared.get("word_ids", [])
-
-            if not word_ids:
+            if not prepared or not prepared.get("words"):
                 st.info("No weak words yet — great job!")
                 return
 
-            # Reuse existing helper (already used elsewhere)
-            words = get_words_by_ids(word_ids)
-
-            if not words:
-                st.warning("Weak words exist but could not be loaded.")
-                return
-
-            st.session_state.weak_word_pool = words
+            st.session_state.weak_word_pool = prepared["words"]
             st.session_state.weak_word_index = 0
             # ------------------------------------------------
 
@@ -1873,14 +1864,22 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
                     limit=50,
                 )
 
-                if not result or result.get("word_count", 0) == 0:
+                if not result or not result.get("words"):
                     st.info("No weak words yet — great job!")
                     st.stop()
 
-                # Route into normal lesson engine
-                st.session_state.course_id = result["course_id"]
-                st.session_state.lesson_id = result["lesson_id"]
-                st.session_state.page = "practice"
+                weak_word_ids = [
+                    word.get("word_id")
+                    for word in result["words"]
+                    if isinstance(word, dict) and word.get("word_id") is not None
+                ]
+                if not weak_word_ids:
+                    st.info("No weak words yet — great job!")
+                    st.stop()
+
+                # Route into weak words page
+                st.session_state.weak_word_ids = weak_word_ids
+                st.session_state.page = "weak_words"
 
                 st.experimental_rerun()
             st.caption("Weak words are those below 60% accuracy or missed twice recently.")

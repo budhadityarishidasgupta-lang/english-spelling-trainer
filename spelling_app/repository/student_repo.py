@@ -24,6 +24,30 @@ def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
     return dict_rows
 
 
+def get_words_by_texts(words: list[str]):
+    if not words:
+        return []
+
+    sql = """
+    SELECT *
+    FROM spelling_words
+    WHERE LOWER(word) = ANY(:words)
+    """
+
+    rows = fetch_all(sql, {"words": [w.lower() for w in words]})
+
+    if not rows or isinstance(rows, dict):
+        return []
+
+    out = []
+    for r in rows:
+        if hasattr(r, "_mapping"):
+            out.append(dict(r._mapping))
+        elif isinstance(r, dict):
+            out.append(r)
+    return out
+
+
 def record_wrong_attempt(user_id: int, word_id: int) -> None:
     """Insert or update a weak word for the user after an incorrect attempt."""
     sql = text(
