@@ -1,4 +1,5 @@
 import os
+from collections.abc import Mapping
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,9 +21,9 @@ def safe_row(row):
     if hasattr(row, "_mapping"):
         return dict(row._mapping)
 
-    # Already a dict
-    if isinstance(row, dict):
-        return row
+    # Already a mapping
+    if isinstance(row, Mapping):
+        return dict(row)
 
     # Tuple fallback → map to numeric field names until caller renames keys
     if isinstance(row, tuple):
