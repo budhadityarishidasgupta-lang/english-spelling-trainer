@@ -980,12 +980,23 @@ def render_student_home(db, user_id: int) -> None:
                 user_id=user_id,
                 limit=50,
             )
-            if not prepared:
+            # --- WEAK WORDS FIX (DO NOT TOUCH OTHER FLOWS) ---
+            word_ids = prepared.get("word_ids", [])
+
+            if not word_ids:
                 st.info("No weak words yet — great job!")
                 return
 
-            st.session_state.weak_word_ids = prepared["word_ids"]
-            st.session_state.weak_word_pool = prepared["words"]
+            # Reuse existing helper (already used elsewhere)
+            words = get_words_by_ids(word_ids)
+
+            if not words:
+                st.warning("Weak words exist but could not be loaded.")
+                return
+
+            st.session_state.weak_word_pool = words
+            st.session_state.weak_word_index = 0
+            # ------------------------------------------------
 
 
 def render_practice_question(word_ids: list[int]) -> None:
