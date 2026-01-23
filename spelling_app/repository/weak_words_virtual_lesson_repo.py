@@ -1,29 +1,44 @@
-from spelling_app.repository.weak_words_repo import (
-    get_global_weak_word_ids,
-    load_weak_words_by_ids,
-)
+from shared.db import fetch_all
 
 
-def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
+def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50) -> dict:
     """
-    Virtual lesson for weak words.
-    No lesson table involvement.
+    Creates a virtual Weak Words lesson for a user.
+    CONTRACT (DO NOT BREAK):
+    - course_id
+    - lesson_id
+    - word_ids
+    - word_count
     """
-    word_ids = get_global_weak_word_ids(user_id, limit=limit)
 
-    if not word_ids:
-        return {"word_count": 0}
+    rows = fetch_all(
+        """
+        SELECT DISTINCT w.word_id, w.course_id
+        FROM spelling_attempts a
+        JOIN spelling_words w ON w.word_id = a.word_id
+        WHERE a.user_id = :uid
+          AND a.correct = FALSE
+        ORDER BY a.attempted_at DESC
+        LIMIT :limit
+        """,
+        {"uid": user_id, "limit": limit},
+    )
 
-    words = load_weak_words_by_ids(word_ids)
+    if not rows:
+        return {}
 
-    if not words:
-        return {
-            "word_count": len(word_ids),
-            "words": [],
-        }
+    # 🔑 Pick course deterministically (first weak word)
+    first = rows[0]
+    course_id = first["course_id"]
+
+    word_ids = [r["word_id"] for r in rows]
+
+    # 🔒 VIRTUAL lesson (negative ID, never stored)
+    VIRTUAL_WEAK_LESSON_ID = -100
 
     return {
-        "word_count": len(words),
-        "word_ids": [w["word_id"] for w in words],
-        "words": words,
+        "course_id": course_id,
+        "lesson_id": VIRTUAL_WEAK_LESSON_ID,
+        "word_ids": word_ids,
+        "word_count": len(word_ids),
     }
