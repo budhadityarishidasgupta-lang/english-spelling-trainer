@@ -1,35 +1,28 @@
-# spelling_app/repository/weak_words_repo.py
+from shared.db import fetch_all, safe_rows
 
-from shared.db import fetch_all
 
-def get_weak_words_summary(min_attempts: int = 4):
+def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
     """
-    Returns aggregated statistics of spelling words where students frequently make mistakes.
-
-    Uses:
-      - spelling_attempts (student_id, item_id, is_correct, attempted_at)
-      - spelling_words (word_id, word)
+    Returns word_ids the user has answered incorrectly.
+    Weak words are ATTEMPT-driven, not lesson-driven.
     """
-
-    sql = f"""
-        SELECT
-            w.word,
-            COUNT(*) AS attempts,
-            SUM(CASE WHEN a.is_correct = FALSE THEN 1 ELSE 0 END) AS mistakes,
-            ROUND(
-                (SUM(CASE WHEN a.is_correct = FALSE THEN 1 ELSE 0 END)::decimal
-                 / COUNT(*)) * 100, 2
-            ) AS mistake_rate
+    rows = fetch_all(
+        """
+        SELECT DISTINCT a.word_id
         FROM spelling_attempts a
-        JOIN spelling_words w ON w.word_id = a.item_id
-        GROUP BY w.word
-        HAVING COUNT(*) >= :min_attempts
-        ORDER BY mistake_rate DESC, attempts DESC;
-    """
+        WHERE a.user_id = :uid
+          AND a.correct = FALSE
+        ORDER BY a.attempted_on DESC
+        LIMIT :limit
+        """,
+        {"uid": user_id, "limit": limit},
+    )
 
-    rows = fetch_all(sql, {"min_attempts": min_attempts})
+    if not rows or isinstance(rows, dict):
+        return []
 
-    if isinstance(rows, dict):  # DB error bubble-up
-        return rows
-
-    return [dict(getattr(r, "_mapping", r)) for r in rows]
+    return [
+        r._mapping["word_id"]
+        for r in rows
+        if r._mapping.get("word_id") is not None
+    ]
