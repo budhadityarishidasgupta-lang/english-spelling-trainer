@@ -24,5 +24,6 @@ def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
 
     return {
         "word_count": len(words),
+        "word_ids": [w["word_id"] for w in words],
         "words": words,
     }
