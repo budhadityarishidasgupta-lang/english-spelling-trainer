@@ -980,18 +980,14 @@ def render_student_home(db, user_id: int) -> None:
                 user_id=user_id,
                 limit=50,
             )
-            word_count = 0
-            if prepared:
-                word_count = int(prepared.get("word_count", 0))
-            if word_count == 0:
+
+            if not prepared or prepared.get("word_count", 0) == 0:
                 st.info("No weak words yet — great job!")
                 return
-            st.session_state.active_course_id = prepared["course_id"]
-            st.session_state.active_lesson_id = prepared["lesson_id"]
-            st.session_state.active_lesson_name = "Weak Words"
-            st.session_state.active_mode = "practice"
-            st.session_state.practice_mode = "Practice"
-            st.session_state.page = "practice"
+
+            st.session_state.active_mode = "weak_words"
+            st.session_state.weak_word_ids = prepared["word_ids"]
+            st.session_state.page = "weak_words"
             st.experimental_rerun()
 
 
@@ -1030,56 +1026,38 @@ def render_practice_question(word_ids: list[int]) -> None:
 
 
 def render_weak_words_page(user_id: int) -> None:
-    
-    # 🔴 DEBUG LINE — ADD THIS
-    st.error(f"DEBUG: weak-words user_id = {user_id}")
-    
-    st.session_state.mode = "weak_words"
     st.title("🧠 Weak Words")
-    st.caption("Focus on the words you’ve struggled with recently.")
 
-    if st.session_state.get("weak_page_user_id") != user_id:
-        st.session_state.weak_page_user_id = user_id
-        st.session_state.weak_page_pool = None
-        st.session_state.weak_page_index = 0
+    word_ids = st.session_state.get("weak_word_ids", [])
 
-    if st.session_state.get("weak_page_pool") is None:
-        st.session_state.weak_page_pool = _load_weak_word_pool(user_id)
-
-    if st.button("⬅️ Back to Home"):
-        st.session_state.weak_page_index = 0
-        st.session_state.weak_page_pool = None
-        st.session_state.page = "home"
-        st.experimental_rerun()
-
-    pool = st.session_state.get("weak_page_pool") or []
-    if not pool:
+    if not word_ids:
         st.info("No weak words yet — great job!")
         return
 
-    idx = st.session_state.get("weak_page_index", 0)
-    if idx >= len(pool):
-        st.success("🎉 You’ve completed all weak words!")
-        if st.button("🔁 Restart Weak Words"):
-            st.session_state.weak_page_index = 0
-            st.session_state.weak_page_pool = None
-            st.experimental_rerun()
+    words = get_words_by_ids(word_ids)
+
+    if not words:
+        st.warning("Weak words exist but could not be loaded.")
         return
 
-    current = pool[idx]
+    idx = st.session_state.get("weak_index", 0)
 
-    st.markdown(f"**Word {idx + 1} of {len(pool)}**")
+    if idx >= len(words):
+        st.success("🎉 You’ve completed all weak words!")
+        return
 
-    def _handle_next(last_correct: bool):
-        if last_correct:
-            st.session_state.weak_page_index = idx + 1
+    current = words[idx]
+
+    def _next(correct: bool):
+        if correct:
+            st.session_state.weak_index = idx + 1
 
     render_spelling_question(
         word=current["word"],
         example_sentence=current.get("example_sentence"),
         hint=current.get("hint"),
         word_id=current["word_id"],
-        on_next=_handle_next,
+        on_next=_next,
     )
 
 
