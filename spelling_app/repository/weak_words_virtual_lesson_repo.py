@@ -1,4 +1,3 @@
-from shared.db import fetch_all, safe_rows
 from spelling_app.repository.weak_words_repo import get_global_weak_word_ids
 
 
@@ -10,11 +9,7 @@ def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
     word_ids = get_global_weak_word_ids(user_id, limit=limit)
 
     if not word_ids:
-        return {
-            "lesson_id": None,
-            "course_id": None,
-            "word_count": 0,
-        }
+        return {"word_count": 0}
 
     return {
         "lesson_id": -1,        # virtual lesson
