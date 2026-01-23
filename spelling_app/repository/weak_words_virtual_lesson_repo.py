@@ -1,48 +1,26 @@
-from spelling_app.repository.weak_words_repo import get_weak_word_ids_for_user
-from shared.db import fetch_all
+from spelling_app.repository.weak_words_repo import get_global_weak_words
+from spelling_app.repository.student_repo import get_words_by_texts
 
 
-def prepare_system_weak_words_lesson_for_user(
-    user_id: int, limit: int = 50
-) -> dict:
+def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
     """
-    Prepares a virtual 'Weak Words' lesson.
-    CONTRACT (DO NOT BREAK):
-    {
-        word_ids: list[int],
-        course_id: int,
-        lesson_id: int,
-        word_count: int
-    }
+    Build a virtual lesson using CURRENT word_ids
+    resolved from weak word TEXT.
     """
-    word_ids = get_weak_word_ids_for_user(user_id, limit=limit)
 
-    if not word_ids:
-        return {
-            "word_ids": [],
-            "course_id": None,
-            "lesson_id": None,
-            "word_count": 0,
-        }
+    weak_word_texts = get_global_weak_words(user_id, limit)
 
-    rows = fetch_all(
-        """
-        SELECT DISTINCT course_id
-        FROM spelling_words
-        WHERE word_id = ANY(:word_ids)
-        LIMIT 1
-        """,
-        {"word_ids": word_ids},
-    )
+    if not weak_word_texts:
+        return None
 
-    course_id = None
-    if rows and not isinstance(rows, dict):
-        m = getattr(rows[0], "_mapping", rows[0])
-        course_id = m.get("course_id")
+    # 🔑 Resolve to CURRENT spelling_words rows
+    words = get_words_by_texts(weak_word_texts)
+
+    if not words:
+        return None
 
     return {
-        "word_ids": word_ids,
-        "course_id": course_id,
-        "lesson_id": -1,
-        "word_count": len(word_ids),
+        "lesson_name": "Weak Words",
+        "word_count": len(words),
+        "words": words,
     }

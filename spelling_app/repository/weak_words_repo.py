@@ -1,35 +1,30 @@
-from shared.db import fetch_all, safe_rows
+from shared.db import execute, fetch_all, safe_rows
 
 
-def get_weak_word_ids_for_user(user_id: int, limit: int = 50) -> list[int]:
+def get_global_weak_words(user_id: int, limit: int = 50):
     """
-    Returns DISTINCT word_ids where the user answered incorrectly.
-    Ordered by most recent failure.
+    Return weak words resolved by WORD TEXT, not stale word_id.
+    This avoids orphaned spelling_attempts references.
     """
-    rows = fetch_all(
-        """
-        SELECT DISTINCT ON (word_id)
-            word_id,
-            created_at
-        FROM spelling_attempts
-        WHERE user_id = :uid
-          AND correct = FALSE
-        ORDER BY word_id, created_at DESC
-        LIMIT :limit
-        """,
-        {"uid": user_id, "limit": limit},
-    )
+
+    sql = """
+    SELECT DISTINCT w.word, MAX(a.created_at) AS last_seen
+    FROM spelling_attempts a
+    JOIN spelling_words w
+      ON w.word_id = a.word_id
+    WHERE a.user_id = :uid
+      AND a.correct = FALSE
+    GROUP BY w.word
+    ORDER BY last_seen DESC
+    LIMIT :limit
+    """
+
+    rows = execute(sql, {"uid": user_id, "limit": limit})
 
     if not rows or isinstance(rows, dict):
         return []
 
-    word_ids = []
-    for r in rows:
-        m = getattr(r, "_mapping", r)
-        if m.get("word_id"):
-            word_ids.append(int(m["word_id"]))
-
-    return word_ids
+    return [r["word"] if isinstance(r, dict) else r._mapping["word"] for r in rows]
 
 
 def load_weak_words_by_ids(word_ids: list[int]) -> list[dict]:
