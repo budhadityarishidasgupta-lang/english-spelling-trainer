@@ -1,4 +1,7 @@
-from spelling_app.repository.weak_words_repo import get_global_weak_word_ids
+from spelling_app.repository.weak_words_repo import (
+    get_global_weak_word_ids,
+    load_weak_words_by_ids,
+)
 
 
 def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
@@ -11,9 +14,15 @@ def prepare_system_weak_words_lesson_for_user(user_id: int, limit: int = 50):
     if not word_ids:
         return {"word_count": 0}
 
+    words = load_weak_words_by_ids(word_ids)
+
+    if not words:
+        return {
+            "word_count": len(word_ids),
+            "words": [],
+        }
+
     return {
-        "lesson_id": -1,        # virtual lesson
-        "course_id": -1,
-        "word_count": len(word_ids),
-        "word_ids": word_ids,
+        "word_count": len(words),
+        "words": words,
     }
