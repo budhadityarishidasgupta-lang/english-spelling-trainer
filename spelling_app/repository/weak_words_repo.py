@@ -1,18 +1,20 @@
 from shared.db import fetch_all, safe_rows
 
 
-def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
+def get_weak_word_ids_for_user(user_id: int, limit: int = 50) -> list[int]:
     """
-    Weak words = words the user got wrong.
-    Source of truth: spelling_attempts.created_at
+    Returns DISTINCT word_ids where the user answered incorrectly.
+    Ordered by most recent failure.
     """
     rows = fetch_all(
         """
-        SELECT DISTINCT word_id
+        SELECT DISTINCT ON (word_id)
+            word_id,
+            created_at
         FROM spelling_attempts
         WHERE user_id = :uid
           AND correct = FALSE
-        ORDER BY created_at DESC
+        ORDER BY word_id, created_at DESC
         LIMIT :limit
         """,
         {"uid": user_id, "limit": limit},
@@ -21,8 +23,13 @@ def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
     if not rows or isinstance(rows, dict):
         return []
 
-    safe = safe_rows(rows)
-    return [r["word_id"] for r in safe if r.get("word_id")]
+    word_ids = []
+    for r in rows:
+        m = getattr(r, "_mapping", r)
+        if m.get("word_id"):
+            word_ids.append(int(m["word_id"]))
+
+    return word_ids
 
 
 def load_weak_words_by_ids(word_ids: list[int]) -> list[dict]:
