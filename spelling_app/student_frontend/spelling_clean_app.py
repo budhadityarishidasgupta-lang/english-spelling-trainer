@@ -980,15 +980,12 @@ def render_student_home(db, user_id: int) -> None:
                 user_id=user_id,
                 limit=50,
             )
-
-            if not prepared or prepared.get("word_count", 0) == 0:
+            if not prepared:
                 st.info("No weak words yet — great job!")
                 return
 
-            st.session_state.active_mode = "weak_words"
             st.session_state.weak_word_ids = prepared["word_ids"]
-            st.session_state.page = "weak_words"
-            st.experimental_rerun()
+            st.session_state.weak_word_pool = prepared["words"]
 
 
 def render_practice_question(word_ids: list[int]) -> None:

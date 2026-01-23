@@ -1,17 +1,21 @@
 from shared.db import fetch_all, safe_rows
 
 
-def get_global_weak_word_ids(user_id: int, limit: int = 50):
+def get_global_weak_word_ids(user_id: int, limit: int = 50) -> list[int]:
+    """
+    Weak words = words the user got wrong.
+    Source of truth: spelling_attempts.created_at
+    """
     rows = fetch_all(
         """
-        SELECT DISTINCT a.word_id
-        FROM spelling_attempts a
-        WHERE a.user_id = :user_id
-          AND a.correct = FALSE
-        ORDER BY a.created_at DESC
+        SELECT DISTINCT word_id
+        FROM spelling_attempts
+        WHERE user_id = :uid
+          AND correct = FALSE
+        ORDER BY created_at DESC
         LIMIT :limit
         """,
-        {"user_id": user_id, "limit": limit},
+        {"uid": user_id, "limit": limit},
     )
 
     if not rows or isinstance(rows, dict):
@@ -36,7 +40,7 @@ def load_weak_words_by_ids(word_ids: list[int]) -> list[dict]:
         LEFT JOIN spelling_hint_overrides o
           ON o.word_id = w.word_id
         WHERE w.word_id = ANY(:ids)
-        ORDER BY w.word_id
+        ORDER BY w.word
         """,
         {"ids": word_ids},
     )
