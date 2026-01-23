@@ -24,7 +24,8 @@ def get_global_weak_words(user_id: int, limit: int = 50):
     if not rows or isinstance(rows, dict):
         return []
 
-    return [r["word"] if isinstance(r, dict) else r._mapping["word"] for r in rows]
+    safe = safe_rows(rows)
+    return [r["word"] for r in safe if "word" in r]
 
 
 def load_weak_words_by_ids(word_ids: list[int]) -> list[dict]:
