@@ -53,6 +53,10 @@ from spelling_app.repository.registration_repo import (
 
 # Student app must not initialize DB tables.
 
+def sidebar_allowed():
+    # Sidebar UI is rendered ONLY from render_student_sidebar()
+    return False
+
 def get_engine_safe():
     try:
         with engine.connect():
