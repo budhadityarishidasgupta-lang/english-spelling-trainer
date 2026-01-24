@@ -2401,37 +2401,49 @@ def main():
     # LOGGED IN
     if is_in_practice_mode():
         with st.sidebar:
-            st.markdown(f"### 👤 Hi, {st.session_state.user_name}")
-            st.markdown("### Practice Source")
 
-            if "practice_source" not in st.session_state:
-                st.session_state.practice_source = "weak"
+            # Greeting
+            st.markdown("👋 **Hi, {}**".format(st.session_state.get("username", "")))
+            st.markdown("---")
 
-            practice_source = st.radio(
+            # Current practice context
+            current_source = st.session_state.get("practice_source", "weak")
+
+            st.markdown("📍 **Practising now**")
+            if current_source == "weak":
+                st.markdown("🧠 **Weak Words**")
+            else:
+                st.markdown("📚 **Courses**")
+
+            st.markdown("")
+
+            # Switch action (intentional, not a toggle)
+            if current_source == "weak":
+                if st.button("🔁 Switch to 📚 Courses"):
+                    st.session_state.practice_source = "courses"
+            else:
+                if st.button("🔁 Switch to 🧠 Weak Words"):
+                    st.session_state.practice_source = "weak"
+
+            st.markdown("---")
+
+            # Practice style (unchanged logic)
+            st.markdown("⚙️ **Practice Style**")
+
+            practice_mode = st.radio(
                 "",
-                ["Weak Words", "Courses"],
-                index=0 if st.session_state.practice_source == "weak" else 1,
+                ["🔤 Pattern Words", "⭕ Word Mastery"],
+                index=0 if st.session_state.get("practice_mode") == "pattern" else 1
             )
 
-            st.session_state.practice_source = (
-                "weak" if practice_source == "Weak Words" else "courses"
+            st.session_state.practice_mode = (
+                "pattern" if "Pattern" in practice_mode else "mastery"
             )
 
-            if st.button("Logout", on_click=logout):
-                # Session hard reset on logout (hardening)
-                for key in [
-                    "practice_mode",
-                    "answer_submitted",
-                    "weak_page_pool",
-                    "weak_page_index",
-                    "weak_page_submitted",
-                    "weak_page_last_correct",
-                    "weak_page_current_word_id",
-                    "weak_page_user_id",
-                    "weak_page_start_time",
-                ]:
-                    st.session_state.pop(key, None)
-                st.experimental_rerun()
+            st.markdown("---")
+
+            # Logout
+            st.button("🚪 Logout", on_click=logout)
 
     user_id = st.session_state.get("user_id")
 
