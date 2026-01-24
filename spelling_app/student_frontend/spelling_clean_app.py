@@ -959,6 +959,7 @@ def render_student_home(db, user_id: int) -> None:
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
     show_weak_words = user_has_any_mistakes(st.session_state.user_id)
+    course_id = st.session_state.get("active_course_id")
 
     st.markdown(f"## {title}")
     st.markdown(intro)
@@ -978,16 +979,13 @@ def render_student_home(db, user_id: int) -> None:
         if st.button("Start Weak Words"):
             prepared = prepare_system_weak_words_lesson_for_user(
                 user_id=user_id,
-                limit=50,
+                course_id=course_id,
             )
-            # --- WEAK WORDS FIX (DO NOT TOUCH OTHER FLOWS) ---
             if not prepared or not prepared.get("words"):
                 st.info("No weak words yet — great job!")
-                return
-
-            st.session_state.weak_word_pool = prepared["words"]
-            st.session_state.weak_word_index = 0
-            # ------------------------------------------------
+            else:
+                st.session_state.weak_word_pool = prepared["words"]
+                st.session_state.weak_word_index = 0
 
 
 def render_practice_question(word_ids: list[int]) -> None:
