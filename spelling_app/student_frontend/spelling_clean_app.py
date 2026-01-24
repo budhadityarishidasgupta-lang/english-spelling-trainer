@@ -240,7 +240,6 @@ SESSION_KEYS = [
 ]
 
 SESSION_KEYS.extend([
-    "practice_mode",
     "practice_flow_mode",
     "selected_level",
     "selected_lesson",
@@ -524,12 +523,6 @@ def render_spelling_question(
 
     st.subheader("Spell the word:")
 
-    if st.session_state.get("streak", 0) > 0:
-        st.markdown(
-            f"🔥 <b>{st.session_state.streak}-day streak!</b>",
-            unsafe_allow_html=True,
-        )
-
     blanks_count = blanks_for_streak(
         st.session_state.get("streak", 0), len(word)
     )
@@ -757,7 +750,6 @@ def logout(st_module=None):
     if st_module is None:
         st_module = st
     cleanup_keys = SESSION_KEYS + [
-        "practice_mode",
         "practice_flow_mode",
         "current_wid",
         "current_word_pick",
@@ -919,7 +911,7 @@ def submit_registration():
 
 def ensure_default_mode():
     """
-    Ensure we always have a valid practice_mode in session.
+    Ensure we always have a valid practice flow mode in session.
     """
     if not st.session_state.get("practice_flow_mode"):
         st.session_state.practice_flow_mode = "Practice"
@@ -932,10 +924,6 @@ def ensure_default_mode():
         st.session_state.practice_flow_mode = "Practice"
 
 
-def normalized_practice_mode():
-    return (st.session_state.get("practice_flow_mode") or "practice").lower()
-
-
 def render_mode_cards(db, user_id, selected_lesson_id):
     st.markdown("### 🎯 What would you like to do today?")
     c1, _ = st.columns(2)
@@ -943,7 +931,6 @@ def render_mode_cards(db, user_id, selected_lesson_id):
     with c1:
         if st.button("✏️ Practice", use_container_width=True):
             st.session_state.active_mode = "practice"
-            st.session_state.mode = "Practice"
             st.session_state.practice_flow_mode = "Practice"
             st.experimental_rerun()
 
@@ -1619,6 +1606,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     ensure_default_mode()
     practice_flow_mode = st.session_state.get("practice_flow_mode", "Practice") or "Practice"
     st.session_state.practice_flow_mode = practice_flow_mode
+    practice_flow_mode_lower = practice_flow_mode.lower()
     user_id = st.session_state.get("user_id")
 
     # -----------------------------
@@ -1762,24 +1750,15 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.experimental_rerun()
             st.stop()
         if st.session_state.weak_words is None:
-            if st.session_state.get("mode") == "weak_words":
-                practice_word_ids = st.session_state.get("practice_word_pool", [])
-            else:
-                practice_word_ids = get_words_for_lesson(course_id, lesson_id)
+            practice_word_ids = get_words_for_lesson(course_id, lesson_id)
 
             if not practice_word_ids:
                 st.info("No practice words are available right now.")
                 st.stop()
 
-            if st.session_state.get("mode") == "weak_words":
-                weak_rows = get_words_by_ids(practice_word_ids)
-            else:
-                weak_rows = practice_word_ids
+            weak_rows = practice_word_ids
 
             if not weak_rows:
-                if st.session_state.get("mode") == "weak_words":
-                    st.info("No practice words are available right now.")
-                    st.stop()
                 st.info("No weak words for this lesson yet 👍")
                 if st.button("▶️ Go to Practice"):
                     st.session_state.active_mode = "practice"
@@ -1830,7 +1809,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     difficulty_map = build_difficulty_map(words, stats_map)
     weak_word_ids = get_weak_word_ids(stats_map)
 
-    if normalized_practice_mode() == "daily-5":
+    if practice_flow_mode_lower == "daily-5":
         daily_ids = get_daily_five_words(user_id)
         words = get_words_by_ids(daily_ids)
         st.session_state.practice_words = words
@@ -1852,7 +1831,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         return
 
     is_weak_mode = st.session_state.active_mode == "weak_words"
-    if normalized_practice_mode() == "daily-5":
+    if practice_flow_mode_lower == "daily-5":
         practice_words = st.session_state.get("daily5_words", [])
         total_words = len(practice_words)
         daily5_index = st.session_state.get("daily5_index", 0)
@@ -1872,7 +1851,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
     else:
         bar_color = "#22c55e"
 
-    if normalized_practice_mode() == "daily-5":
+    if practice_flow_mode_lower == "daily-5":
         daily5_words = st.session_state.get("daily5_words", [])
 
         if st.session_state.daily5_index >= len(daily5_words):
@@ -1927,12 +1906,10 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.current_word_pick = current
 
     wid = st.session_state.current_wid
-    mode = st.session_state.get("mode")
-    if mode != "weak_words":
-        lesson_word_ids = {w.get("word_id") for w in words if w.get("word_id")}
-        if lesson_id and wid not in lesson_word_ids:
-            st.warning("Word not mapped to this lesson. Skipping.")
-            return
+    lesson_word_ids = {w.get("word_id") for w in words if w.get("word_id")}
+    if lesson_id and wid not in lesson_word_ids:
+        st.warning("Word not mapped to this lesson. Skipping.")
+        return
     st.session_state.current_example_sentence = current.get("example_sentence")
     st.session_state.current_hint = current.get("hint")
     # Initialise hint visibility ONLY when word changes
@@ -1945,7 +1922,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
         total_weak_words = len(practice_words)
         st.caption(f"{idx + 1} / {total_weak_words}")
     else:
-        if normalized_practice_mode() == "daily-5":
+        if practice_flow_mode_lower == "daily-5":
             st.caption(f"Daily 5 — {st.session_state.get('daily5_index', 0) + 1} / 5")
         st.markdown(
             f"""
@@ -1982,7 +1959,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.weak_index += 1
         else:
             st.session_state.practice_index += 1
-        if normalized_practice_mode() == "daily-5":
+        if practice_flow_mode_lower == "daily-5":
             st.session_state.daily5_index += 1
 
     render_spelling_question(
@@ -2008,8 +1985,6 @@ def main():
     inject_student_css()
     initialize_session_state(st)
 
-    if "mode" not in st.session_state:
-        st.session_state.mode = None
     if "action_lock" not in st.session_state:
         st.session_state.action_lock = False
 
@@ -2160,18 +2135,6 @@ def render_student_sidebar(db, user_id):
 
         st.markdown("---")
 
-        st.markdown("⚙️ **Practice Style**")
-        label = st.radio(
-            "",
-            ["🔤 Pattern Words", "⭕ Word Mastery"],
-            index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
-            key="practice_style_sidebar"
-        )
-
-        st.session_state.practice_mode = (
-            "pattern" if "Pattern" in label else "mastery"
-        )
-
         if st.session_state.practice_source == "courses":
             st.markdown("📘 **Course**")
 
@@ -2205,9 +2168,6 @@ def render_student_sidebar(db, user_id):
 
                 if selected_course_id != active_course_id:
                     st.session_state.active_course_id = selected_course_id
-                    st.session_state.current_lesson_id = None
-                    st.session_state.lesson_started = False
-                    st.session_state.practice_index = 0
                     st.experimental_rerun()
 
         st.markdown("---")
@@ -2228,7 +2188,7 @@ def render_course_practice(db, user_id) -> None:
         st.info("No courses assigned yet.")
         return
 
-    if st.session_state.get("lesson_started"):
+    if st.session_state.get("active_lesson_id"):
         render_practice_mode(
             lesson_id=st.session_state["active_lesson_id"],
             course_id=st.session_state["active_course_id"],
@@ -2305,8 +2265,6 @@ def render_course_practice(db, user_id) -> None:
                 )
 
                 # SINGLE PRACTICE ENTRY CONTRACT (ALL COURSES)
-                st.session_state["mode"] = "Practice"
-                st.session_state["lesson_started"] = True
                 st.session_state["active_lesson_id"] = lesson_id
                 st.session_state["active_course_id"] = lesson["course_id"]
                 lesson_label = lesson.get("display_name") or lesson.get("lesson_name")
