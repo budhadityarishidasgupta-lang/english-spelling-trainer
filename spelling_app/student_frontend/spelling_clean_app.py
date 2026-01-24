@@ -2394,6 +2394,24 @@ def main():
     # LOGGED IN
     st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
 
+    # --- Practice Source Selector (UI only) ---
+    st.sidebar.markdown("### Practice Source")
+
+    if "practice_source" not in st.session_state:
+        st.session_state.practice_source = "weak"
+
+    practice_source = st.sidebar.radio(
+        "",
+        ["Weak Words", "Courses"],
+        index=0 if st.session_state.practice_source == "weak" else 1,
+    )
+
+    if practice_source == "Weak Words":
+        st.session_state.practice_source = "weak"
+    else:
+        st.session_state.practice_source = "courses"
+        st.rerun()
+
 
     if st.sidebar.button("Logout"):
         logout(st)
@@ -2429,6 +2447,14 @@ def main():
 
     st.session_state.active_mode = "practice"
 
+    if st.session_state.get("practice_source") == "weak":
+        render_weak_words_page(user_id)
+        st.stop()
+
+    render_course_selection()
+
+
+def render_course_selection() -> None:
     st.sidebar.markdown("### 📘 Course")
 
     courses = get_student_courses(st.session_state["user_id"])
