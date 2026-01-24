@@ -510,6 +510,7 @@ def render_spelling_question(
         st.session_state.attempts_total = 0
     if "correct_total" not in st.session_state:
         st.session_state.correct_total = 0
+    is_weak_mode = st.session_state.get("active_mode") == "weak_words"
 
     wid = word_id or st.session_state.get("current_wid")
     if st.session_state.get("current_wid") != wid:
@@ -983,40 +984,6 @@ def render_student_home(db, user_id: int) -> None:
             st.session_state.weak_word_pool = weak_words
             st.session_state.weak_word_index = 0
             st.rerun()
-
-
-def render_practice_question(word_ids: list[int]) -> None:
-    if "practice_index" not in st.session_state or st.session_state.practice_index is None:
-        st.session_state.practice_index = 0
-
-    practice_word_ids = word_ids
-    if not practice_word_ids:
-        st.info("No practice words are available right now.")
-        st.stop()
-
-    practice_index = st.session_state.practice_index
-    if practice_index >= len(practice_word_ids):
-        return
-
-    word_id = practice_word_ids[practice_index]
-
-    word_rows = get_words_by_ids([word_id])
-    if not word_rows:
-        st.warning("No practice words are available right now.")
-        return
-
-    current = word_rows[0]
-
-    def handle_next(_):
-        st.session_state.practice_index += 1
-
-    render_spelling_question(
-        word_id=word_id,
-        word=current["word"],
-        example_sentence=current.get("example_sentence"),
-        hint=current.get("hint"),
-        on_next=handle_next,
-    )
 
 
 def render_weak_words_practice(db, user_id: int) -> None:
@@ -1756,6 +1723,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     mastery = lesson.get("progress_pct", 0) or 0
     xp_total, streak = get_xp_and_streak(user_id)
+    st.session_state.streak = streak
     badge = compute_badge(xp_total, mastery)
 
     if lesson_name:
@@ -1841,14 +1809,11 @@ def render_practice_mode(lesson_id: int, course_id: int):
         idx = st.session_state.weak_index
     else:
         if st.session_state.practice_words is None:
-            words = get_words_for_lesson(lesson_id, course_id)
-            practice_words = _fetch_spelling_words(lesson_id)
+            words = _fetch_spelling_words(lesson_id)
 
             if not words:
-                if not practice_words:
-                    st.warning("No practice words are mapped to this lesson yet.")
-                    return
-                words = practice_words
+                st.warning("No practice words are mapped to this lesson yet.")
+                return
 
             st.session_state.practice_words = words
             st.session_state.practice_index = 0
