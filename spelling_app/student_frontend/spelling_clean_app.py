@@ -2421,9 +2421,13 @@ def main():
             if current_source == "weak":
                 if st.button("🔁 Switch to 📚 Courses"):
                     st.session_state.practice_source = "courses"
+                    st.session_state.current_lesson_id = None
+                    st.session_state.current_word_index = 0
             else:
                 if st.button("🔁 Switch to 🧠 Weak Words"):
                     st.session_state.practice_source = "weak"
+                    st.session_state.current_lesson_id = None
+                    st.session_state.current_word_index = 0
 
             st.markdown("---")
 
@@ -2447,22 +2451,21 @@ def main():
 
     user_id = st.session_state.get("user_id")
 
-    if not is_in_practice_mode():
+    if is_in_practice_mode():
+        if st.session_state.get("practice_source", "weak") == "weak":
+            render_weak_words_page(user_id)
+            return
+        if st.session_state.get("practice_source") == "courses":
+            render_course_selection()
+            return
+    else:
         st.session_state.in_practice_mode = False
         with get_engine_safe().connect() as db:
             render_student_home(db, st.session_state.user_id)
-        st.stop()
-
-    if st.session_state.get("practice_source", "weak") == "weak":
-        render_weak_words_page(user_id)
-        st.stop()
-
-    render_course_selection()
+        return
 
 
 def render_course_selection() -> None:
-    st.sidebar.markdown("### 📘 Course")
-
     courses = get_student_courses(st.session_state["user_id"])
     st.session_state["courses"] = courses
 
@@ -2470,46 +2473,6 @@ def render_course_selection() -> None:
         st.info("No courses assigned yet.")
         st.caption("Your teacher will assign a course soon.")
         return
-
-    # --- Course switcher (available even during practice) ---
-    if st.session_state.get("courses"):
-
-        current_course_id = st.session_state.get("active_course_id")
-
-        course_labels = [course["course_name"] for course in st.session_state["courses"]]
-        course_options = {
-            course["course_name"]: course for course in st.session_state["courses"]
-        }
-        current_index = next(
-            (
-                i for i, course in enumerate(st.session_state["courses"])
-                if course["course_id"] == current_course_id
-            ),
-            0,
-        )
-        selected_course_label = st.sidebar.radio(
-            "Practice Mode",
-            options=course_labels,
-            index=current_index,
-            key="sidebar_course_switcher",
-        )
-        selected_course = course_options[selected_course_label]
-
-        # If user selects a different course
-        if selected_course["course_id"] != current_course_id:
-
-            # --- Reset practice state safely ---
-            st.session_state["active_course_id"] = selected_course["course_id"]
-            st.session_state["active_lesson_id"] = None
-            st.session_state["lesson_started"] = False
-            st.session_state["q_index"] = 0
-            st.session_state["show_feedback"] = False
-            st.session_state["current_input"] = ""
-
-            # Optional: clear practice-specific cached data
-            st.session_state.pop("practice_words", None)
-
-            st.rerun()
 
     if st.session_state.get("lesson_started"):
         raw_lessons = get_lessons_for_course(st.session_state.active_course_id)
