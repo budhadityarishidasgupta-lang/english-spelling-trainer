@@ -2136,7 +2136,16 @@ def render_student_sidebar(db, user_id):
         st.markdown("---")
 
         if st.session_state.practice_source == "courses":
-            st.markdown("📘 **Course**")
+            st.markdown("📘 **Course**", help="Select the course you want to practise")
+            st.markdown("<div style='margin-top:-8px'></div>", unsafe_allow_html=True)
+
+            label = st.radio(
+                "",
+                ["🔤 Pattern Words", "🎯 Word Mastery"],
+                index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
+                key="practice_style_sidebar",
+                label_visibility="collapsed",
+            )
 
             courses_raw = get_student_courses(user_id)
             courses = []
@@ -2158,12 +2167,21 @@ def render_student_sidebar(db, user_id):
                     active_course_id = course_ids[0]
                     st.session_state.active_course_id = active_course_id
 
+                def course_label(cid):
+                    course = next(c for c in courses if c["id"] == cid)
+                    name = course["name"]
+
+                    if cid == st.session_state.get("active_course_id"):
+                        return f"🔥 {name}"
+                    return f"📘 {name}"
+
                 selected_course_id = st.radio(
                     "",
                     options=course_ids,
                     index=course_ids.index(active_course_id),
-                    format_func=lambda cid: next(c["name"] for c in courses if c["id"] == cid),
+                    format_func=course_label,
                     key="sidebar_course_selector",
+                    label_visibility="collapsed",
                 )
 
                 if selected_course_id != active_course_id:
