@@ -2126,6 +2126,8 @@ def render_student_sidebar(db, user_id):
         if current_source == "weak":
             if st.button("🔁 Switch to 📚 Courses"):
                 st.session_state.practice_source = "courses"
+                st.session_state.active_mode = "practice"
+                st.session_state.in_practice_mode = True
 
                 # HARD RESET course practice state
                 st.session_state.practice_words = None
@@ -2137,6 +2139,8 @@ def render_student_sidebar(db, user_id):
         else:
             if st.button("🔁 Switch to 🧠 Weak Words"):
                 st.session_state.practice_source = "weak"
+                st.session_state.active_mode = "weak_words"
+                st.session_state.in_practice_mode = True
 
                 # HARD RESET weak words state
                 st.session_state.weak_words = None
