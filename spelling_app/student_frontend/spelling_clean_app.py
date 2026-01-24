@@ -959,7 +959,6 @@ def render_student_home(db, user_id: int) -> None:
     practice_txt = _get_student_home_text(db, "student_home_practice", "")
     weak_txt = _get_student_home_text(db, "student_home_weak_words", "")
     show_weak_words = user_has_any_mistakes(st.session_state.user_id)
-    course_id = st.session_state.get("active_course_id")
 
     st.markdown(f"## {title}")
     st.markdown(intro)
@@ -977,15 +976,30 @@ def render_student_home(db, user_id: int) -> None:
         st.markdown("### 🧠 Weak Words")
         st.markdown(weak_txt)
         if st.button("Start Weak Words"):
+            # course_id is REQUIRED by prepare_system_weak_words_lesson_for_user
+            course_id = (
+                st.session_state.get("active_course_id")
+                or st.session_state.get("selected_course_id")
+            )
+
+            if not course_id:
+                st.error("No course selected. Please choose a course first.")
+                st.stop()
+
             prepared = prepare_system_weak_words_lesson_for_user(
                 user_id=user_id,
-                course_id=course_id,
+                course_id=int(course_id),
+                limit=50,
             )
+
             if not prepared or not prepared.get("words"):
                 st.info("No weak words yet — great job!")
-            else:
-                st.session_state.weak_word_pool = prepared["words"]
-                st.session_state.weak_word_index = 0
+                st.stop()
+
+            st.session_state.weak_word_pool = prepared["words"]
+            st.session_state.weak_word_index = 0
+            st.session_state.page = "weak_words"
+            st.rerun()
 
 
 def render_practice_question(word_ids: list[int]) -> None:
@@ -2438,10 +2452,19 @@ def main():
     user_id = st.session_state.get("user_id")
 
     # Pre-warm weak words system lesson (safe, idempotent)
-    prepare_system_weak_words_lesson_for_user(
-        user_id=st.session_state.user_id,
-        limit=50,
+    course_id = (
+        st.session_state.get("active_course_id")
+        or st.session_state.get("selected_course_id")
     )
+
+    if course_id:
+        prepared = prepare_system_weak_words_lesson_for_user(
+            user_id=st.session_state.user_id,
+            course_id=int(course_id),
+            limit=50,
+        )
+    else:
+        prepared = None
 
     if st.session_state.page == "home":
         with get_engine_safe().connect() as db:
