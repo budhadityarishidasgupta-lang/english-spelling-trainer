@@ -232,6 +232,7 @@ SESSION_KEYS = [
     "page",
     "selected_course_id",
     "practice_index",
+    "in_practice_mode",
 ]
 
 SESSION_KEYS.extend([
@@ -400,6 +401,8 @@ def initialize_session_state(st_module):
                 st_module.session_state[key] = 0
             elif key == "user_name":
                 st_module.session_state[key] = "Guest"
+            elif key == "in_practice_mode":
+                st_module.session_state[key] = False
             else:
                 st_module.session_state[key] = None
 
@@ -739,7 +742,9 @@ def check_login(st_module, email: str, password: str) -> bool:
     return False
 
 
-def logout(st_module):
+def logout(st_module=None):
+    if st_module is None:
+        st_module = st
     cleanup_keys = SESSION_KEYS + [
         "practice_mode",
         "current_wid",
@@ -968,6 +973,8 @@ def render_student_home(db, user_id: int) -> None:
     st.markdown("### ✏️ Practice")
     st.markdown(practice_txt)
     if st.button("Start Practice"):
+        st.session_state.in_practice_mode = True
+        st.session_state.practice_source = "courses"
         st.session_state.page = "practice"
         st.experimental_rerun()
 
@@ -982,6 +989,8 @@ def render_student_home(db, user_id: int) -> None:
                 st.info("No weak words yet — great job!")
                 st.stop()
 
+            st.session_state.in_practice_mode = True
+            st.session_state.practice_source = "weak"
             st.session_state.weak_word_pool = weak_words
             st.session_state.weak_word_index = 0
             st.session_state.page = "weak_words"
@@ -2386,63 +2395,53 @@ def main():
 
         return  # stop here when logged out
 
+    def is_in_practice_mode():
+        return st.session_state.get("in_practice_mode") is True
+
     # LOGGED IN
-    st.sidebar.markdown(f"### 👤 Hi, {st.session_state.user_name}")
+    if is_in_practice_mode():
+        with st.sidebar:
+            st.markdown(f"### 👤 Hi, {st.session_state.user_name}")
+            st.markdown("### Practice Source")
 
-    # --- Practice Source Selector (UI only) ---
-    st.sidebar.markdown("### Practice Source")
+            if "practice_source" not in st.session_state:
+                st.session_state.practice_source = "weak"
 
-    if "practice_source" not in st.session_state:
-        st.session_state.practice_source = "weak"
+            practice_source = st.radio(
+                "",
+                ["Weak Words", "Courses"],
+                index=0 if st.session_state.practice_source == "weak" else 1,
+            )
 
-    practice_source = st.sidebar.radio(
-        "",
-        ["Weak Words", "Courses"],
-        index=0 if st.session_state.practice_source == "weak" else 1,
-    )
+            st.session_state.practice_source = (
+                "weak" if practice_source == "Weak Words" else "courses"
+            )
 
-    if practice_source == "Weak Words":
-        st.session_state.practice_source = "weak"
-    else:
-        st.session_state.practice_source = "courses"
-        st.rerun()
-
-
-    if st.sidebar.button("Logout"):
-        logout(st)
-        # Session hard reset on logout (hardening)
-        for key in [
-            "practice_mode",
-            "answer_submitted",
-            "weak_page_pool",
-            "weak_page_index",
-            "weak_page_submitted",
-            "weak_page_last_correct",
-            "weak_page_current_word_id",
-            "weak_page_user_id",
-            "weak_page_start_time",
-        ]:
-            st.session_state.pop(key, None)
-        st.experimental_rerun()
+            if st.button("Logout", on_click=logout):
+                # Session hard reset on logout (hardening)
+                for key in [
+                    "practice_mode",
+                    "answer_submitted",
+                    "weak_page_pool",
+                    "weak_page_index",
+                    "weak_page_submitted",
+                    "weak_page_last_correct",
+                    "weak_page_current_word_id",
+                    "weak_page_user_id",
+                    "weak_page_start_time",
+                ]:
+                    st.session_state.pop(key, None)
+                st.experimental_rerun()
 
     user_id = st.session_state.get("user_id")
 
-    if st.session_state.page == "home":
+    if not is_in_practice_mode():
+        st.session_state.in_practice_mode = False
         with get_engine_safe().connect() as db:
             render_student_home(db, st.session_state.user_id)
         st.stop()
 
-    if st.session_state.page == "weak_words":
-        render_weak_words_page(user_id)
-        st.stop()
-
-    if st.session_state.page != "practice":
-        st.session_state.page = "home"
-        st.experimental_rerun()
-
-    st.session_state.active_mode = "practice"
-
-    if st.session_state.get("practice_source") == "weak":
+    if st.session_state.get("practice_source", "weak") == "weak":
         render_weak_words_page(user_id)
         st.stop()
 
