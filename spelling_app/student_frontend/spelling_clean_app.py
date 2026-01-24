@@ -736,6 +736,9 @@ def check_login(st_module, email: str, password: str) -> bool:
         st_module.session_state.is_logged_in = True
         st_module.session_state.user_id = row["user_id"]
         st_module.session_state.user_name = row["name"]
+        st_module.session_state.username = (
+            row.get("name") or row.get("email") or "Student"
+        )
         st_module.session_state.page = "home"
         return True
 
@@ -2456,7 +2459,8 @@ def main():
             render_weak_words_page(user_id)
             return
         if st.session_state.get("practice_source") == "courses":
-            render_course_selection()
+            with get_engine_safe().connect() as db:
+                render_course_selection(db, user_id)
             return
     else:
         st.session_state.in_practice_mode = False
@@ -2465,14 +2469,57 @@ def main():
         return
 
 
-def render_course_selection() -> None:
-    courses = get_student_courses(st.session_state["user_id"])
+def render_course_selection(db, user_id) -> None:
+
+    st.sidebar.markdown("📘 **Course**")
+
+    courses_raw = get_student_courses(user_id)
+
+    # Normalize rows safely
+    courses = []
+    for r in courses_raw or []:
+        m = row_to_dict(r)
+        course_id = m.get("course_id") or m.get("col_0")
+        course_name = m.get("course_name") or m.get("col_1")
+        if course_id is None:
+            continue
+        courses.append({"course_id": course_id, "course_name": course_name})
+
     st.session_state["courses"] = courses
 
     if not courses:
-        st.info("No courses assigned yet.")
-        st.caption("Your teacher will assign a course soon.")
+        st.sidebar.info("No courses assigned yet.")
         return
+
+    # Ensure active course
+    active_course_id = st.session_state.get("active_course_id")
+    valid_ids = [c["course_id"] for c in courses]
+
+    if active_course_id not in valid_ids:
+        active_course_id = valid_ids[0]
+        st.session_state.active_course_id = active_course_id
+
+    course_name_map = {c["course_id"]: c["course_name"] for c in courses}
+    current_index = valid_ids.index(active_course_id)
+
+    selected_course_id = st.sidebar.radio(
+        "",
+        options=valid_ids,
+        index=current_index,
+        format_func=lambda cid: course_name_map.get(cid, f"Course {cid}"),
+        key="course_selector"
+    )
+
+    if selected_course_id != active_course_id:
+        st.session_state.active_course_id = selected_course_id
+
+        # 🔒 Reset practice state safely
+        st.session_state.current_lesson_id = None
+        st.session_state.current_word_index = 0
+        st.session_state.show_feedback = False
+        st.session_state.lesson_started = False
+
+        st.experimental_rerun()
 
     if st.session_state.get("lesson_started"):
         raw_lessons = get_lessons_for_course(st.session_state.active_course_id)
