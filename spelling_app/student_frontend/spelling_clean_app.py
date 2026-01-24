@@ -2129,9 +2129,11 @@ def render_student_sidebar(db, user_id):
                 st.session_state.active_mode = "practice"
                 st.session_state.in_practice_mode = True
 
-                # HARD RESET course practice state
+                # FULL COURSE RESET (MANDATORY)
                 st.session_state.practice_words = None
                 st.session_state.practice_index = 0
+                st.session_state.practice_lesson_id = None
+                st.session_state.active_lesson_id = None
                 st.session_state.current_wid = None
                 st.session_state.current_word_pick = None
 
@@ -2142,7 +2144,7 @@ def render_student_sidebar(db, user_id):
                 st.session_state.active_mode = "weak_words"
                 st.session_state.in_practice_mode = True
 
-                # HARD RESET weak words state
+                # FULL WEAK RESET
                 st.session_state.weak_words = None
                 st.session_state.weak_index = 0
                 st.session_state.current_wid = None
@@ -2154,15 +2156,7 @@ def render_student_sidebar(db, user_id):
 
         if st.session_state.practice_source == "courses":
             st.markdown("📘 **Course**", help="Select the course you want to practise")
-            st.markdown("<div style='margin-top:-8px'></div>", unsafe_allow_html=True)
-
-            label = st.radio(
-                "",
-                ["🔤 Pattern Words", "🎯 Word Mastery"],
-                index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
-                key="practice_style_sidebar",
-                label_visibility="collapsed",
-            )
+            st.markdown("<div style='margin-top:-10px'></div>", unsafe_allow_html=True)
 
             courses_raw = get_student_courses(user_id)
             courses = []
