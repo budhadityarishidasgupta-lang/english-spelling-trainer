@@ -291,7 +291,7 @@ def get_landing_content(db):
     register_text = (
         register.body
         if register and register.body
-        else "One-time access to SpellingSprint learning apps\nSecure checkout via PayPal."
+        else "One-time access to SpellingSprint learning apps for £5.99\nSecure checkout via Revolut."
     )
     support_text = (support.body if support and support.body else "Support: support@wordsprint.app")
 
