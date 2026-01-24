@@ -2395,49 +2395,6 @@ def main():
             render_student_home(db, st.session_state.user_id)
 
 
-def render_course_selection(db, user_id):
-    # ⚠️ IMPORTANT:
-    # This function MUST NOT render Practice Style or any sidebar sections.
-    # It ONLY renders course selection.
-
-    st.markdown("📘 **Course**")
-
-    courses_raw = get_student_courses(user_id)
-    courses = []
-
-    for r in courses_raw or []:
-        m = row_to_dict(r)
-        cid = m.get("course_id") or m.get("col_0")
-        cname = m.get("course_name") or m.get("col_1")
-        if cid is not None:
-            courses.append({"id": cid, "name": cname})
-
-    if not courses:
-        st.info("No courses assigned yet.")
-        return
-
-    active_course_id = st.session_state.get("active_course_id")
-    course_ids = [c["id"] for c in courses]
-
-    if active_course_id not in course_ids:
-        active_course_id = course_ids[0]
-        st.session_state.active_course_id = active_course_id
-
-    selected_course_id = st.radio(
-        "",
-        options=course_ids,
-        index=course_ids.index(active_course_id),
-        format_func=lambda cid: next(c["name"] for c in courses if c["id"] == cid),
-        key="course_selector_radio"
-    )
-
-    if selected_course_id != active_course_id:
-        st.session_state.active_course_id = selected_course_id
-        st.session_state.current_lesson_id = None
-        st.session_state.current_word_index = 0
-        st.experimental_rerun()
-
-
 def is_in_practice_mode() -> bool:
     return bool(st.session_state.get("in_practice_mode"))
 
@@ -2477,7 +2434,42 @@ def render_student_sidebar(db, user_id):
         )
 
         if st.session_state.practice_source == "courses":
-            render_course_selection(db, user_id)
+            st.markdown("📘 **Course**")
+
+            courses_raw = get_student_courses(user_id)
+            courses = []
+
+            for r in courses_raw or []:
+                m = row_to_dict(r)
+                cid = m.get("course_id") or m.get("col_0")
+                cname = m.get("course_name") or m.get("col_1")
+                if cid is not None:
+                    courses.append({"id": cid, "name": cname})
+
+            if not courses:
+                st.caption("No courses assigned yet.")
+            else:
+                course_ids = [c["id"] for c in courses]
+                active_course_id = st.session_state.get("active_course_id")
+
+                if active_course_id not in course_ids:
+                    active_course_id = course_ids[0]
+                    st.session_state.active_course_id = active_course_id
+
+                selected_course_id = st.radio(
+                    "",
+                    options=course_ids,
+                    index=course_ids.index(active_course_id),
+                    format_func=lambda cid: next(c["name"] for c in courses if c["id"] == cid),
+                    key="sidebar_course_selector",
+                )
+
+                if selected_course_id != active_course_id:
+                    st.session_state.active_course_id = selected_course_id
+                    st.session_state.current_lesson_id = None
+                    st.session_state.lesson_started = False
+                    st.session_state.practice_index = 0
+                    st.experimental_rerun()
 
         st.markdown("---")
         st.button("🚪 Logout", on_click=logout)
