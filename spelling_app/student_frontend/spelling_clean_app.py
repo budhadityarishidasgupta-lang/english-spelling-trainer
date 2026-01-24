@@ -35,7 +35,7 @@ from spelling_app.repository.spelling_lesson_repo import (
     get_weak_words_for_lesson,
 )
 from spelling_app.repository.weak_words_virtual_lesson_repo import (
-    prepare_system_weak_words_lesson_for_user,
+    get_virtual_weak_words_for_user,
 )
 from spelling_app.repository.student_repo import (
     get_lessons_for_course,
@@ -976,27 +976,13 @@ def render_student_home(db, user_id: int) -> None:
         st.markdown("### 🧠 Weak Words")
         st.markdown(weak_txt)
         if st.button("Start Weak Words"):
-            # course_id is REQUIRED by prepare_system_weak_words_lesson_for_user
-            course_id = (
-                st.session_state.get("active_course_id")
-                or st.session_state.get("selected_course_id")
-            )
+            weak_words = get_virtual_weak_words_for_user(db, user_id)
 
-            if not course_id:
-                st.error("No course selected. Please choose a course first.")
-                st.stop()
-
-            prepared = prepare_system_weak_words_lesson_for_user(
-                user_id=user_id,
-                course_id=int(course_id),
-                limit=50,
-            )
-
-            if not prepared or not prepared.get("words"):
+            if not weak_words:
                 st.info("No weak words yet — great job!")
                 st.stop()
 
-            st.session_state.weak_word_pool = prepared["words"]
+            st.session_state.weak_word_pool = weak_words
             st.session_state.weak_word_index = 0
             st.session_state.page = "weak_words"
             st.rerun()
@@ -1039,47 +1025,32 @@ def render_practice_question(word_ids: list[int]) -> None:
 def render_weak_words_page(user_id: int) -> None:
     st.title("🧠 Weak Words")
 
-    word_ids = st.session_state.get("weak_word_ids", [])
+    weak_words = st.session_state.get("weak_word_pool")
+    if not weak_words:
+        with get_engine_safe().connect() as db:
+            weak_words = get_virtual_weak_words_for_user(db, user_id)
 
-    if not word_ids:
+    if not weak_words:
         st.info("No weak words yet — great job!")
         return
 
-    # Weak words must NOT be course-filtered
-    words = get_words_by_ids(
-        [int(wid) for wid in word_ids if wid is not None]
-    )
+    st.session_state.weak_word_pool = weak_words
 
-    # SAFETY: RowMapping / tuple → dict
-    clean_words = []
-    for w in words:
-        if hasattr(w, "_mapping"):
-            clean_words.append(dict(w._mapping))
-        elif isinstance(w, dict):
-            clean_words.append(w)
+    idx = st.session_state.get("weak_word_index", 0)
 
-    if not clean_words:
-        st.warning("Weak words exist but could not be loaded.")
-        return
-
-    st.session_state.weak_word_pool = clean_words
-    st.session_state.weak_word_index = 0
-
-    idx = st.session_state.get("weak_index", 0)
-
-    if idx >= len(words):
+    if idx >= len(weak_words):
         st.success("🎉 You’ve completed all weak words!")
         return
 
-    current = words[idx]
+    current = weak_words[idx]
 
     def _next(correct: bool):
         if correct:
-            st.session_state.weak_index = idx + 1
+            st.session_state.weak_word_index = idx + 1
 
     render_spelling_question(
         word=current["word"],
-        example_sentence=current.get("example_sentence"),
+        example_sentence=current.get("example_sentence") or current.get("example"),
         hint=current.get("hint"),
         word_id=current["word_id"],
         on_next=_next,
@@ -1870,27 +1841,19 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
             st.markdown("#### 🪨 Weak Words Summary")
             st.metric("Weak Words", len(weak_word_ids))
             if st.button("Weak Words"):
-                # Ensure system weak-words lesson is prepared
-                result = prepare_system_weak_words_lesson_for_user(
-                    user_id=st.session_state.user_id,
-                    limit=50,
-                )
+                with get_engine_safe().connect() as db:
+                    weak_words = get_virtual_weak_words_for_user(
+                        db,
+                        st.session_state.user_id,
+                    )
 
-                if not result or not result.get("words"):
-                    st.info("No weak words yet — great job!")
-                    st.stop()
-
-                weak_word_ids = [
-                    word.get("word_id")
-                    for word in result["words"]
-                    if isinstance(word, dict) and word.get("word_id") is not None
-                ]
-                if not weak_word_ids:
+                if not weak_words:
                     st.info("No weak words yet — great job!")
                     st.stop()
 
                 # Route into weak words page
-                st.session_state.weak_word_ids = weak_word_ids
+                st.session_state.weak_word_pool = weak_words
+                st.session_state.weak_word_index = 0
                 st.session_state.page = "weak_words"
 
                 st.experimental_rerun()
@@ -2450,21 +2413,6 @@ def main():
         st.experimental_rerun()
 
     user_id = st.session_state.get("user_id")
-
-    # Pre-warm weak words system lesson (safe, idempotent)
-    course_id = (
-        st.session_state.get("active_course_id")
-        or st.session_state.get("selected_course_id")
-    )
-
-    if course_id:
-        prepared = prepare_system_weak_words_lesson_for_user(
-            user_id=st.session_state.user_id,
-            course_id=int(course_id),
-            limit=50,
-        )
-    else:
-        prepared = None
 
     if st.session_state.page == "home":
         with get_engine_safe().connect() as db:
