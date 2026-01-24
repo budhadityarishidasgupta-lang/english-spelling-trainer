@@ -1880,6 +1880,12 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
 def render_practice_mode(lesson_id: int, course_id: int):
     import time
 
+    # IMPORTANT:
+    # Do NOT render any sidebar radios here.
+    # Sidebar controls are rendered centrally in main() via _render_student_sidebar()
+    # to prevent duplicates and looping.
+    # Any legacy st.sidebar.* UI below is intentionally disabled.
+
     active_lesson_id = st.session_state.get("active_lesson_id")
 
     ensure_default_mode()
@@ -2392,70 +2398,70 @@ def main():
 
         return  # stop here when logged out
 
-    def is_in_practice_mode():
-        return st.session_state.get("in_practice_mode") is True
+    # ------------------------------------------------------------
+    # LOGGED IN SIDEBAR (ONLY on Practice + Weak Words pages)
+    # Prevents duplicate selectors + fixes “top selector doesn’t work”.
+    # ------------------------------------------------------------
+    def _render_student_sidebar():
+        # Only show sidebar controls on practice/weak_words pages
+        if st.session_state.get("page") not in {"practice", "weak_words"}:
+            return
+
+        st.sidebar.markdown(f"👋 **Hi, {st.session_state.get('user_name') or 'Student'}**")
+        st.sidebar.markdown("### Practice Source")
+
+        current_page = st.session_state.get("page") or "practice"
+        current_label = "Weak Words" if current_page == "weak_words" else "Courses"
+
+        choice = st.sidebar.radio(
+            "",
+            ["Weak Words", "Courses"],
+            index=0 if current_label == "Weak Words" else 1,
+            key="sidebar_practice_source",
+        )
+
+        target_page = "weak_words" if choice == "Weak Words" else "practice"
+        if target_page != st.session_state.get("page"):
+            # minimal state reset to avoid loops / stuck screens
+            st.session_state.page = target_page
+            st.session_state.active_mode = "weak_words" if target_page == "weak_words" else "practice"
+            # do NOT force-reset lessons here (keeps current selection)
+            st.experimental_rerun()
+
+        st.sidebar.markdown("---")
+
+        # Practice Style (single source of truth)
+        st.sidebar.markdown("### ⚙️ Practice Style")
+        style = st.sidebar.radio(
+            "",
+            ["Pattern Words", "Word Mastery"],
+            index=1 if st.session_state.get("practice_style") == "Word Mastery" else 0,
+            key="sidebar_practice_style",
+        )
+        st.session_state.practice_style = style
+
+        st.sidebar.markdown("---")
+        if st.sidebar.button("🚪 Logout", key="sidebar_logout"):
+            logout(st)
+            st.experimental_rerun()
+
+    _render_student_sidebar()
 
     with get_engine_safe().connect() as db:
-        # LOGGED IN
-        if is_in_practice_mode():
-            with st.sidebar:
-
-                # Greeting
-                st.markdown(f"👋 **Hi, {st.session_state.username}**")
-                st.markdown("---")
-
-                # Current source
-                current_source = st.session_state.get("practice_source", "weak")
-
-                st.markdown("📍 **Practising now**")
-                st.markdown("🧠 **Weak Words**" if current_source == "weak" else "📚 **Courses**")
-
-                # Switch (this IS the router)
-                if current_source == "weak":
-                    if st.button("🔁 Switch to 📚 Courses"):
-                        st.session_state.practice_source = "courses"
-                        st.session_state.current_lesson_id = None
-                        st.session_state.current_word_index = 0
-                else:
-                    if st.button("🔁 Switch to 🧠 Weak Words"):
-                        st.session_state.practice_source = "weak"
-                        st.session_state.current_word_index = 0
-
-                st.markdown("---")
-
-                # 🔒 Practice Style — RENDERED ONCE ONLY
-                st.markdown("⚙️ **Practice Style**")
-
-                practice_mode_label = st.radio(
-                    "",
-                    ["🔤 Pattern Words", "⭕ Word Mastery"],
-                    index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
-                    key="sidebar_practice_mode"
-                )
-
-                st.session_state.practice_mode = (
-                    "pattern" if "Pattern" in practice_mode_label else "mastery"
-                )
-
-                st.markdown("---")
-
-                # Course selector ONLY when in courses
-                if st.session_state.practice_source == "courses":
-                    render_course_selection(db, st.session_state.user_id)
-
-                st.markdown("---")
-                st.button("🚪 Logout", on_click=logout)
-
-        if is_in_practice_mode():
-
-            if st.session_state.practice_source == "weak":
-                render_weak_words_practice(db, st.session_state.user_id)
-
-            elif st.session_state.practice_source == "courses":
-                render_course_practice(db, st.session_state.user_id)
-
-        else:
+        # ROUTING
+        if st.session_state.page == "home":
             render_student_home(db, st.session_state.user_id)
+        elif st.session_state.page == "practice":
+            render_course_practice(db, st.session_state.user_id)
+        elif st.session_state.page == "weak_words":
+            if "weak_word_pool" not in st.session_state:
+                weak_words = get_virtual_weak_words_for_user(db, st.session_state.user_id)
+                st.session_state.weak_word_pool = weak_words or []
+                st.session_state.weak_word_index = 0
+            render_weak_words_practice(db, st.session_state.user_id)
+        else:
+            st.session_state.page = "home"
+            st.experimental_rerun()
 
 
 def render_course_selection(db, user_id) -> None:
