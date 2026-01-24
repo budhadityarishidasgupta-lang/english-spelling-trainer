@@ -2326,19 +2326,17 @@ def main():
 
             st.markdown("## Secure Checkout")
 
-            checkout_url = f"{PAYPAL_CHECKOUT_URL}?custom_id={st.session_state.get('registration_token')}"
-
             st.markdown(
-                f"""
+                """
                 <div style="text-align:center; margin: 24px 0;">
-                    <a href="{checkout_url}" target="_blank"
+                    <a href="https://revolut.me/budhadityadg" target="_blank"
                        style="
                          display:inline-flex;
                          align-items:center;
                          justify-content:center;
                          gap:10px;
-                         background-color:#ffc439;
-                         color:#111;
+                         background-color:#111827;
+                         color:#ffffff;
                          font-weight:600;
                          padding:14px 28px;
                          border-radius:8px;
@@ -2346,10 +2344,7 @@ def main():
                          font-size:16px;
                          box-shadow:0 4px 10px rgba(0,0,0,0.25);
                        ">
-                       <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png"
-                            alt="PayPal"
-                            style="height:22px;">
-                       Buy Now with PayPal
+                       💳 Pay Now with Revolut
                     </a>
                 </div>
                 """,
