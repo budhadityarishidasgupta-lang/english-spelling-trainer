@@ -2391,87 +2391,47 @@ def main():
             render_student_home(db, st.session_state.user_id)
 
 
-def render_course_selection(db, user_id) -> None:
+def render_course_selection(db, user_id):
+    # ⚠️ IMPORTANT:
+    # This function MUST NOT render Practice Style or any sidebar sections.
+    # It ONLY renders course selection.
 
     st.markdown("📘 **Course**")
 
     courses_raw = get_student_courses(user_id)
-
-    # Normalize rows safely
     courses = []
+
     for r in courses_raw or []:
         m = row_to_dict(r)
-        course_id = m.get("course_id") or m.get("col_0")
-        course_name = m.get("course_name") or m.get("col_1")
-        if course_id is None:
-            continue
-        courses.append({"course_id": course_id, "course_name": course_name})
-
-    st.session_state["courses"] = courses
+        cid = m.get("course_id") or m.get("col_0")
+        cname = m.get("course_name") or m.get("col_1")
+        if cid is not None:
+            courses.append({"id": cid, "name": cname})
 
     if not courses:
         st.info("No courses assigned yet.")
         return
 
-    # Ensure active course
     active_course_id = st.session_state.get("active_course_id")
-    valid_ids = [c["course_id"] for c in courses]
+    course_ids = [c["id"] for c in courses]
 
-    if active_course_id not in valid_ids:
-        active_course_id = valid_ids[0]
+    if active_course_id not in course_ids:
+        active_course_id = course_ids[0]
         st.session_state.active_course_id = active_course_id
-
-    course_name_map = {c["course_id"]: c["course_name"] for c in courses}
-    current_index = valid_ids.index(active_course_id)
 
     selected_course_id = st.radio(
         "",
-        options=valid_ids,
-        index=current_index,
-        format_func=lambda cid: course_name_map.get(cid, f"Course {cid}"),
-        key="course_selector"
+        options=course_ids,
+        index=course_ids.index(active_course_id),
+        format_func=lambda cid: next(c["name"] for c in courses if c["id"] == cid),
+        key="course_selector_radio"
     )
 
     if selected_course_id != active_course_id:
         st.session_state.active_course_id = selected_course_id
-
-        # 🔒 Reset practice state safely
         st.session_state.current_lesson_id = None
         st.session_state.current_word_index = 0
-        st.session_state.show_feedback = False
-        st.session_state.lesson_started = False
-
         st.experimental_rerun()
-
-    if st.session_state.get("lesson_started"):
-        raw_lessons = get_lessons_for_course(st.session_state.active_course_id)
-        lessons = [row_to_dict(r) for r in raw_lessons if row_to_dict(r)]
-
-        lesson_map = {
-            l["lesson_id"]: (l.get("display_name") or l.get("lesson_name"))
-            for l in lessons
-            if l.get("lesson_id") is not None
-        }
-
-        selected_lesson_id = st.selectbox(
-            "Change lesson",
-            options=list(lesson_map.keys()),
-            format_func=lambda lid: lesson_map[lid],
-            index=list(lesson_map.keys()).index(st.session_state.active_lesson_id),
-        )
-
-        if selected_lesson_id != st.session_state.active_lesson_id:
-            resume_index = get_resume_index_for_lesson(
-                user_id=st.session_state.user_id,
-                lesson_id=selected_lesson_id,
-            )
-
-            st.session_state.active_lesson_id = selected_lesson_id
-            st.session_state.practice_index = resume_index or 0
-            st.session_state.current_wid = None
-            st.session_state.word_state = "editing"
-
-            st.experimental_rerun()
 
 
 def is_in_practice_mode() -> bool:
