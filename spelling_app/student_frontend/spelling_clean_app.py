@@ -229,7 +229,7 @@ SESSION_KEYS = [
     "is_logged_in",
     "user_id",
     "user_name",
-    "page",
+    "practice_source",
     "selected_course_id",
     "practice_index",
     "in_practice_mode",
@@ -237,6 +237,7 @@ SESSION_KEYS = [
 
 SESSION_KEYS.extend([
     "practice_mode",
+    "practice_flow_mode",
     "selected_level",
     "selected_lesson",
     "prev_lesson_id",
@@ -403,6 +404,8 @@ def initialize_session_state(st_module):
                 st_module.session_state[key] = "Guest"
             elif key == "in_practice_mode":
                 st_module.session_state[key] = False
+            elif key == "practice_source":
+                st_module.session_state[key] = "weak"
             else:
                 st_module.session_state[key] = None
 
@@ -739,7 +742,7 @@ def check_login(st_module, email: str, password: str) -> bool:
         st_module.session_state.username = (
             row.get("name") or row.get("email") or "Student"
         )
-        st_module.session_state.page = "home"
+        st_module.session_state.in_practice_mode = False
         return True
 
     return False
@@ -750,6 +753,7 @@ def logout(st_module=None):
         st_module = st
     cleanup_keys = SESSION_KEYS + [
         "practice_mode",
+        "practice_flow_mode",
         "current_wid",
         "current_word_pick",
         "word_state",
@@ -912,39 +916,19 @@ def ensure_default_mode():
     """
     Ensure we always have a valid practice_mode in session.
     """
-    if "practice_mode" not in st.session_state:
-        st.session_state.practice_mode = "lesson"
+    if not st.session_state.get("practice_flow_mode"):
+        st.session_state.practice_flow_mode = "Practice"
     elif (
-        st.session_state.practice_mode not in PRACTICE_MODES
-        and st.session_state.practice_mode not in VALID_PRACTICE_MODES
+        st.session_state.practice_flow_mode not in PRACTICE_MODES
+        and st.session_state.practice_flow_mode not in VALID_PRACTICE_MODES
     ):
-        st.session_state.practice_mode = "lesson"
-    elif st.session_state.practice_mode == "Daily 5":
-        st.session_state.practice_mode = "lesson"
+        st.session_state.practice_flow_mode = "Practice"
+    elif st.session_state.practice_flow_mode == "Daily 5":
+        st.session_state.practice_flow_mode = "Practice"
 
 
 def normalized_practice_mode():
-    return (st.session_state.get("practice_mode") or "practice").lower()
-
-
-def render_mode_selector_sidebar():
-    """
-    Renders a simple mode selector in the sidebar.
-    For now, only 'Practice' is fully implemented; the others show placeholders.
-    """
-    ensure_default_mode()
-
-    st.sidebar.markdown("### 🎯 Mode")
-    current_mode = st.sidebar.radio(
-        "Choose how you want to work today:",
-        PRACTICE_MODES,
-        index=PRACTICE_MODES.index(st.session_state.practice_mode),
-    )
-    if current_mode != st.session_state.practice_mode:
-        st.session_state.practice_mode = current_mode
-        # When changing mode, send user back to dashboard for a clean flow.
-        st.session_state.page = "practice"
-        st.experimental_rerun()
+    return (st.session_state.get("practice_flow_mode") or "practice").lower()
 
 
 def render_mode_cards(db, user_id, selected_lesson_id):
@@ -955,8 +939,7 @@ def render_mode_cards(db, user_id, selected_lesson_id):
         if st.button("✏️ Practice", use_container_width=True):
             st.session_state.active_mode = "practice"
             st.session_state.mode = "Practice"
-            st.session_state.practice_mode = "Practice"
-            st.session_state.page = "practice"
+            st.session_state.practice_flow_mode = "Practice"
             st.experimental_rerun()
 
 
@@ -978,7 +961,6 @@ def render_student_home(db, user_id: int) -> None:
     if st.button("Start Practice"):
         st.session_state.in_practice_mode = True
         st.session_state.practice_source = "courses"
-        st.session_state.page = "practice"
         st.experimental_rerun()
 
     # Weak Words section (conditional)
@@ -996,7 +978,6 @@ def render_student_home(db, user_id: int) -> None:
             st.session_state.practice_source = "weak"
             st.session_state.weak_word_pool = weak_words
             st.session_state.weak_word_index = 0
-            st.session_state.page = "weak_words"
             st.rerun()
 
 
@@ -1036,6 +1017,11 @@ def render_practice_question(word_ids: list[int]) -> None:
 
 def render_weak_words_practice(db, user_id: int) -> None:
     st.title("🧠 Weak Words")
+
+    if "weak_word_pool" not in st.session_state:
+        weak_words = get_virtual_weak_words_for_user(db, user_id)
+        st.session_state.weak_word_pool = weak_words or []
+        st.session_state.weak_word_index = 0
 
     weak_words = st.session_state.get("weak_word_pool") or []
     if not weak_words:
@@ -1102,7 +1088,7 @@ def render_student_dashboard():
 
     # Show current mode to the student
     ensure_default_mode()
-    mode_label = st.session_state.practice_mode
+    mode_label = st.session_state.practice_flow_mode
 
     st.success(f"Mode: **{mode_label}**")
 
@@ -1118,7 +1104,7 @@ def render_student_dashboard():
 ###########################################################
 def render_practice_page():
     ensure_default_mode()
-    mode = st.session_state.practice_mode
+    mode = st.session_state.practice_flow_mode
 
     # Top title reflects current mode
     if mode == "Practice":
@@ -1150,7 +1136,6 @@ def render_practice_page():
 
     if not cid or not lesson_id:
         st.error("No lesson selected. Choose from the lesson catalogue.")
-        st.session_state.page = "practice"
         st.experimental_rerun()
         return
 
@@ -1185,7 +1170,8 @@ def render_practice_page():
         st.success("🎉 You finished all words!")
         if st.button("Back to Courses"):
             st.session_state.practice_index = 0
-            st.session_state.page = "practice"
+            st.session_state.practice_source = "courses"
+            st.session_state.in_practice_mode = True
             st.experimental_rerun()
         return
 
@@ -1212,7 +1198,7 @@ def render_practice_page():
 
 
     if normalized_practice_mode() != "daily-5":
-        if practice_mode == "Weak Words":
+        if mode == "Weak Words":
             # Weak Words counter should reflect only weak words in this lesson
             lesson_id = st.session_state.get("active_lesson_id")
 
@@ -1454,11 +1440,7 @@ def render_practice_page():
 
         st.experimental_rerun()
 
-    # Sidebar navigation
-    if st.sidebar.button("Back to Courses"):
-        st.session_state.practice_index = 0
-        st.session_state.page = "practice"
-        st.experimental_rerun()
+    # Sidebar navigation removed (centralized in render_student_sidebar)
 
 
 
@@ -1860,7 +1842,8 @@ def render_learning_dashboard(user_id: int, course_id: int, xp_total: int, strea
                 # Route into weak words page
                 st.session_state.weak_word_pool = weak_words
                 st.session_state.weak_word_index = 0
-                st.session_state.page = "weak_words"
+                st.session_state.practice_source = "weak"
+                st.session_state.in_practice_mode = True
 
                 st.experimental_rerun()
             st.caption("Weak words are those below 60% accuracy or missed twice recently.")
@@ -1882,15 +1865,15 @@ def render_practice_mode(lesson_id: int, course_id: int):
 
     # IMPORTANT:
     # Do NOT render any sidebar radios here.
-    # Sidebar controls are rendered centrally in main() via _render_student_sidebar()
+    # Sidebar controls are rendered centrally in main() via render_student_sidebar()
     # to prevent duplicates and looping.
     # Any legacy st.sidebar.* UI below is intentionally disabled.
 
     active_lesson_id = st.session_state.get("active_lesson_id")
 
     ensure_default_mode()
-    practice_mode = st.session_state.get("practice_mode", "Practice") or "Practice"
-    st.session_state.practice_mode = practice_mode
+    practice_flow_mode = st.session_state.get("practice_flow_mode", "Practice") or "Practice"
+    st.session_state.practice_flow_mode = practice_flow_mode
     user_id = st.session_state.get("user_id")
 
     # -----------------------------
@@ -2027,8 +2010,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.info("No weak words for this lesson yet 👍")
             if st.button("▶️ Go to Practice"):
                 st.session_state.active_mode = "practice"
-                st.session_state.practice_mode = "Practice"
-                st.session_state.page = "practice"
+                st.session_state.practice_flow_mode = "Practice"
+                st.session_state.practice_source = "courses"
+                st.session_state.in_practice_mode = True
                 st.experimental_rerun()
             st.stop()
         if st.session_state.weak_words is None:
@@ -2053,8 +2037,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 st.info("No weak words for this lesson yet 👍")
                 if st.button("▶️ Go to Practice"):
                     st.session_state.active_mode = "practice"
-                    st.session_state.practice_mode = "Practice"
-                    st.session_state.page = "practice"
+                    st.session_state.practice_flow_mode = "Practice"
+                    st.session_state.practice_source = "courses"
+                    st.session_state.in_practice_mode = True
                     st.experimental_rerun()
                 st.stop()
 
@@ -2154,7 +2139,7 @@ def render_practice_mode(lesson_id: int, course_id: int):
             st.session_state.pop("daily5_words", None)
             st.session_state.pop("daily5_index", None)
             st.session_state.daily5_active = False
-            st.session_state.practice_mode = "lesson"
+            st.session_state.practice_flow_mode = "Practice"
 
             st.experimental_rerun()
         else:
@@ -2178,8 +2163,9 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 with col2:
                     if st.button("▶️ Go to Practice"):
                         st.session_state.active_mode = "practice"
-                        st.session_state.practice_mode = "Practice"
-                        st.session_state.page = "practice"
+                        st.session_state.practice_flow_mode = "Practice"
+                        st.session_state.practice_source = "courses"
+                        st.session_state.in_practice_mode = True
                         st.experimental_rerun()
                 st.stop()
         else:
@@ -2278,11 +2264,6 @@ def main():
 
     inject_student_css()
     initialize_session_state(st)
-
-    if "page" not in st.session_state or st.session_state.page is None:
-        st.session_state.page = "home"
-    elif st.session_state.page not in {"home", "practice", "weak_words"}:
-        st.session_state.page = "home"
 
     if "mode" not in st.session_state:
         st.session_state.mode = None
@@ -2398,70 +2379,16 @@ def main():
 
         return  # stop here when logged out
 
-    # ------------------------------------------------------------
-    # LOGGED IN SIDEBAR (ONLY on Practice + Weak Words pages)
-    # Prevents duplicate selectors + fixes “top selector doesn’t work”.
-    # ------------------------------------------------------------
-    def _render_student_sidebar():
-        # Only show sidebar controls on practice/weak_words pages
-        if st.session_state.get("page") not in {"practice", "weak_words"}:
-            return
-
-        st.sidebar.markdown(f"👋 **Hi, {st.session_state.get('user_name') or 'Student'}**")
-        st.sidebar.markdown("### Practice Source")
-
-        current_page = st.session_state.get("page") or "practice"
-        current_label = "Weak Words" if current_page == "weak_words" else "Courses"
-
-        choice = st.sidebar.radio(
-            "",
-            ["Weak Words", "Courses"],
-            index=0 if current_label == "Weak Words" else 1,
-            key="sidebar_practice_source",
-        )
-
-        target_page = "weak_words" if choice == "Weak Words" else "practice"
-        if target_page != st.session_state.get("page"):
-            # minimal state reset to avoid loops / stuck screens
-            st.session_state.page = target_page
-            st.session_state.active_mode = "weak_words" if target_page == "weak_words" else "practice"
-            # do NOT force-reset lessons here (keeps current selection)
-            st.experimental_rerun()
-
-        st.sidebar.markdown("---")
-
-        # Practice Style (single source of truth)
-        st.sidebar.markdown("### ⚙️ Practice Style")
-        style = st.sidebar.radio(
-            "",
-            ["Pattern Words", "Word Mastery"],
-            index=1 if st.session_state.get("practice_style") == "Word Mastery" else 0,
-            key="sidebar_practice_style",
-        )
-        st.session_state.practice_style = style
-
-        st.sidebar.markdown("---")
-        if st.sidebar.button("🚪 Logout", key="sidebar_logout"):
-            logout(st)
-            st.experimental_rerun()
-
-    _render_student_sidebar()
-
     with get_engine_safe().connect() as db:
-        # ROUTING
-        if st.session_state.page == "home":
-            render_student_home(db, st.session_state.user_id)
-        elif st.session_state.page == "practice":
-            render_course_practice(db, st.session_state.user_id)
-        elif st.session_state.page == "weak_words":
-            if "weak_word_pool" not in st.session_state:
-                weak_words = get_virtual_weak_words_for_user(db, st.session_state.user_id)
-                st.session_state.weak_word_pool = weak_words or []
-                st.session_state.weak_word_index = 0
-            render_weak_words_practice(db, st.session_state.user_id)
+        if is_in_practice_mode():
+            render_student_sidebar(db, st.session_state.user_id)
+
+            if st.session_state.practice_source == "weak":
+                render_weak_words_practice(db, st.session_state.user_id)
+            else:
+                render_course_practice(db, st.session_state.user_id)
         else:
-            st.session_state.page = "home"
-            st.experimental_rerun()
+            render_student_home(db, st.session_state.user_id)
 
 
 def render_course_selection(db, user_id) -> None:
@@ -2545,6 +2472,51 @@ def render_course_selection(db, user_id) -> None:
             st.session_state.word_state = "editing"
 
             st.experimental_rerun()
+
+
+def is_in_practice_mode() -> bool:
+    return bool(st.session_state.get("in_practice_mode"))
+
+
+def render_student_sidebar(db, user_id):
+    with st.sidebar:
+        st.markdown(f"👋 **Hi, {st.session_state.username}**")
+        st.markdown("---")
+
+        current_source = st.session_state.get("practice_source", "weak")
+
+        st.markdown("📍 **Practising now**")
+        st.markdown("🧠 **Weak Words**" if current_source == "weak" else "📚 **Courses**")
+
+        if current_source == "weak":
+            if st.button("🔁 Switch to 📚 Courses"):
+                st.session_state.practice_source = "courses"
+                st.session_state.current_lesson_id = None
+                st.session_state.current_word_index = 0
+        else:
+            if st.button("🔁 Switch to 🧠 Weak Words"):
+                st.session_state.practice_source = "weak"
+                st.session_state.current_word_index = 0
+
+        st.markdown("---")
+
+        st.markdown("⚙️ **Practice Style**")
+        label = st.radio(
+            "",
+            ["🔤 Pattern Words", "⭕ Word Mastery"],
+            index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
+            key="practice_style_sidebar"
+        )
+
+        st.session_state.practice_mode = (
+            "pattern" if "Pattern" in label else "mastery"
+        )
+
+        if st.session_state.practice_source == "courses":
+            render_course_selection(db, user_id)
+
+        st.markdown("---")
+        st.button("🚪 Logout", on_click=logout)
 
 
 def render_course_practice(db, user_id) -> None:
