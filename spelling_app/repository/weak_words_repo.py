@@ -5,14 +5,7 @@ def fetch_user_weak_words(conn, user_id: int):
     sql = """
         SELECT DISTINCT
             w.word_id,
-            w.word,
-            w.example,
-            w.example_sentence,
-            w.hint,
-            w.pattern,
-            w.pattern_code,
-            w.level,
-            w.difficulty
+            w.word
         FROM spelling_attempts a
         JOIN spelling_words w
           ON w.word_id = a.word_id
