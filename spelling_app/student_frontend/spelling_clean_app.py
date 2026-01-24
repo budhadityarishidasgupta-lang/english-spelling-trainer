@@ -1034,19 +1034,13 @@ def render_practice_question(word_ids: list[int]) -> None:
     )
 
 
-def render_weak_words_page(user_id: int) -> None:
+def render_weak_words_practice(db, user_id: int) -> None:
     st.title("🧠 Weak Words")
 
-    weak_words = st.session_state.get("weak_word_pool")
-    if not weak_words:
-        with get_engine_safe().connect() as db:
-            weak_words = get_virtual_weak_words_for_user(db, user_id)
-
+    weak_words = st.session_state.get("weak_word_pool") or []
     if not weak_words:
         st.info("No weak words yet — great job!")
         return
-
-    st.session_state.weak_word_pool = weak_words
 
     idx = st.session_state.get("weak_word_index", 0)
 
@@ -2401,77 +2395,72 @@ def main():
     def is_in_practice_mode():
         return st.session_state.get("in_practice_mode") is True
 
-    # LOGGED IN
-    if is_in_practice_mode():
-        with st.sidebar:
+    with get_engine_safe().connect() as db:
+        # LOGGED IN
+        if is_in_practice_mode():
+            with st.sidebar:
 
-            # Greeting
-            st.markdown("👋 **Hi, {}**".format(st.session_state.get("username", "")))
-            st.markdown("---")
+                # Greeting
+                st.markdown(f"👋 **Hi, {st.session_state.username}**")
+                st.markdown("---")
 
-            # Current practice context
-            current_source = st.session_state.get("practice_source", "weak")
+                # Current source
+                current_source = st.session_state.get("practice_source", "weak")
 
-            st.markdown("📍 **Practising now**")
-            if current_source == "weak":
-                st.markdown("🧠 **Weak Words**")
-            else:
-                st.markdown("📚 **Courses**")
+                st.markdown("📍 **Practising now**")
+                st.markdown("🧠 **Weak Words**" if current_source == "weak" else "📚 **Courses**")
 
-            st.markdown("")
+                # Switch (this IS the router)
+                if current_source == "weak":
+                    if st.button("🔁 Switch to 📚 Courses"):
+                        st.session_state.practice_source = "courses"
+                        st.session_state.current_lesson_id = None
+                        st.session_state.current_word_index = 0
+                else:
+                    if st.button("🔁 Switch to 🧠 Weak Words"):
+                        st.session_state.practice_source = "weak"
+                        st.session_state.current_word_index = 0
 
-            # Switch action (intentional, not a toggle)
-            if current_source == "weak":
-                if st.button("🔁 Switch to 📚 Courses"):
-                    st.session_state.practice_source = "courses"
-                    st.session_state.current_lesson_id = None
-                    st.session_state.current_word_index = 0
-            else:
-                if st.button("🔁 Switch to 🧠 Weak Words"):
-                    st.session_state.practice_source = "weak"
-                    st.session_state.current_lesson_id = None
-                    st.session_state.current_word_index = 0
+                st.markdown("---")
 
-            st.markdown("---")
+                # 🔒 Practice Style — RENDERED ONCE ONLY
+                st.markdown("⚙️ **Practice Style**")
 
-            # Practice style (unchanged logic)
-            st.markdown("⚙️ **Practice Style**")
+                practice_mode_label = st.radio(
+                    "",
+                    ["🔤 Pattern Words", "⭕ Word Mastery"],
+                    index=0 if st.session_state.get("practice_mode", "pattern") == "pattern" else 1,
+                    key="sidebar_practice_mode"
+                )
 
-            practice_mode = st.radio(
-                "",
-                ["🔤 Pattern Words", "⭕ Word Mastery"],
-                index=0 if st.session_state.get("practice_mode") == "pattern" else 1
-            )
+                st.session_state.practice_mode = (
+                    "pattern" if "Pattern" in practice_mode_label else "mastery"
+                )
 
-            st.session_state.practice_mode = (
-                "pattern" if "Pattern" in practice_mode else "mastery"
-            )
+                st.markdown("---")
 
-            st.markdown("---")
+                # Course selector ONLY when in courses
+                if st.session_state.practice_source == "courses":
+                    render_course_selection(db, st.session_state.user_id)
 
-            # Logout
-            st.button("🚪 Logout", on_click=logout)
+                st.markdown("---")
+                st.button("🚪 Logout", on_click=logout)
 
-    user_id = st.session_state.get("user_id")
+        if is_in_practice_mode():
 
-    if is_in_practice_mode():
-        if st.session_state.get("practice_source", "weak") == "weak":
-            render_weak_words_page(user_id)
-            return
-        if st.session_state.get("practice_source") == "courses":
-            with get_engine_safe().connect() as db:
-                render_course_selection(db, user_id)
-            return
-    else:
-        st.session_state.in_practice_mode = False
-        with get_engine_safe().connect() as db:
+            if st.session_state.practice_source == "weak":
+                render_weak_words_practice(db, st.session_state.user_id)
+
+            elif st.session_state.practice_source == "courses":
+                render_course_practice(db, st.session_state.user_id)
+
+        else:
             render_student_home(db, st.session_state.user_id)
-        return
 
 
 def render_course_selection(db, user_id) -> None:
 
-    st.sidebar.markdown("📘 **Course**")
+    st.markdown("📘 **Course**")
 
     courses_raw = get_student_courses(user_id)
 
@@ -2488,7 +2477,7 @@ def render_course_selection(db, user_id) -> None:
     st.session_state["courses"] = courses
 
     if not courses:
-        st.sidebar.info("No courses assigned yet.")
+        st.info("No courses assigned yet.")
         return
 
     # Ensure active course
@@ -2502,7 +2491,7 @@ def render_course_selection(db, user_id) -> None:
     course_name_map = {c["course_id"]: c["course_name"] for c in courses}
     current_index = valid_ids.index(active_course_id)
 
-    selected_course_id = st.sidebar.radio(
+    selected_course_id = st.radio(
         "",
         options=valid_ids,
         index=current_index,
@@ -2531,7 +2520,7 @@ def render_course_selection(db, user_id) -> None:
             if l.get("lesson_id") is not None
         }
 
-        selected_lesson_id = st.sidebar.selectbox(
+        selected_lesson_id = st.selectbox(
             "Change lesson",
             options=list(lesson_map.keys()),
             format_func=lambda lid: lesson_map[lid],
@@ -2551,6 +2540,22 @@ def render_course_selection(db, user_id) -> None:
 
             st.experimental_rerun()
 
+
+def render_course_practice(db, user_id) -> None:
+    courses = st.session_state.get("courses")
+    active_course_id = st.session_state.get("active_course_id")
+
+    if not courses:
+        courses = [row_to_dict(r) for r in (get_student_courses(user_id) or [])]
+
+    if not active_course_id and courses:
+        active_course_id = courses[0].get("course_id") or courses[0].get("col_0")
+
+    if not active_course_id:
+        st.info("No courses assigned yet.")
+        return
+
+    if st.session_state.get("lesson_started"):
         render_practice_mode(
             lesson_id=st.session_state["active_lesson_id"],
             course_id=st.session_state["active_course_id"],
@@ -2562,12 +2567,8 @@ def render_course_selection(db, user_id) -> None:
         for c in courses
     }
 
-    active_course_id = st.session_state.get("active_course_id")
-
     if active_course_id not in course_map:
-        # default to the first available course when none is active
-        active_course_id = courses[0]["course_id"]
-        st.session_state["active_course_id"] = active_course_id
+        active_course_id = list(course_map.keys())[0]
 
     st.session_state.selected_course_title = course_map[active_course_id]
 
