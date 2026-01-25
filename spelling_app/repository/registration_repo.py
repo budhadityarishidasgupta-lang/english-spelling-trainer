@@ -1,5 +1,8 @@
 import secrets
+from datetime import datetime
 from typing import Optional
+
+from sqlalchemy import text
 
 from shared.db import execute, fetch_all
 
@@ -118,3 +121,36 @@ def mark_registration_verified_by_token(token: str) -> bool:
     )
 
     return True
+
+
+def get_pending_registrations():
+    return fetch_all(
+        """
+        SELECT id, student_name, email, created_at
+        FROM pending_registrations
+        WHERE status = 'PENDING'
+        ORDER BY created_at ASC
+        """
+    )
+
+
+def approve_registration(reg_id: int):
+    execute(
+        """
+        UPDATE pending_registrations
+        SET status = 'APPROVED', reviewed_at = :now
+        WHERE id = :id
+        """,
+        {"id": reg_id, "now": datetime.utcnow()},
+    )
+
+
+def reject_registration(reg_id: int):
+    execute(
+        """
+        UPDATE pending_registrations
+        SET status = 'REJECTED', reviewed_at = :now
+        WHERE id = :id
+        """,
+        {"id": reg_id, "now": datetime.utcnow()},
+    )
