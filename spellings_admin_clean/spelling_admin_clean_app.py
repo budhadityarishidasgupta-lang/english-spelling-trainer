@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+from sqlalchemy import text
 
 # other imports…
 
@@ -312,6 +313,32 @@ def get_spelling_students_only():
     return [dict(r._mapping) for r in rows]
 
 
+def get_active_spelling_students(db):
+    rows = db.execute(text("""
+        SELECT DISTINCT
+            u.user_id,
+            u.name,
+            u.email,
+            u.is_active
+        FROM users u
+        LEFT JOIN spelling_student_courses ssc
+            ON ssc.user_id = u.user_id
+        LEFT JOIN spelling_class_students scs
+            ON scs.user_id = u.user_id
+        LEFT JOIN spelling_attempts sa
+            ON sa.user_id = u.user_id
+        WHERE u.is_active = TRUE
+          AND (
+                ssc.user_id IS NOT NULL
+             OR scs.user_id IS NOT NULL
+             OR sa.user_id IS NOT NULL
+          )
+        ORDER BY u.name
+    """)).mappings().all()
+
+    return list(rows)
+
+
 def render_class_student_assignment():
     st.subheader("👩‍🎓 Assign Students to Class")
 
@@ -475,33 +502,20 @@ def render_class_management(db):
 def render_student_course_assignment(db):
     st.subheader("🎯 Student ↔ Course Assignment")
 
-    rows = rows_to_dicts(fetch_all(
-        """
-        SELECT DISTINCT
-            u.user_id,
-            u.name,
-            u.email
-        FROM users u
-        JOIN pending_registrations pr
-          ON pr.email = u.email
-        WHERE u.is_active = true
-          AND pr.app = 'spelling'
-        ORDER BY u.name
-        """
-    ))
-    if not rows:
+    students = get_active_spelling_students(db)
+    if not students:
         st.info("No active spelling students found.")
         return
 
     student_map = {
-        f"{r['name']} ({r['email']})": r["user_id"]
-        for r in rows
+        f"{student['name']} ({student['email']})": student["user_id"]
+        for student in students
     }
 
     selected_label = st.selectbox(
         "Select student",
         list(student_map.keys()),
-        key="admin_student_course_assignment_student",
+        key="student_course_assignment_select",
     )
     user_id = student_map[selected_label]
 
