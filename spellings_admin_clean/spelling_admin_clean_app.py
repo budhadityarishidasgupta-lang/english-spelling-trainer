@@ -8,6 +8,7 @@ import base64
 import io
 import os
 from pathlib import Path
+import bcrypt
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
@@ -202,51 +203,74 @@ def get_pending_spelling_registrations(db):
 
 
 def approve_spelling_registration(db, pending_id: int):
-    """
-    Approve a pending registration:
-    1. Create user in users table
-    2. Delete pending record
-    """
-    with db.begin() as conn:
-        row = conn.execute(
+    DEFAULT_PASSWORD = "Learn123!"
+
+    with db.connect() as conn:
+        pending = conn.execute(
             text(
                 """
-                SELECT student_name, email
+                SELECT id, student_name, email
                 FROM spelling_pending_registrations
                 WHERE id = :pid
+                  AND status = 'PENDING'
                 """
             ),
             {"pid": pending_id},
         ).mappings().first()
 
-        if not row:
-            return False
+        if not pending:
+            st.warning("Pending registration not found or already processed.")
+            return
 
-        conn.execute(
+        password_hash = bcrypt.hashpw(
+            DEFAULT_PASSWORD.encode(),
+            bcrypt.gensalt(),
+        ).decode()
+
+        user_row = conn.execute(
             text(
                 """
-                INSERT INTO users (name, email, role, is_active)
-                VALUES (:name, :email, 'student', TRUE)
+                INSERT INTO users (name, email, password_hash, role, is_active)
+                VALUES (:name, :email, :password_hash, 'student', TRUE)
                 RETURNING user_id
                 """
             ),
             {
-                "name": row["student_name"],
-                "email": row["email"],
+                "name": pending["student_name"],
+                "email": pending["email"],
+                "password_hash": password_hash,
             },
-        )
+        ).fetchone()
+
+        user_id = user_row[0]
 
         conn.execute(
             text(
                 """
-                DELETE FROM spelling_pending_registrations
+                UPDATE spelling_pending_registrations
+                SET
+                    status = 'APPROVED',
+                    processed_at = NOW(),
+                    created_user_id = :uid
                 WHERE id = :pid
                 """
             ),
-            {"pid": pending_id},
+            {"pid": pending_id, "uid": user_id},
         )
 
-    return True
+        conn.commit()
+
+    st.success("✅ Student approved successfully")
+    st.info(
+        f"""
+        **Login details for student**
+
+        📧 Email: `{pending['email']}`  
+        🔑 Default password: `Learn123!`
+
+        Ask the student to log in and change the password.
+        """
+    )
 
 
 def reject_spelling_registration(db, pending_id: int):
