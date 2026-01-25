@@ -32,97 +32,44 @@ from spelling_app.utils.ui_components import inject_css
 # =========================================================
 
 def render_admin_console_vnext(engine):
-    """
-    Admin Console vNext
-    OVERVIEW ONLY.
-    All mutations remain in legacy sidebar.
-    """
+    st.markdown("## 🛠️ Admin Console")
 
-    from spelling_app.repository.admin_console_vnext_repo import (
-        list_courses,
-        list_lessons,
-        list_student_progress,
+    # Minimal spacing / clean header
+    st.markdown(
+        """
+        <style>
+          .block-container { padding-top: 1.2rem; }
+          section[data-testid="stSidebar"] .block-container { padding-top: 1.0rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    from spelling_app.repository.student_repo import (
-        list_registered_spelling_students,
+    # ✅ New wireframe tabs
+    t_courses, t_students, t_content, t_hints = st.tabs(
+        ["📚 Courses", "👥 Students", "📝 Content", "🧠 Hints"]
     )
 
-    st.divider()
-    st.subheader("🧪 Admin Console vNext")
-    st.caption("Overview & monitoring only. Use sidebar for management actions.")
+    with t_courses:
+        st.markdown("### Courses — upload, download, edit")
+        # Existing new-style course manager
+        selected_course_id = render_course_management()
+        st.session_state["selected_course_id"] = selected_course_id
 
-    tab_courses, tab_lessons, tab_students, tab_progress = st.tabs(
-        ["Courses", "Lessons", "Students", "Progress"]
-    )
+    with t_students:
+        st.markdown("### Students — register, approve, assign, archive, analytics")
+        render_student_management()
+        st.markdown("---")
+        render_pending_registrations()
 
-    # -----------------------------
-    # Courses (Overview)
-    # -----------------------------
-    with tab_courses:
-        st.subheader("Courses")
+    with t_content:
+        st.markdown("### Content — everything shown in Student UI comes from here")
+        render_student_home_content()
 
-        df_courses = list_courses(engine)
-        if df_courses.empty:
-            st.info("No courses found.")
-        else:
-            st.dataframe(df_courses, use_container_width=True)
-
-        st.info("Create, upload, rename, archive → Course Management (sidebar)")
-
-    # -----------------------------
-    # Lessons (Overview)
-    # -----------------------------
-    with tab_lessons:
-        st.subheader("Lessons")
-
-        df_courses = list_courses(engine)
-        if df_courses.empty:
-            st.info("No courses available.")
-        else:
-            course_id = st.selectbox(
-                "Select course",
-                df_courses["course_id"].tolist(),
-                format_func=lambda x: df_courses.loc[
-                    df_courses["course_id"] == x, "course_name"
-                ].values[0],
-            )
-
-            df_lessons = list_lessons(engine, course_id)
-            if df_lessons.empty:
-                st.info("No lessons for this course.")
-            else:
-                st.dataframe(df_lessons, use_container_width=True)
-
-        st.info("Lesson edits & CSV uploads → Course Management (sidebar)")
-
-    # -----------------------------
-    # Students
-    # -----------------------------
-    with tab_students:
-        st.subheader("Students")
-
-        students = list_registered_spelling_students()
-        if not students:
-            st.info("No spelling students found.")
-        else:
-            st.dataframe(students, use_container_width=True)
-
-        st.caption("Class & assignment features coming in Patch 3")
-
-    # -----------------------------
-    # Progress (Preview)
-    # -----------------------------
-    with tab_progress:
-        st.subheader("Progress (Preview)")
-
-        st.warning(
-            "Progress is currently aggregated. "
-            "Spelling-only filtering will be applied next."
-        )
-
-        df_progress = list_student_progress(engine)
-        st.dataframe(df_progress, use_container_width=True)
+    with t_hints:
+        st.markdown("### Hints — AI Draft → Review → Approve")
+        selected_course_id = st.session_state.get("selected_course_id")
+        render_csv_ingestion(selected_course_id)
 
 
 from spellings_admin_clean.spelling_help_text_repo import (
