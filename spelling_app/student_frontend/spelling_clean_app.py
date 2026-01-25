@@ -1795,7 +1795,6 @@ def render_practice_mode(lesson_id: int, course_id: int):
                 return
 
             st.session_state.practice_words = words
-            st.session_state.practice_index = 0
 
         words = st.session_state.practice_words
         idx = st.session_state.practice_index
