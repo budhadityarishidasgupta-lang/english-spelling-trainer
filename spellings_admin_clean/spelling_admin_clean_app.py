@@ -255,9 +255,9 @@ def archive_class(class_name: str):
 def get_active_classes():
     rows = fetch_all(
         """
-        SELECT id, class_name
+        SELECT class_id, class_name
         FROM classes
-        WHERE is_active = TRUE
+        WHERE COALESCE(is_active, TRUE) = TRUE
         ORDER BY class_name
         """
     )
@@ -267,13 +267,53 @@ def get_active_classes():
 def get_students():
     rows = fetch_all(
         """
-        SELECT user_id, name, email, class_id
+        SELECT user_id, name, email
         FROM users
-        WHERE is_active = TRUE
+        WHERE COALESCE(is_active, TRUE) = TRUE
         ORDER BY name
         """
     )
     return [dict(r._mapping) for r in rows]
+
+
+def render_class_student_assignment():
+    st.subheader("👩‍🎓 Assign Students to Class")
+
+    classes = get_active_classes()
+    if not classes:
+        st.info("No active classes available.")
+        return
+
+    class_lookup = {c["class_name"]: c["class_id"] for c in classes}
+    selected_class = st.selectbox("Select class", list(class_lookup.keys()))
+    class_id = class_lookup[selected_class]
+
+    students = get_students()
+    if not students:
+        st.info("No active students found.")
+        return
+
+    student_lookup = {
+        f"{s['name']} ({s['email']})": s["user_id"] for s in students
+    }
+
+    selected_students = st.multiselect(
+        "Select students to assign",
+        list(student_lookup.keys()),
+    )
+
+    if st.button("Assign students to class"):
+        for label in selected_students:
+            execute(
+                """
+                UPDATE users
+                SET class_id = :cid
+                WHERE user_id = :uid
+                """,
+                {"cid": class_id, "uid": student_lookup[label]},
+            )
+        st.success("Students assigned to class")
+        st.experimental_rerun()
 
 
 def get_active_courses():
@@ -338,7 +378,7 @@ def render_class_management(db):
         st.info("No active classes yet.")
         return
 
-    class_map = {c["class_name"]: c["id"] for c in classes}
+    class_map = {c["class_name"]: c["class_id"] for c in classes}
     selected_class_name = st.selectbox(
         "Select class",
         list(class_map.keys()),
@@ -347,7 +387,7 @@ def render_class_management(db):
 
     if st.button("🗄 Archive selected class"):
         execute(
-            "UPDATE classes SET is_active = FALSE WHERE id = :id",
+            "UPDATE classes SET is_active = FALSE WHERE class_id = :id",
             {"id": selected_class_id},
         )
         st.warning("Class archived")
@@ -360,10 +400,17 @@ def render_class_management(db):
     # -------------------------
     st.markdown("### 👥 Students in selected class")
 
-    students = get_students()
-    class_students = [
-        s for s in students if s["class_id"] == selected_class_id
-    ]
+    class_students_rows = fetch_all(
+        """
+        SELECT user_id, name, email
+        FROM users
+        WHERE class_id = :cid
+          AND COALESCE(is_active, TRUE) = TRUE
+        ORDER BY name
+        """,
+        {"cid": selected_class_id},
+    )
+    class_students = [dict(r._mapping) for r in class_students_rows]
 
     if not class_students:
         st.caption("No students assigned to this class.")
@@ -387,9 +434,17 @@ def render_class_management(db):
     # -------------------------
     st.markdown("### ➕ Assign students to class")
 
-    unassigned = [
-        s for s in students if s["class_id"] != selected_class_id
-    ]
+    unassigned_rows = fetch_all(
+        """
+        SELECT user_id, name, email
+        FROM users
+        WHERE COALESCE(is_active, TRUE) = TRUE
+          AND (class_id IS NULL OR class_id != :cid)
+        ORDER BY name
+        """,
+        {"cid": selected_class_id},
+    )
+    unassigned = [dict(r._mapping) for r in unassigned_rows]
 
     if not unassigned:
         st.caption("No unassigned students available.")
@@ -417,6 +472,11 @@ def render_class_management(db):
             )
         st.success("Students assigned")
         st.experimental_rerun()
+
+    st.markdown("---")
+
+    with st.expander("👩‍🎓 Assign Students to Class", expanded=True):
+        render_class_student_assignment()
 
 
 def render_student_course_assignment(db):
@@ -1136,7 +1196,7 @@ def render_students_master_list(db):
         SELECT u.user_id, u.name, u.email, u.is_active,
                c.class_name
         FROM users u
-        LEFT JOIN classes c ON u.class_id = c.id
+        LEFT JOIN classes c ON u.class_id = c.class_id
         ORDER BY u.name
     """
 
