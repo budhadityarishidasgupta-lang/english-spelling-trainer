@@ -178,6 +178,93 @@ def get_all_courses():
     return rows_to_dicts(rows)
 
 
+def get_pending_spelling_registrations(db):
+    """
+    Fetch pending registrations for Spellings app ONLY.
+    Source of truth: spelling_pending_registrations
+    """
+    with db.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    student_name,
+                    email,
+                    payment_status,
+                    requested_at
+                FROM spelling_pending_registrations
+                ORDER BY requested_at DESC
+                """
+            )
+        ).mappings().all()
+    return rows or []
+
+
+def approve_spelling_registration(db, pending_id: int):
+    """
+    Approve a pending registration:
+    1. Create user in users table
+    2. Delete pending record
+    """
+    with db.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT student_name, email
+                FROM spelling_pending_registrations
+                WHERE id = :pid
+                """
+            ),
+            {"pid": pending_id},
+        ).mappings().first()
+
+        if not row:
+            return False
+
+        conn.execute(
+            text(
+                """
+                INSERT INTO users (name, email, role, is_active)
+                VALUES (:name, :email, 'student', TRUE)
+                RETURNING user_id
+                """
+            ),
+            {
+                "name": row["student_name"],
+                "email": row["email"],
+            },
+        )
+
+        conn.execute(
+            text(
+                """
+                DELETE FROM spelling_pending_registrations
+                WHERE id = :pid
+                """
+            ),
+            {"pid": pending_id},
+        )
+
+    return True
+
+
+def reject_spelling_registration(db, pending_id: int):
+    """
+    Reject a pending registration by deleting it.
+    """
+    with db.begin() as conn:
+        conn.execute(
+            text(
+                """
+                DELETE FROM spelling_pending_registrations
+                WHERE id = :pid
+                """
+            ),
+            {"pid": pending_id},
+        )
+
+
 def create_course(course_name: str):
     if not course_name.strip():
         return None
@@ -1186,51 +1273,47 @@ def render_student_management():
 
 
 def render_pending_registrations(db):
-    st.subheader("📨 New Registrations")
+    st.markdown("## 🕓 Pending Registrations")
 
-    rows = fetch_all(
-        """
-        SELECT id, student_name, email, created_at
-        FROM pending_registrations
-        WHERE status = 'PENDING'
-        ORDER BY created_at ASC
-        """
-    )
+    pending = get_pending_spelling_registrations(db)
 
-    if not rows:
+    if not pending:
         st.info("No pending registrations.")
         return
 
-    data = [dict(r._mapping) for r in rows]
+    headers = ["Student Name", "Email", "Payment", "Requested At", "Actions"]
+    cols = st.columns([2, 3, 1, 2, 2])
 
-    for r in data:
-        c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1, 1])
+    for col, h in zip(cols, headers):
+        col.markdown(f"**{h}**")
 
-        c1.write(r["student_name"])
-        c2.write(r["email"])
-        c3.write(r["created_at"].strftime("%Y-%m-%d"))
+    for row in pending:
+        row_cols = st.columns([2, 3, 1, 2, 2])
 
-        if c4.button("✅ Approve", key=f"approve_{r['id']}"):
-            execute(
-                """
-                UPDATE pending_registrations
-                SET status = 'APPROVED'
-                WHERE id = :id
-                """,
-                {"id": r["id"]},
-            )
-            st.experimental_rerun()
+        row_cols[0].write(row["student_name"])
+        row_cols[1].write(row["email"])
+        row_cols[2].write(row["payment_status"] or "—")
+        row_cols[3].write(
+            row["requested_at"].strftime("%Y-%m-%d %H:%M")
+            if row["requested_at"]
+            else "—"
+        )
 
-        if c5.button("❌ Reject", key=f"reject_{r['id']}"):
-            execute(
-                """
-                UPDATE pending_registrations
-                SET status = 'REJECTED'
-                WHERE id = :id
-                """,
-                {"id": r["id"]},
-            )
-            st.experimental_rerun()
+        approve_key = f"approve_{row['id']}"
+        reject_key = f"reject_{row['id']}"
+
+        with row_cols[4]:
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✅ Approve", key=approve_key):
+                    approve_spelling_registration(db, row["id"])
+                    st.success("Student approved")
+                    st.rerun()
+            with c2:
+                if st.button("❌ Reject", key=reject_key):
+                    reject_spelling_registration(db, row["id"])
+                    st.warning("Registration rejected")
+                    st.rerun()
 
 
 def render_students_master_list(db):
