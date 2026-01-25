@@ -206,33 +206,38 @@ def approve_spelling_registration(db, pending_id: int):
     DEFAULT_PASSWORD = "Learn123!"
 
     with db.connect() as conn:
+        # 1️⃣ Fetch pending registration (NO status column!)
         pending = conn.execute(
             text(
                 """
-                SELECT id, student_name, email
+                SELECT id, student_name, email, payment_status
                 FROM spelling_pending_registrations
                 WHERE id = :pid
-                  AND status = 'PENDING'
                 """
             ),
             {"pid": pending_id},
         ).mappings().first()
 
         if not pending:
-            st.warning("Pending registration not found or already processed.")
+            st.warning("Pending registration not found.")
             return
 
+        if pending["payment_status"] == "APPROVED":
+            st.info("This registration is already approved.")
+            return
+
+        # 2️⃣ Hash default password
         password_hash = bcrypt.hashpw(
             DEFAULT_PASSWORD.encode(),
             bcrypt.gensalt(),
         ).decode()
 
-        user_row = conn.execute(
+        # 3️⃣ Create student user
+        conn.execute(
             text(
                 """
                 INSERT INTO users (name, email, password_hash, role, is_active)
                 VALUES (:name, :email, :password_hash, 'student', TRUE)
-                RETURNING user_id
                 """
             ),
             {
@@ -240,30 +245,27 @@ def approve_spelling_registration(db, pending_id: int):
                 "email": pending["email"],
                 "password_hash": password_hash,
             },
-        ).fetchone()
+        )
 
-        user_id = user_row[0]
-
+        # 4️⃣ Mark registration as approved
         conn.execute(
             text(
                 """
                 UPDATE spelling_pending_registrations
-                SET
-                    status = 'APPROVED',
-                    processed_at = NOW(),
-                    created_user_id = :uid
+                SET payment_status = 'APPROVED'
                 WHERE id = :pid
                 """
             ),
-            {"pid": pending_id, "uid": user_id},
+            {"pid": pending_id},
         )
 
         conn.commit()
 
+    # 5️⃣ Admin confirmation
     st.success("✅ Student approved successfully")
     st.info(
         f"""
-        **Login details for student**
+        **Student login details**
 
         📧 Email: `{pending['email']}`  
         🔑 Default password: `Learn123!`
