@@ -220,7 +220,6 @@ def get_spelling_courses(engine):
                     course_id,
                     course_name
                 FROM spelling_courses
-                WHERE is_active = TRUE
                 ORDER BY course_name
                 """
             )
