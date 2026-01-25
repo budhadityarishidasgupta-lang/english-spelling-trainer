@@ -297,13 +297,16 @@ def get_active_classes():
     return [dict(r._mapping) for r in rows]
 
 
-def get_students():
+def get_spelling_students_only():
     rows = fetch_all(
         """
-        SELECT user_id, name, email
-        FROM users
-        WHERE COALESCE(is_active, TRUE) = TRUE
-        ORDER BY name
+        SELECT DISTINCT u.user_id, u.name, u.email
+        FROM users u
+        JOIN spelling_enrollments se
+            ON se.user_id = u.user_id
+        WHERE COALESCE(u.is_active, TRUE) = TRUE
+          AND u.role = 'student'
+        ORDER BY u.name
         """
     )
     return [dict(r._mapping) for r in rows]
@@ -321,7 +324,7 @@ def render_class_student_assignment():
     selected_class = st.selectbox("Select class", list(class_lookup.keys()))
     class_id = class_lookup[selected_class]
 
-    students = get_students()
+    students = get_spelling_students_only()
     if not students:
         st.info("No active students found.")
         return
@@ -349,25 +352,16 @@ def render_class_student_assignment():
         st.experimental_rerun()
 
 
-def get_active_courses():
-    rows = fetch_all(
-        """
-        SELECT course_id, course_name
-        FROM courses
-        WHERE is_active = TRUE
-        ORDER BY course_name
-        """
-    )
-    return [dict(r._mapping) for r in rows]
-
-
-def get_student_courses(user_id):
+def get_spelling_courses_for_student(user_id):
     rows = fetch_all(
         """
         SELECT c.course_id, c.course_name
-        FROM enrollments e
-        JOIN courses c ON c.course_id = e.course_id
+        FROM spelling_courses c
+        JOIN spelling_enrollments e
+            ON e.course_id = c.course_id
         WHERE e.user_id = :uid
+          AND COALESCE(c.is_active, TRUE) = TRUE
+        ORDER BY c.course_name
         """,
         {"uid": user_id},
     )
@@ -472,7 +466,7 @@ def render_class_management(db):
 def render_student_course_assignment(db):
     st.subheader("🎯 Student ↔ Course Assignment")
 
-    students = get_students()
+    students = get_spelling_students_only()
     if not students:
         st.info("No active students found.")
         return
@@ -496,59 +490,58 @@ def render_student_course_assignment(db):
     selected_label = st.selectbox("Select student", list(student_map.keys()))
     user_id = student_map[selected_label]
 
-    st.markdown("---")
-
-    # Existing assignments
-    assigned = get_student_courses(user_id)
-    assigned_ids = {c["course_id"] for c in assigned}
-
     st.markdown("### 📘 Assigned courses")
 
-    if not assigned:
-        st.caption("No courses assigned.")
+    assigned_courses = get_spelling_courses_for_student(user_id)
+
+    if not assigned_courses:
+        st.caption("No spelling courses assigned.")
     else:
-        for c in assigned:
-            c1, c2 = st.columns([4, 1])
-            c1.write(c["course_name"])
-            if c2.button("Remove", key=f"rm_course_{c['course_id']}"):
+        for c in assigned_courses:
+            col1, col2 = st.columns([4, 1])
+            col1.write(c["course_name"])
+            if col2.button("❌ Remove", key=f"rm_{c['course_id']}"):
                 execute(
                     """
-                    DELETE FROM enrollments
+                    DELETE FROM spelling_enrollments
                     WHERE user_id = :uid AND course_id = :cid
                     """,
                     {"uid": user_id, "cid": c["course_id"]},
                 )
-                st.experimental_rerun()
+                st.rerun()
 
-    st.markdown("---")
+    st.markdown("### ➕ Assign new course")
 
-    # Assign new courses
-    courses = get_active_courses()
-    available = [c for c in courses if c["course_id"] not in assigned_ids]
-
-    if not available:
-        st.caption("All courses already assigned.")
-        return
-
-    course_lookup = {c["course_name"]: c["course_id"] for c in available}
-
-    selected_courses = st.multiselect(
-        "Assign new courses",
-        list(course_lookup.keys()),
+    all_courses = fetch_all(
+        """
+        SELECT course_id, course_name
+        FROM spelling_courses
+        WHERE COALESCE(is_active, TRUE) = TRUE
+        ORDER BY course_name
+        """
     )
 
-    if st.button("Assign selected courses"):
-        for cname in selected_courses:
-            execute(
-                """
-                INSERT INTO enrollments (user_id, course_id)
-                VALUES (:uid, :cid)
-                ON CONFLICT DO NOTHING
-                """,
-                {"uid": user_id, "cid": course_lookup[cname]},
-            )
-        st.success("Courses assigned")
-        st.experimental_rerun()
+    course_options = {
+        c.course_name: c.course_id
+        for c in all_courses
+    }
+
+    selected_course = st.selectbox(
+        "Select spelling course",
+        list(course_options.keys()),
+    )
+
+    if st.button("Assign course"):
+        execute(
+            """
+            INSERT INTO spelling_enrollments (user_id, course_id)
+            VALUES (:uid, :cid)
+            ON CONFLICT DO NOTHING
+            """,
+            {"uid": user_id, "cid": course_options[selected_course]},
+        )
+        st.success("Course assigned.")
+        st.rerun()
 
 
 def render_course_management():
