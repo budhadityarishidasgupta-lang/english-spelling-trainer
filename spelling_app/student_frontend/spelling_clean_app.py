@@ -878,6 +878,10 @@ def render_login_page():
 
 
 def submit_registration():
+    # HARD GUARD — prevent double submit
+    if st.session_state.get("registration_submitted"):
+        return
+
     full_name = st.session_state.get("reg_full_name")
     email = st.session_state.get("reg_email")
     token = st.session_state.get("registration_token")
@@ -885,6 +889,9 @@ def submit_registration():
     if not full_name or not email:
         st.error("Please enter both name and email.")
         return
+
+    # Lock immediately
+    st.session_state.registration_submitted = True
 
     if not token:
         token = generate_registration_token()
@@ -897,10 +904,12 @@ def submit_registration():
             token=token,
         )
 
-        # Mark registration as successful
+        # Persist success BEFORE rerun
         st.session_state.registration_success = True
 
     except Exception as e:
+        # Rollback lock if failure
+        st.session_state.registration_submitted = False
         st.error("Registration failed. Please try again or contact support.")
         st.exception(e)
 
@@ -1981,6 +1990,9 @@ def main():
     if "registration_token" not in st.session_state:
         st.session_state.registration_token = generate_registration_token()
 
+    if "registration_submitted" not in st.session_state:
+        st.session_state.registration_submitted = False
+
     inject_student_css()
     initialize_session_state(st)
 
@@ -2084,7 +2096,10 @@ def main():
                 st.text_input("Full name", key="reg_full_name")
                 st.text_input("Email address", key="reg_email")
 
-                if st.button("Submit registration"):
+                if st.button(
+                    "Submit registration",
+                    disabled=st.session_state.get("registration_submitted", False),
+                ):
                     submit_registration()
             st.markdown("</div>", unsafe_allow_html=True)
 
