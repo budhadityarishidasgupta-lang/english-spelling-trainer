@@ -23,14 +23,9 @@ REPO_ROOT = str(Path(__file__).resolve().parents[1])
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from shared.db import engine as shared_engine, fetch_all
+from shared.db import engine as shared_engine, execute, fetch_all
 from spelling_app.student_frontend.spelling_clean_app import initialize_session_state
 from spelling_app.utils.ui_components import inject_css
-from spelling_app.repository.registration_repo import (
-    get_pending_registrations,
-    approve_registration,
-    reject_registration,
-)
 
 # =========================================================
 # Admin Console vNext (READ-ONLY, FLAGGED)
@@ -63,9 +58,7 @@ def render_admin_console_vnext(engine):
 
     with t_students:
         st.markdown("### Students — register, approve, assign, archive, analytics")
-        render_student_management()
-        st.markdown("---")
-        render_pending_registrations()
+        render_admin_student_management_vnext(shared_engine)
 
     with t_content:
         st.markdown("### Content — everything shown in Student UI comes from here")
@@ -841,56 +834,114 @@ def render_student_management():
                     st.rerun()
 
 
-def render_pending_registrations():
-    st.subheader("📨 Pending Student Registrations")
+def render_pending_registrations(db):
+    st.subheader("📨 New Registrations")
 
-    pending = get_pending_registrations()
+    rows = fetch_all(
+        """
+        SELECT id, student_name, email, created_at
+        FROM pending_registrations
+        WHERE status = 'PENDING'
+        ORDER BY created_at ASC
+        """
+    )
 
-    if not pending:
-        st.success("✅ No pending registrations")
+    if not rows:
+        st.info("No pending registrations.")
         return
 
-    rows = []
-    for r in pending:
-        m = getattr(r, "_mapping", r)
-        rows.append(
-            {
-                "id": m["id"],
-                "name": m["student_name"],
-                "email": m["email"],
-                "submitted_on": m.get("created_at"),
-            }
-        )
+    data = [dict(r._mapping) for r in rows]
 
-    cols = st.columns([3, 4, 3, 2, 2])
-    cols[0].markdown("**Name**")
-    cols[1].markdown("**Email**")
-    cols[2].markdown("**Submitted**")
-    cols[3].markdown("**Approve**")
-    cols[4].markdown("**Reject**")
+    for r in data:
+        c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1, 1])
 
-    st.markdown("---")
+        c1.write(r["student_name"])
+        c2.write(r["email"])
+        c3.write(r["created_at"].strftime("%Y-%m-%d"))
 
-    for row in rows:
-        c = st.columns([3, 4, 3, 2, 2])
-
-        c[0].markdown(row["name"])
-        c[1].markdown(row["email"])
-        c[2].markdown(
-            row["submitted_on"].strftime("%Y-%m-%d")
-            if row["submitted_on"]
-            else "-"
-        )
-
-        if c[3].button("✅ Approve", key=f"approve_{row['id']}"):
-            approve_registration(row["id"])
-            st.success(f"Approved {row['email']}")
+        if c4.button("✅ Approve", key=f"approve_{r['id']}"):
+            execute(
+                """
+                UPDATE pending_registrations
+                SET status = 'APPROVED'
+                WHERE id = :id
+                """,
+                {"id": r["id"]},
+            )
             st.experimental_rerun()
 
-        if c[4].button("❌ Reject", key=f"reject_{row['id']}"):
-            reject_registration(row["id"])
-            st.warning(f"Rejected {row['email']}")
+        if c5.button("❌ Reject", key=f"reject_{r['id']}"):
+            execute(
+                """
+                UPDATE pending_registrations
+                SET status = 'REJECTED'
+                WHERE id = :id
+                """,
+                {"id": r["id"]},
+            )
             st.experimental_rerun()
+
+
+def render_students_master_list(db):
+    st.subheader("👩‍🎓 Students")
+
+    search = st.text_input("Search by name or email")
+
+    sql = """
+        SELECT u.user_id, u.name, u.email, u.is_active,
+               c.class_name
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        ORDER BY u.name
+    """
+
+    rows = fetch_all(sql)
+    data = [dict(r._mapping) for r in rows]
+
+    if search:
+        data = [
+            r
+            for r in data
+            if search.lower() in r["name"].lower()
+            or search.lower() in r["email"].lower()
+        ]
+
+    if not data:
+        st.info("No students found.")
+        return
+
+    for r in data:
+        c1, c2, c3, c4, c5 = st.columns([2, 3, 1, 2, 1])
+
+        c1.write(r["name"])
+        c2.write(r["email"])
+        c3.write("🟢 Active" if r["is_active"] else "⚪ Archived")
+        c4.write(r["class_name"] or "—")
+
+        if r["is_active"]:
+            if c5.button("Archive", key=f"arch_{r['user_id']}"):
+                execute(
+                    "UPDATE users SET is_active = FALSE WHERE user_id = :id",
+                    {"id": r["user_id"]},
+                )
+                st.experimental_rerun()
+        else:
+            if c5.button("Restore", key=f"res_{r['user_id']}"):
+                execute(
+                    "UPDATE users SET is_active = TRUE WHERE user_id = :id",
+                    {"id": r["user_id"]},
+                )
+                st.experimental_rerun()
+
+
+def render_admin_student_management_vnext(db):
+    st.header("🧑‍🏫 Student Management")
+
+    with st.expander("👩‍🎓 Students", expanded=True):
+        render_students_master_list(db)
+
+    with st.expander("📨 New Registrations", expanded=True):
+        render_pending_registrations(db)
 
 
 def render_help_texts_page(db):
@@ -1186,7 +1237,7 @@ def main():
     elif menu == "Approve Hint Drafts":
         render_hint_draft_approval()
     elif menu == "Registrations":
-        render_pending_registrations()
+        render_pending_registrations(shared_engine)
     elif menu == "Student Home Content":
         render_student_home_content()
 
