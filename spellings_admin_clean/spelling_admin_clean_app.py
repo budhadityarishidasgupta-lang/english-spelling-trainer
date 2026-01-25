@@ -475,41 +475,33 @@ def render_class_management(db):
 def render_student_course_assignment(db):
     st.subheader("🎯 Student ↔ Course Assignment")
 
-    rows = fetch_all(
+    rows = rows_to_dicts(fetch_all(
         """
-        SELECT DISTINCT u.user_id, u.name, u.email
+        SELECT DISTINCT
+            u.user_id,
+            u.name,
+            u.email
         FROM users u
-        JOIN spelling_student_courses sc
-          ON sc.user_id = u.user_id
+        JOIN pending_registrations pr
+          ON pr.email = u.email
         WHERE u.is_active = true
+          AND pr.app = 'spelling'
         ORDER BY u.name
         """
-    )
-    students = rows_to_dicts(rows)
-    if not students:
-        st.info("No active students found.")
-        return
-
-    search = st.text_input("Search student (name or email)").lower()
-
-    filtered = [
-        s for s in students
-        if search in s["name"].lower() or search in s["email"].lower()
-    ]
-
-    if not filtered:
-        st.caption("No matching students.")
+    ))
+    if not rows:
+        st.info("No active spelling students found.")
         return
 
     student_map = {
-        f"{s['name']} ({s['email']})": s["user_id"]
-        for s in filtered
+        f"{r['name']} ({r['email']})": r["user_id"]
+        for r in rows
     }
 
     selected_label = st.selectbox(
         "Select student",
         list(student_map.keys()),
-        key="admin_student_course_select_student",
+        key="admin_student_course_assignment_student",
     )
     user_id = student_map[selected_label]
 
