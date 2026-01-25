@@ -321,7 +321,11 @@ def render_class_student_assignment():
         return
 
     class_lookup = {c["class_name"]: c["class_id"] for c in classes}
-    selected_class = st.selectbox("Select class", list(class_lookup.keys()))
+    selected_class = st.selectbox(
+        "Select class",
+        list(class_lookup.keys()),
+        key="admin_class_student_select_class",
+    )
     class_id = class_lookup[selected_class]
 
     students = get_spelling_students_only()
@@ -408,7 +412,11 @@ def render_class_management(db):
     class_options = {
         c["classroom_name"]: c["classroom_id"] for c in classes
     }
-    selected_class_name = st.selectbox("Select class", list(class_options.keys()))
+    selected_class_name = st.selectbox(
+        "Select class",
+        list(class_options.keys()),
+        key="admin_classroom_select_class",
+    )
     selected_class_id = class_options[selected_class_name]
 
     if st.button("🗄 Archive selected class"):
@@ -436,6 +444,7 @@ def render_class_management(db):
     selected_student_label = st.selectbox(
         "Select student",
         list(student_options.keys()),
+        key="admin_classroom_select_student",
     )
     selected_student_id = student_options[selected_student_label]
 
@@ -466,7 +475,17 @@ def render_class_management(db):
 def render_student_course_assignment(db):
     st.subheader("🎯 Student ↔ Course Assignment")
 
-    students = get_spelling_students_only()
+    rows = fetch_all(
+        """
+        SELECT DISTINCT u.user_id, u.name, u.email
+        FROM users u
+        JOIN spelling_student_courses sc
+          ON sc.user_id = u.user_id
+        WHERE u.is_active = true
+        ORDER BY u.name
+        """
+    )
+    students = rows_to_dicts(rows)
     if not students:
         st.info("No active students found.")
         return
@@ -487,7 +506,11 @@ def render_student_course_assignment(db):
         for s in filtered
     }
 
-    selected_label = st.selectbox("Select student", list(student_map.keys()))
+    selected_label = st.selectbox(
+        "Select student",
+        list(student_map.keys()),
+        key="admin_student_course_select_student",
+    )
     user_id = student_map[selected_label]
 
     st.markdown("### 📘 Assigned courses")
@@ -529,6 +552,7 @@ def render_student_course_assignment(db):
     selected_course = st.selectbox(
         "Select spelling course",
         list(course_options.keys()),
+        key="admin_student_course_select_course",
     )
 
     if st.button("Assign course"):
@@ -558,6 +582,7 @@ def render_course_management():
         selected_course_label = st.selectbox(
             "Existing Courses",
             list(course_options.keys()),
+            key="admin_course_management_existing_course",
         )
         selected_course_id = course_options.get(selected_course_label)
         st.session_state.selected_course_id = selected_course_id
@@ -936,6 +961,7 @@ def render_student_management():
     selected_label = st.selectbox(
         "Select class",
         options=class_labels,
+        key="admin_student_management_select_class",
     )
     selected_class = label_to_class[selected_label]
 
@@ -954,6 +980,7 @@ def render_student_management():
     selected_course = st.selectbox(
         "Select course",
         options=list(course_map.keys()),
+        key="admin_student_management_select_course",
     )
 
     if st.button("Assign course to all students in class"):
@@ -1463,6 +1490,7 @@ def render_maintenance():
             format_func=lambda cid: next(
                 c["course_name"] for c in courses if c["course_id"] == cid
             ),
+            key="admin_maintenance_select_course",
         )
 
         if st.button("Consolidate legacy lessons into patterns"):
