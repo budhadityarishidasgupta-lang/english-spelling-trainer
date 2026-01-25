@@ -158,6 +158,18 @@ def ensure_spelling_admin_tables():
         """
     )
 
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS spelling_student_courses (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(user_id),
+            course_id INTEGER NOT NULL,
+            assigned_at TIMESTAMP DEFAULT now(),
+            UNIQUE (user_id, course_id)
+        );
+        """
+    )
+
 
 def get_all_courses():
     rows = fetch_all(
@@ -197,6 +209,24 @@ def rename_course(course_id: int, new_name: str):
     )
     rows = rows_to_dicts(rows)
     return bool(rows)
+
+
+def get_spelling_courses(engine):
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT
+                    course_id,
+                    course_name
+                FROM spelling_courses
+                WHERE is_active = TRUE
+                ORDER BY course_name
+                """
+            )
+        ).mappings().all()
+
+    return list(rows)
 
 
 def _normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
@@ -243,7 +273,7 @@ def assign_course_to_student(user_id: int, course_id: int):
 
     fetch_all(
         """
-        INSERT INTO spelling_enrollments (user_id, course_id)
+        INSERT INTO spelling_student_courses (user_id, course_id)
         VALUES (:uid, :cid)
         ON CONFLICT DO NOTHING;
         """,
@@ -303,7 +333,7 @@ def get_spelling_students_only():
         """
         SELECT DISTINCT u.user_id, u.name, u.email
         FROM users u
-        JOIN spelling_enrollments se
+        JOIN spelling_student_courses se
             ON se.user_id = u.user_id
         WHERE COALESCE(u.is_active, TRUE) = TRUE
           AND u.role = 'student'
@@ -387,7 +417,7 @@ def get_spelling_courses_for_student(user_id):
         """
         SELECT c.course_id, c.course_name
         FROM spelling_courses c
-        JOIN spelling_enrollments e
+        JOIN spelling_student_courses e
             ON e.course_id = c.course_id
         WHERE e.user_id = :uid
           AND COALESCE(c.is_active, TRUE) = TRUE
@@ -531,7 +561,7 @@ def render_student_course_assignment(db):
             if col2.button("❌ Remove", key=f"rm_{c['course_id']}"):
                 execute(
                     """
-                    DELETE FROM spelling_enrollments
+                    DELETE FROM spelling_student_courses
                     WHERE user_id = :uid AND course_id = :cid
                     """,
                     {"uid": user_id, "cid": c["course_id"]},
@@ -540,17 +570,10 @@ def render_student_course_assignment(db):
 
     st.markdown("### ➕ Assign new course")
 
-    all_courses = fetch_all(
-        """
-        SELECT course_id, course_name
-        FROM spelling_courses
-        WHERE COALESCE(is_active, TRUE) = TRUE
-        ORDER BY course_name
-        """
-    )
+    all_courses = get_spelling_courses(db)
 
     course_options = {
-        c.course_name: c.course_id
+        c["course_name"]: c["course_id"]
         for c in all_courses
     }
 
@@ -560,17 +583,26 @@ def render_student_course_assignment(db):
         key="admin_student_course_select_course",
     )
 
-    if st.button("Assign course"):
-        execute(
-            """
-            INSERT INTO spelling_enrollments (user_id, course_id)
-            VALUES (:uid, :cid)
-            ON CONFLICT DO NOTHING
-            """,
-            {"uid": user_id, "cid": course_options[selected_course]},
-        )
-        st.success("Course assigned.")
-        st.rerun()
+    assign_clicked = st.button("Assign course")
+    if assign_clicked:
+        with db.connect() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO spelling_student_courses (user_id, course_id)
+                    VALUES (:user_id, :course_id)
+                    ON CONFLICT DO NOTHING
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "course_id": course_options[selected_course],
+                },
+            )
+            conn.commit()
+
+        st.success("Course assigned successfully.")
+        st.experimental_rerun()
 
 
 def render_course_management():
