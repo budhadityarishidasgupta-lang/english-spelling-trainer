@@ -292,7 +292,7 @@ def get_landing_content(db):
     # Safe fallbacks
     banner_data = banner.media_data if banner and banner.media_data else None
     tagline_text = (tagline.body if tagline and tagline.body else "Building confidence, one step at a time.")
-    value_text = (value.body if value and value.body else "• Daily practice that adapts\n• Fix weak areas automatically\n• Clear progress for parents")
+    value_text = (value.body if value and value.body else "• Daily practice that adapts\n• Practice weak spellings\n• Track daily progress")
     register_text = (
         register.body
         if register and register.body
