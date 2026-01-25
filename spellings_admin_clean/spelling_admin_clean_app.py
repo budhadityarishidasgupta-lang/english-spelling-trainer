@@ -314,6 +314,10 @@ def get_spelling_students_only():
 
 
 def get_active_spelling_students(engine):
+    """
+    Return users who are active AND belong to the Spelling app,
+    determined by class membership or spelling activity.
+    """
     with engine.connect() as conn:
         rows = conn.execute(
             text("""
@@ -323,16 +327,13 @@ def get_active_spelling_students(engine):
                     u.email,
                     u.is_active
                 FROM users u
-                LEFT JOIN spelling_student_courses ssc
-                    ON ssc.user_id = u.user_id
                 LEFT JOIN spelling_class_students scs
                     ON scs.user_id = u.user_id
                 LEFT JOIN spelling_attempts sa
                     ON sa.user_id = u.user_id
                 WHERE u.is_active = TRUE
                   AND (
-                        ssc.user_id IS NOT NULL
-                     OR scs.user_id IS NOT NULL
+                        scs.user_id IS NOT NULL
                      OR sa.user_id IS NOT NULL
                   )
                 ORDER BY u.name
