@@ -195,6 +195,8 @@ def get_pending_spelling_registrations(db):
                     payment_status,
                     requested_at
                 FROM spelling_pending_registrations
+                WHERE payment_status IS NULL
+                   OR payment_status != 'APPROVED'
                 ORDER BY requested_at DESC
                 """
             )
@@ -455,29 +457,20 @@ def get_spelling_students_only():
     return [dict(r._mapping) for r in rows]
 
 
-def get_active_spelling_students(engine):
-    """
-    Active spelling students are users who:
-    - are active
-    - have at least one spelling_attempt
-    """
-    with engine.connect() as conn:
+def get_active_spelling_students(db):
+    with db.connect() as conn:
         rows = conn.execute(
-            text("""
-                SELECT DISTINCT
-                    u.user_id,
-                    u.name,
-                    u.email,
-                    u.is_active
-                FROM users u
-                JOIN spelling_attempts sa
-                  ON sa.user_id = u.user_id
-                WHERE u.is_active = TRUE
-                ORDER BY u.name
-            """)
+            text(
+                """
+                SELECT user_id, name, email
+                FROM users
+                WHERE role = 'student'
+                  AND is_active = TRUE
+                ORDER BY name
+                """
+            )
         ).mappings().all()
-
-    return list(rows)
+    return rows
 
 
 def render_class_student_assignment():
