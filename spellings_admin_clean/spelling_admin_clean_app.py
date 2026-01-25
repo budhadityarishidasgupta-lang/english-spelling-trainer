@@ -252,9 +252,147 @@ def archive_class(class_name: str):
     )
 
 
+def get_active_classes():
+    rows = fetch_all(
+        """
+        SELECT id, class_name
+        FROM classes
+        WHERE is_active = TRUE
+        ORDER BY class_name
+        """
+    )
+    return [dict(r._mapping) for r in rows]
+
+
+def get_students():
+    rows = fetch_all(
+        """
+        SELECT user_id, name, email, class_id
+        FROM users
+        WHERE is_active = TRUE
+        ORDER BY name
+        """
+    )
+    return [dict(r._mapping) for r in rows]
+
+
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
+
+def render_class_management(db):
+    st.subheader("🏫 Class Management")
+
+    # -------------------------
+    # Create new class
+    # -------------------------
+    with st.container():
+        new_class = st.text_input(
+            "Create new class",
+            placeholder="e.g. Year 5 – Group A",
+        )
+        if st.button("➕ Create Class"):
+            if new_class.strip():
+                execute(
+                    """
+                    INSERT INTO classes (class_name, is_active)
+                    VALUES (:name, TRUE)
+                    """,
+                    {"name": new_class.strip()},
+                )
+                st.success("Class created")
+                st.experimental_rerun()
+
+    st.markdown("---")
+
+    # -------------------------
+    # Select existing class
+    # -------------------------
+    classes = get_active_classes()
+    if not classes:
+        st.info("No active classes yet.")
+        return
+
+    class_map = {c["class_name"]: c["id"] for c in classes}
+    selected_class_name = st.selectbox(
+        "Select class",
+        list(class_map.keys()),
+    )
+    selected_class_id = class_map[selected_class_name]
+
+    if st.button("🗄 Archive selected class"):
+        execute(
+            "UPDATE classes SET is_active = FALSE WHERE id = :id",
+            {"id": selected_class_id},
+        )
+        st.warning("Class archived")
+        st.experimental_rerun()
+
+    st.markdown("---")
+
+    # -------------------------
+    # Students in class
+    # -------------------------
+    st.markdown("### 👥 Students in selected class")
+
+    students = get_students()
+    class_students = [
+        s for s in students if s["class_id"] == selected_class_id
+    ]
+
+    if not class_students:
+        st.caption("No students assigned to this class.")
+    else:
+        for s in class_students:
+            c1, c2, c3 = st.columns([3, 4, 1])
+            c1.write(s["name"])
+            c2.write(s["email"])
+
+            if c3.button("Remove", key=f"rm_{s['user_id']}"):
+                execute(
+                    "UPDATE users SET class_id = NULL WHERE user_id = :uid",
+                    {"uid": s["user_id"]},
+                )
+                st.experimental_rerun()
+
+    st.markdown("---")
+
+    # -------------------------
+    # Assign students
+    # -------------------------
+    st.markdown("### ➕ Assign students to class")
+
+    unassigned = [
+        s for s in students if s["class_id"] != selected_class_id
+    ]
+
+    if not unassigned:
+        st.caption("No unassigned students available.")
+        return
+
+    student_lookup = {
+        f"{s['name']} ({s['email']})": s["user_id"]
+        for s in unassigned
+    }
+
+    selected_students = st.multiselect(
+        "Select students",
+        list(student_lookup.keys()),
+    )
+
+    if st.button("Assign to class"):
+        for label in selected_students:
+            execute(
+                """
+                UPDATE users
+                SET class_id = :cid
+                WHERE user_id = :uid
+                """,
+                {"cid": selected_class_id, "uid": student_lookup[label]},
+            )
+        st.success("Students assigned")
+        st.experimental_rerun()
+
 
 def render_course_management():
     st.header("Course Management")
@@ -942,6 +1080,9 @@ def render_admin_student_management_vnext(db):
 
     with st.expander("📨 New Registrations", expanded=True):
         render_pending_registrations(db)
+
+    with st.expander("🏫 Class Management", expanded=False):
+        render_class_management(db)
 
 
 def render_help_texts_page(db):
