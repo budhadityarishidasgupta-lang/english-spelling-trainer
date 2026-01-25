@@ -24,8 +24,8 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from shared.db import engine as shared_engine, fetch_all
-
-SPELLING_ADMIN_VNEXT = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
+from spelling_app.student_frontend.spelling_clean_app import initialize_session_state
+from spelling_app.utils.ui_components import inject_css
 
 # =========================================================
 # Admin Console vNext (READ-ONLY, FLAGGED)
@@ -124,10 +124,6 @@ def render_admin_console_vnext(engine):
         df_progress = list_student_progress(engine)
         st.dataframe(df_progress, use_container_width=True)
 
-
-engine = shared_engine
-if SPELLING_ADMIN_VNEXT:
-    render_admin_console_vnext(engine)
 
 from spellings_admin_clean.spelling_help_text_repo import (
     get_help_text,
@@ -849,7 +845,7 @@ def render_student_management():
 
     st.subheader("Pending Registrations")
 
-    with engine.connect() as db:
+    with shared_engine.connect() as db:
         ensure_pending_registration_payment_status_column(db)
         ensure_pending_registration_token_column(db)
 
@@ -922,7 +918,11 @@ def render_help_texts_page(db):
         st.success("Daily 5 help text saved successfully.")
 
 
-def render_student_home_content(db):
+def render_student_home_content(db=None):
+    if db is None:
+        with shared_engine.connect() as db_connection:
+            return render_student_home_content(db_connection)
+
     st.header("🏠 Student Home Content")
     st.caption(
         "Edit the welcome and guidance content shown to students after login."
@@ -1133,43 +1133,58 @@ def set_admin_page(page: str) -> None:
 
 
 def main():
-    # -------------------------------------------------
-    # vNext Admin Console (Preview)
-    # -------------------------------------------------
-    if "admin_page" not in st.session_state:
-        st.session_state.admin_page = st.query_params.get(
-            "admin_page",
-            "course_management",
-        )
+    inject_css()
+    initialize_session_state(st)
 
-    st.sidebar.markdown("## Admin Sections")
-    if st.sidebar.button("Course Management"):
-        set_admin_page("course_management")
-    if st.sidebar.button("Students"):
-        set_admin_page("students")
-    if st.sidebar.button("Help Texts"):
-        set_admin_page("help_texts")
-    if st.sidebar.button("Maintenance"):
-        set_admin_page("maintenance")
+    # 🔒 If you have an admin login gate elsewhere, keep it.
+    # This file historically renders admin pages directly, so we just render the console.
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("## Content")
-    if st.sidebar.button("Student Home"):
-        set_admin_page("content_student_home")
+    use_vnext = os.getenv("SPELLING_ADMIN_VNEXT", "0") == "1"
 
-    page = st.session_state.admin_page
-    if page == "course_management":
+    if use_vnext:
+        # ✅ NEW tabbed admin only (no legacy sidebar/menu)
+        render_admin_console_vnext(shared_engine)
+        st.stop()
+
+    # -----------------------------
+    # LEGACY admin (fallback only)
+    # -----------------------------
+    st.title("SpellingSprint Admin")
+
+    st.sidebar.title("Admin Menu")
+    menu = st.sidebar.radio(
+        "Go to",
+        [
+            "Admin Console",
+            "Users",
+            "Courses",
+            "Lessons",
+            "Words",
+            "Hint Draft Upload",
+            "Approve Hint Drafts",
+            "Registrations",
+            "Student Home Content",
+        ],
+    )
+
+    if menu == "Admin Console":
         render_admin_management()
-    elif page == "students":
-        render_student_management()
-    elif page == "help_texts":
-        with engine.connect() as db:
-            render_help_texts_page(db)
-    elif page == "maintenance":
-        render_maintenance()
-    elif page == "content_student_home":
-        with engine.connect() as db:
-            render_student_home_content(db)
+    elif menu == "Users":
+        render_user_management()
+    elif menu == "Courses":
+        render_course_management()
+    elif menu == "Lessons":
+        render_lesson_management()
+    elif menu == "Words":
+        render_word_management()
+    elif menu == "Hint Draft Upload":
+        render_hint_draft_upload()
+    elif menu == "Approve Hint Drafts":
+        render_hint_draft_approval()
+    elif menu == "Registrations":
+        render_pending_registrations()
+    elif menu == "Student Home Content":
+        render_student_home_content()
 
 
 if __name__ == "__main__":
