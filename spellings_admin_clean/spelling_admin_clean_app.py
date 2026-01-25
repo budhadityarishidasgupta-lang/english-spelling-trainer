@@ -26,6 +26,11 @@ if REPO_ROOT not in sys.path:
 from shared.db import engine as shared_engine, fetch_all
 from spelling_app.student_frontend.spelling_clean_app import initialize_session_state
 from spelling_app.utils.ui_components import inject_css
+from spelling_app.repository.registration_repo import (
+    get_pending_registrations,
+    approve_registration,
+    reject_registration,
+)
 
 # =========================================================
 # Admin Console vNext (READ-ONLY, FLAGGED)
@@ -834,6 +839,58 @@ def render_student_management():
                     mark_registration_approved(db, r["id"])
                     st.success("Approved. You can now assign courses / enable access.")
                     st.rerun()
+
+
+def render_pending_registrations():
+    st.subheader("📨 Pending Student Registrations")
+
+    pending = get_pending_registrations()
+
+    if not pending:
+        st.success("✅ No pending registrations")
+        return
+
+    rows = []
+    for r in pending:
+        m = getattr(r, "_mapping", r)
+        rows.append(
+            {
+                "id": m["id"],
+                "name": m["student_name"],
+                "email": m["email"],
+                "submitted_on": m.get("created_at"),
+            }
+        )
+
+    cols = st.columns([3, 4, 3, 2, 2])
+    cols[0].markdown("**Name**")
+    cols[1].markdown("**Email**")
+    cols[2].markdown("**Submitted**")
+    cols[3].markdown("**Approve**")
+    cols[4].markdown("**Reject**")
+
+    st.markdown("---")
+
+    for row in rows:
+        c = st.columns([3, 4, 3, 2, 2])
+
+        c[0].markdown(row["name"])
+        c[1].markdown(row["email"])
+        c[2].markdown(
+            row["submitted_on"].strftime("%Y-%m-%d")
+            if row["submitted_on"]
+            else "-"
+        )
+
+        if c[3].button("✅ Approve", key=f"approve_{row['id']}"):
+            approve_registration(row["id"])
+            st.success(f"Approved {row['email']}")
+            st.experimental_rerun()
+
+        if c[4].button("❌ Reject", key=f"reject_{row['id']}"):
+            reject_registration(row["id"])
+            st.warning(f"Rejected {row['email']}")
+            st.experimental_rerun()
 
 
 def render_help_texts_page(db):
