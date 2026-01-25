@@ -276,6 +276,31 @@ def get_students():
     return [dict(r._mapping) for r in rows]
 
 
+def get_active_courses():
+    rows = fetch_all(
+        """
+        SELECT course_id, course_name
+        FROM courses
+        WHERE is_active = TRUE
+        ORDER BY course_name
+        """
+    )
+    return [dict(r._mapping) for r in rows]
+
+
+def get_student_courses(user_id):
+    rows = fetch_all(
+        """
+        SELECT c.course_id, c.course_name
+        FROM enrollments e
+        JOIN courses c ON c.course_id = e.course_id
+        WHERE e.user_id = :uid
+        """,
+        {"uid": user_id},
+    )
+    return [dict(r._mapping) for r in rows]
+
+
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
@@ -391,6 +416,88 @@ def render_class_management(db):
                 {"cid": selected_class_id, "uid": student_lookup[label]},
             )
         st.success("Students assigned")
+        st.experimental_rerun()
+
+
+def render_student_course_assignment(db):
+    st.subheader("🎯 Student ↔ Course Assignment")
+
+    students = get_students()
+    if not students:
+        st.info("No active students found.")
+        return
+
+    search = st.text_input("Search student (name or email)").lower()
+
+    filtered = [
+        s for s in students
+        if search in s["name"].lower() or search in s["email"].lower()
+    ]
+
+    if not filtered:
+        st.caption("No matching students.")
+        return
+
+    student_map = {
+        f"{s['name']} ({s['email']})": s["user_id"]
+        for s in filtered
+    }
+
+    selected_label = st.selectbox("Select student", list(student_map.keys()))
+    user_id = student_map[selected_label]
+
+    st.markdown("---")
+
+    # Existing assignments
+    assigned = get_student_courses(user_id)
+    assigned_ids = {c["course_id"] for c in assigned}
+
+    st.markdown("### 📘 Assigned courses")
+
+    if not assigned:
+        st.caption("No courses assigned.")
+    else:
+        for c in assigned:
+            c1, c2 = st.columns([4, 1])
+            c1.write(c["course_name"])
+            if c2.button("Remove", key=f"rm_course_{c['course_id']}"):
+                execute(
+                    """
+                    DELETE FROM enrollments
+                    WHERE user_id = :uid AND course_id = :cid
+                    """,
+                    {"uid": user_id, "cid": c["course_id"]},
+                )
+                st.experimental_rerun()
+
+    st.markdown("---")
+
+    # Assign new courses
+    courses = get_active_courses()
+    available = [c for c in courses if c["course_id"] not in assigned_ids]
+
+    if not available:
+        st.caption("All courses already assigned.")
+        return
+
+    course_lookup = {c["course_name"]: c["course_id"] for c in available}
+
+    selected_courses = st.multiselect(
+        "Assign new courses",
+        list(course_lookup.keys()),
+    )
+
+    if st.button("Assign selected courses"):
+        for cname in selected_courses:
+            execute(
+                """
+                INSERT INTO enrollments (user_id, course_id)
+                VALUES (:uid, :cid)
+                ON CONFLICT DO NOTHING
+                """,
+                {"uid": user_id, "cid": course_lookup[cname]},
+            )
+        st.success("Courses assigned")
         st.experimental_rerun()
 
 
@@ -1083,6 +1190,9 @@ def render_admin_student_management_vnext(db):
 
     with st.expander("🏫 Class Management", expanded=False):
         render_class_management(db)
+
+    with st.expander("🎯 Student ↔ Course Assignment", expanded=False):
+        render_student_course_assignment(db)
 
 
 def render_help_texts_page(db):
