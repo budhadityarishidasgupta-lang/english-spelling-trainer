@@ -2195,8 +2195,18 @@ def render_student_sidebar(db, user_id):
                     label_visibility="collapsed",
                 )
 
-                if selected_course_id != active_course_id:
+                # 🔒 HARD RESET when course changes
+                if selected_course_id != st.session_state.get("active_course_id"):
                     st.session_state.active_course_id = selected_course_id
+
+                    # reset ALL practice state tied to previous course
+                    st.session_state.practice_words = None
+                    st.session_state.practice_index = 0
+                    st.session_state.practice_lesson_id = None
+                    st.session_state.active_lesson_id = None
+                    st.session_state.current_wid = None
+                    st.session_state.current_word_pick = None
+
                     st.experimental_rerun()
 
         st.markdown("---")
