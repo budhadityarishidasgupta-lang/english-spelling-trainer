@@ -493,20 +493,9 @@ def render_student_course_assignment(db):
         st.info("No active spelling students found.")
         return
 
-    search = st.text_input("Search student (name or email)").lower()
-
-    filtered = [
-        r for r in rows
-        if search in r["name"].lower() or search in r["email"].lower()
-    ]
-
-    if not filtered:
-        st.caption("No matching students.")
-        return
-
     student_map = {
         f"{r['name']} ({r['email']})": r["user_id"]
-        for r in filtered
+        for r in rows
     }
 
     selected_label = st.selectbox(
