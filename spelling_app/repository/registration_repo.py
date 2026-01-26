@@ -9,6 +9,29 @@ from shared.db import execute, fetch_all, get_engine
 
 engine = get_engine()
 
+# -------------------------------------------------------------------
+# ⚠️ LEGACY REGISTRATION LOGIC — DO NOT USE
+# -------------------------------------------------------------------
+#
+# The functions below are intentionally DISABLED.
+# They rely on non-spelling tables/columns such as:
+#   - pending_registrations
+#   - status
+#   - reviewed_at
+#
+# SpellingSprint uses ONLY:
+#   - spelling_pending_registrations
+#   - payment_status
+#
+# If you hit this error, you are calling legacy logic by mistake.
+# -------------------------------------------------------------------
+
+def _legacy_registration_guard(*args, **kwargs):
+    raise RuntimeError(
+        "LEGACY REGISTRATION LOGIC DISABLED. "
+        "Use spelling_pending_registrations flow instead."
+    )
+
 # Default Spelling courses (LOCKED)
 DEFAULT_SPELLING_COURSE_IDS = (1, 9)
 
@@ -269,33 +292,12 @@ def manually_add_spelling_student(
 
 
 def get_pending_registrations():
-    return fetch_all(
-        """
-        SELECT id, student_name, email, created_at
-        FROM pending_registrations
-        WHERE status = 'PENDING'
-        ORDER BY created_at ASC
-        """
-    )
+    _legacy_registration_guard()
 
 
 def approve_registration(reg_id: int):
-    execute(
-        """
-        UPDATE pending_registrations
-        SET status = 'APPROVED', reviewed_at = :now
-        WHERE id = :id
-        """,
-        {"id": reg_id, "now": datetime.utcnow()},
-    )
+    _legacy_registration_guard()
 
 
 def reject_registration(reg_id: int):
-    execute(
-        """
-        UPDATE pending_registrations
-        SET status = 'REJECTED', reviewed_at = :now
-        WHERE id = :id
-        """,
-        {"id": reg_id, "now": datetime.utcnow()},
-    )
+    _legacy_registration_guard()
