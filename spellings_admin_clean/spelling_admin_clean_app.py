@@ -607,7 +607,7 @@ def render_class_management(db):
                 ORDER BY u.name
                 """
             )
-        ).fetchall()
+        ).mappings().all()
     if not students:
         st.info("No active SpellingSprint students found.")
         return
