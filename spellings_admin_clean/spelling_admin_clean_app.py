@@ -591,7 +591,23 @@ def render_class_management(db):
     # -------------------------
     # Students in class
     # -------------------------
-    students = list_registered_spelling_students()
+    with db.connect() as conn:
+        students = conn.execute(
+            text(
+                """
+                SELECT DISTINCT
+                    u.user_id,
+                    u.name,
+                    u.email
+                FROM users u
+                JOIN spelling_enrollments e
+                    ON e.user_id = u.user_id
+                WHERE u.role = 'student'
+                AND u.is_active = TRUE
+                ORDER BY u.name
+                """
+            )
+        ).fetchall()
     if not students:
         st.info("No active SpellingSprint students found.")
         return
