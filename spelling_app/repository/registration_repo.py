@@ -5,7 +5,12 @@ from typing import Optional
 from sqlalchemy import text
 from passlib.hash import bcrypt
 
-from shared.db import execute, fetch_all
+from shared.db import execute, fetch_all, get_engine
+
+engine = get_engine()
+
+# Default Spelling courses (LOCKED)
+DEFAULT_SPELLING_COURSE_IDS = (1, 9)
 
 
 def generate_registration_token() -> str:
@@ -212,6 +217,32 @@ def get_or_create_user_by_email(
         return row[0]
     except Exception:
         return None
+
+
+def auto_enroll_user_into_default_spelling_courses(user_id: int):
+    """
+    Auto-enroll a user into default Spelling courses.
+
+    Rules (LOCKED):
+    - Only touches spelling_enrollments
+    - Uses unique constraint (user_id, course_id) for idempotency
+    - Safe to call multiple times
+    """
+    with engine.begin() as conn:
+        for course_id in DEFAULT_SPELLING_COURSE_IDS:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO spelling_enrollments (user_id, course_id)
+                    VALUES (:user_id, :course_id)
+                    ON CONFLICT (user_id, course_id) DO NOTHING
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "course_id": course_id,
+                },
+            )
 
 
 def get_pending_registrations():
