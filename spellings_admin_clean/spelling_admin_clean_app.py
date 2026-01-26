@@ -119,6 +119,7 @@ from spelling_app.repository.hint_repo import (
 from spelling_app.repository.registration_repo import (
     get_or_create_user_by_email,
     auto_enroll_user_into_default_spelling_courses,
+    manually_add_spelling_student,
 )
 
 
@@ -1381,6 +1382,24 @@ def render_students_master_list(db):
 
 def render_admin_student_management_vnext(db):
     st.header("🧑‍🏫 Student Management")
+
+    st.subheader("➕ Add Student Manually")
+
+    manual_name = st.text_input("Student Name", key="manual_add_student_name")
+    manual_email = st.text_input("Student Email", key="manual_add_student_email")
+
+    if st.button("Add Student", key="manual_add_student_submit"):
+        if not manual_name or not manual_email:
+            st.error("Name and email are required.")
+        else:
+            try:
+                manually_add_spelling_student(
+                    name=manual_name.strip(),
+                    email=manual_email.strip().lower(),
+                )
+                st.success("Student added and enrolled in Spelling courses.")
+            except Exception as exc:
+                st.error(f"Failed to add student: {exc}")
 
     with st.expander("👩‍🎓 Students", expanded=True):
         render_students_master_list(db)

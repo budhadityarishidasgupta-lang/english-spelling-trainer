@@ -245,6 +245,29 @@ def auto_enroll_user_into_default_spelling_courses(user_id: int):
             )
 
 
+def manually_add_spelling_student(
+    *,
+    name: str,
+    email: str,
+):
+    """
+    Admin-only manual add of a Spelling student.
+
+    Behaviour (LOCKED):
+    - Reuse existing user by email OR create new user
+    - Default password only for new users
+    - Auto-enroll into default spelling courses (1 & 9)
+    """
+    user_id = get_or_create_user_by_email(
+        name=name,
+        email=email,
+    )
+
+    auto_enroll_user_into_default_spelling_courses(user_id)
+
+    return user_id
+
+
 def get_pending_registrations():
     return fetch_all(
         """
