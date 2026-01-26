@@ -440,7 +440,7 @@ def get_spelling_students_only():
         """
         SELECT DISTINCT u.user_id, u.name, u.email
         FROM users u
-        JOIN spelling_student_courses se
+        JOIN spelling_enrollments se
             ON se.user_id = u.user_id
         WHERE COALESCE(u.is_active, TRUE) = TRUE
           AND u.role = 'student'
@@ -455,11 +455,16 @@ def get_active_spelling_students(db):
         rows = conn.execute(
             text(
                 """
-                SELECT user_id, name, email
-                FROM users
-                WHERE role = 'student'
-                  AND is_active = TRUE
-                ORDER BY name
+                SELECT DISTINCT
+                    u.user_id,
+                    u.name,
+                    u.email
+                FROM users u
+                JOIN spelling_enrollments e
+                    ON e.user_id = u.user_id
+                WHERE u.role = 'student'
+                  AND u.is_active = TRUE
+                ORDER BY u.name
                 """
             )
         ).mappings().all()
