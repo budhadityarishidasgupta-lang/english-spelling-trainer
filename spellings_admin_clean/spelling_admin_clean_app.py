@@ -8,7 +8,6 @@ import base64
 import io
 import os
 from pathlib import Path
-import bcrypt
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
@@ -116,6 +115,10 @@ from spelling_app.repository.student_repo import list_registered_spelling_studen
 from spelling_app.repository.hint_repo import (
     upsert_ai_hint_drafts,
     approve_drafts_to_overrides,
+)
+from spelling_app.repository.registration_repo import (
+    get_or_create_user_by_email,
+    auto_enroll_user_into_default_spelling_courses,
 )
 
 
@@ -228,26 +231,15 @@ def approve_spelling_registration(db, pending_id: int):
             st.info("This registration is already approved.")
             return
 
-        # 2️⃣ Hash default password
-        password_hash = bcrypt.hashpw(
-            DEFAULT_PASSWORD.encode(),
-            bcrypt.gensalt(),
-        ).decode()
-
-        # 3️⃣ Create student user
-        conn.execute(
-            text(
-                """
-                INSERT INTO users (name, email, password_hash, role, is_active)
-                VALUES (:name, :email, :password_hash, 'student', TRUE)
-                """
-            ),
-            {
-                "name": pending["student_name"],
-                "email": pending["email"],
-                "password_hash": password_hash,
-            },
+        # 2️⃣ Get or create canonical user (LOCKED behavior)
+        user_id = get_or_create_user_by_email(
+            name=pending["student_name"],
+            email=pending["email"],
+            default_password=DEFAULT_PASSWORD,
         )
+
+        # 3️⃣ Auto-enroll into default Spelling courses (1 & 9)
+        auto_enroll_user_into_default_spelling_courses(user_id)
 
         # 4️⃣ Mark registration as approved
         conn.execute(
