@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import text
+from passlib.hash import bcrypt
 
 from shared.db import execute, fetch_all
 
@@ -121,6 +122,96 @@ def mark_registration_verified_by_token(token: str) -> bool:
     )
 
     return True
+
+
+# -------------------------------------------------------------------
+# CANONICAL USER IDENTITY HELPER (LOCKED BEHAVIOUR)
+# -------------------------------------------------------------------
+
+def get_or_create_user_by_email(
+    *,
+    name: str,
+    email: str,
+    default_password: str = "Learn123!",
+):
+    """
+    Canonical helper to enforce ONE user per email across all apps.
+
+    Rules (LOCKED):
+    - Reuse existing users row if email exists
+    - Create a new user ONLY if email does not exist
+    - Never reset or override password for existing users
+    """
+    existing_rows = execute(
+        """
+        SELECT user_id
+        FROM users
+        WHERE LOWER(email) = LOWER(:email)
+        LIMIT 1
+        """,
+        {"email": email},
+    )
+
+    if isinstance(existing_rows, dict) and "error" in existing_rows:
+        return existing_rows
+
+    if existing_rows:
+        row = existing_rows[0]
+        if hasattr(row, "_mapping"):
+            return row._mapping.get("user_id")
+        if isinstance(row, dict):
+            return row.get("user_id")
+        try:
+            return row[0]
+        except Exception:
+            return None
+
+    hashed_password = bcrypt.hash(default_password)
+
+    created_rows = execute(
+        """
+        INSERT INTO users (
+            name,
+            email,
+            password_hash,
+            role,
+            status,
+            is_active,
+            app_source
+        )
+        VALUES (
+            :name,
+            :email,
+            :password_hash,
+            'student',
+            'ACTIVE',
+            TRUE,
+            'spelling'
+        )
+        RETURNING user_id
+        """,
+        {
+            "name": name,
+            "email": email,
+            "password_hash": hashed_password,
+        },
+    )
+
+    if isinstance(created_rows, dict) and "error" in created_rows:
+        return created_rows
+
+    if not created_rows:
+        return None
+
+    row = created_rows[0]
+    if hasattr(row, "_mapping"):
+        return row._mapping.get("user_id")
+    if isinstance(row, dict):
+        return row.get("user_id")
+    try:
+        return row[0]
+    except Exception:
+        return None
 
 
 def get_pending_registrations():
