@@ -2,12 +2,9 @@ import secrets
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import text
 from passlib.hash import bcrypt
 
-from shared.db import execute, fetch_all, get_engine
-
-engine = get_engine()
+from shared.db import execute, fetch_all
 
 # -------------------------------------------------------------------
 # ⚠️ LEGACY REGISTRATION LOGIC — DO NOT USE
@@ -251,21 +248,18 @@ def auto_enroll_user_into_default_spelling_courses(user_id: int):
     - Uses unique constraint (user_id, course_id) for idempotency
     - Safe to call multiple times
     """
-    with engine.begin() as conn:
-        for course_id in DEFAULT_SPELLING_COURSE_IDS:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO spelling_enrollments (user_id, course_id)
-                    VALUES (:user_id, :course_id)
-                    ON CONFLICT (user_id, course_id) DO NOTHING
-                    """
-                ),
-                {
-                    "user_id": user_id,
-                    "course_id": course_id,
-                },
-            )
+    for course_id in DEFAULT_SPELLING_COURSE_IDS:
+        execute(
+            """
+            INSERT INTO spelling_enrollments (user_id, course_id)
+            VALUES (:user_id, :course_id)
+            ON CONFLICT (user_id, course_id) DO NOTHING
+            """,
+            {
+                "user_id": user_id,
+                "course_id": course_id,
+            },
+        )
 
 
 def manually_add_spelling_student(
