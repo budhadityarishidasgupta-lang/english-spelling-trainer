@@ -97,10 +97,12 @@ from spelling_app.repository.spelling_content_repo import (
 from spelling_app.repository.classroom_repo import (
     create_classroom,
     list_active_classrooms,
-    assign_student_to_classroom,
-    get_students_in_classroom,
-    get_student_classroom,
     archive_classroom,
+)
+from spelling_app.repository.class_repo import (
+    get_students_in_class,
+    add_student_to_class,
+    remove_student_from_class,
 )
 from spellings_admin_clean.spelling_pending_registration_repo import (
     ensure_pending_registration_payment_status_column,
@@ -623,28 +625,40 @@ def render_class_management(db):
     )
     selected_student_id = student_options[selected_student_label]
 
-    if st.button("Assign student to class"):
-        res = assign_student_to_classroom(
-            selected_student_id,
-            selected_class_id,
+    if st.button("Add student to class"):
+        add_student_to_class(
+            class_id=selected_class_id,
+            user_id=selected_student_id,
         )
-        if isinstance(res, dict) and res.get("error"):
-            st.error(res["error"])
-        else:
-            st.success("Student assigned to class.")
-            st.rerun()
+        st.success("Student added to class.")
+        st.rerun()
 
     st.markdown("---")
 
     # -------------------------
     # Students in class
     # -------------------------
-    st.markdown("### Students in selected class")
-    class_students = get_students_in_classroom(selected_class_id)
-    if not class_students:
-        st.caption("No students currently assigned.")
+    st.subheader("Students in this class")
+
+    assigned_students = get_students_in_class(selected_class_id)
+
+    if not assigned_students:
+        st.info("No students assigned yet.")
     else:
-        st.dataframe(class_students, use_container_width=True)
+        for s in assigned_students:
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"{s['name']} ({s['email']})")
+            with col2:
+                if st.button(
+                    "Remove",
+                    key=f"remove_{selected_class_id}_{s['user_id']}",
+                ):
+                    remove_student_from_class(
+                        class_id=selected_class_id,
+                        user_id=s["user_id"],
+                    )
+                    st.rerun()
 
 
 def render_student_course_assignment(db):
