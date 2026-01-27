@@ -1,6 +1,7 @@
 import streamlit as st
 
 from math_app.db import init_math_tables
+from math_app.modes.practice_mode import render_practice_mode
 from math_app.repository.math_question_repo import get_all_questions
 from math_app.repository.math_session_repo import create_session, end_session
 from math_app.repository.math_attempt_repo import record_attempt
@@ -40,15 +41,6 @@ def render_student_home():
     st.caption("Step-by-step learning with hints and explanations")
     if st.button("Start Practice", use_container_width=True):
         st.session_state.mode = "practice"
-        st.experimental_rerun()
-
-
-def render_practice_placeholder():
-    st.markdown("---")
-    st.subheader("🧠 Practice & Skill Builder")
-    st.info("Practice mode will be mounted here next.")
-    if st.button("⬅ Back to Home", use_container_width=True):
-        st.session_state.mode = "home"
         st.experimental_rerun()
 
 
@@ -204,8 +196,7 @@ if st.session_state.mode == "home":
 elif st.session_state.mode == "test":
     render_test_mode()
 elif st.session_state.mode == "practice":
-    render_practice_placeholder()
+    render_practice_mode(show_back_button=True)
 else:
     st.session_state.mode = "home"
     st.experimental_rerun()
-
