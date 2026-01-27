@@ -1,10 +1,10 @@
 import streamlit as st
 
 from math_app.db import init_math_tables
-from math_app.modes.practice_mode import render_practice_mode
 from math_app.repository.math_question_repo import get_all_questions
 from math_app.repository.math_session_repo import create_session, end_session
 from math_app.repository.math_attempt_repo import record_attempt
+from math_app.modes.practice_mode import render_practice_mode
 
 init_math_tables()
 
