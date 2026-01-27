@@ -16,6 +16,42 @@ st.set_page_config(
 st.title("🧮 WordSprint Maths")
 st.caption("Focused maths practice from past papers")
 
+# ------------------------------------------------------------
+# STUDENT SHELL (HOME + MODE ROUTING)
+# ------------------------------------------------------------
+if "mode" not in st.session_state:
+    st.session_state.mode = "home"
+
+
+def render_student_home():
+    st.markdown("---")
+    st.subheader("Welcome 👋")
+    st.write("What would you like to do today?")
+
+    st.markdown("### 📝 Test Papers")
+    st.caption("Timed exam-style questions")
+    if st.button("Start Test Papers", use_container_width=True):
+        st.session_state.mode = "test"
+        st.experimental_rerun()
+
+    st.markdown("---")
+
+    st.markdown("### 🧠 Practice & Skill Builder")
+    st.caption("Step-by-step learning with hints and explanations")
+    if st.button("Start Practice", use_container_width=True):
+        st.session_state.mode = "practice"
+        st.experimental_rerun()
+
+
+def render_practice_placeholder():
+    st.markdown("---")
+    st.subheader("🧠 Practice & Skill Builder")
+    st.info("Practice mode will be mounted here next.")
+    if st.button("⬅ Back to Home", use_container_width=True):
+        st.session_state.mode = "home"
+        st.experimental_rerun()
+
+
 def render_test_mode():
     questions = get_all_questions()
 
@@ -160,4 +196,16 @@ def render_test_mode():
                 st.stop()
 
             st.experimental_rerun()
-render_test_mode()
+# ------------------------------------------------------------
+# MODE SWITCH
+# ------------------------------------------------------------
+if st.session_state.mode == "home":
+    render_student_home()
+elif st.session_state.mode == "test":
+    render_test_mode()
+elif st.session_state.mode == "practice":
+    render_practice_placeholder()
+else:
+    st.session_state.mode = "home"
+    st.experimental_rerun()
+
