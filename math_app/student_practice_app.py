@@ -1,6 +1,9 @@
 def render_practice_mode(show_back_button=True):
     import streamlit as st
 
+    # --- PRACTICE STICKY GUARD ---
+    st.session_state["in_practice"] = True
+
     from math_app.repository.math_practice_repo import (
         get_lessons_for_student,
         get_questions_for_lesson,
@@ -49,7 +52,8 @@ def render_practice_mode(show_back_button=True):
         if show_back_button:
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
-                st.session_state.mode = "home"
+                st.session_state.pop("in_practice", None)
+                st.session_state["mode"] = "TEST"
                 st.rerun()
         return
 
@@ -77,7 +81,8 @@ def render_practice_mode(show_back_button=True):
         if show_back_button:
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
-                st.session_state.mode = "home"
+                st.session_state.pop("in_practice", None)
+                st.session_state["mode"] = "TEST"
                 st.rerun()
         return
 
@@ -129,7 +134,8 @@ def render_practice_mode(show_back_button=True):
         if show_back_button:
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
-                st.session_state.mode = "home"
+                st.session_state.pop("in_practice", None)
+                st.session_state["mode"] = "TEST"
                 st.rerun()
         return
 
@@ -218,5 +224,6 @@ def render_practice_mode(show_back_button=True):
     if show_back_button:
         st.markdown("---")
         if st.button("⬅ Back to Home", use_container_width=True):
-            st.session_state.mode = "home"
+            st.session_state.pop("in_practice", None)
+            st.session_state["mode"] = "TEST"
             st.rerun()

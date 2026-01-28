@@ -50,7 +50,10 @@ def render_student_home():
 
     mode = st.session_state.get("mode", "TEST")
     
-    if mode == "TEST":
+    # --- PRACTICE STICKY ROUTING ---
+    if st.session_state.get("in_practice"):
+        render_practice_mode()
+    elif mode == "TEST":
         render_test_mode(...)
     elif mode == "PRACTICE":
         render_practice_mode()
