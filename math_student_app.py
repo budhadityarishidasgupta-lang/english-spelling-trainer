@@ -43,6 +43,8 @@ def render_student_home():
     if st.button("Start Practice", use_container_width=True):
         st.session_state["mode"] = "PRACTICE"
     from math_app.student_practice_app import render_practice_mode
+
+    mode = st.session_state.get("mode", "TEST")
     
     if mode == "TEST":
         render_test_mode(...)
