@@ -1,4 +1,4 @@
-def render_practice_mode(show_back_button: bool = True):
+def render_practice_mode(show_back_button=True):
     import streamlit as st
 
     from math_app.repository.math_practice_repo import (
