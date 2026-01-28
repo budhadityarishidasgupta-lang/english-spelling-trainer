@@ -113,6 +113,49 @@ def get_resume_index(student_id: int, lesson_id: int) -> int:
 
 
 # ------------------------------------------------------------
+# PRACTICE PROGRESS (APPEND-ONLY)
+# ------------------------------------------------------------
+
+def get_practice_progress(student_id: int, lesson_id: int) -> int:
+    """
+    Returns last completed question index for this student+lesson.
+    Defaults to 0 (start).
+    """
+    from math_app.db import get_connection
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(question_index), 0)
+            FROM math_practice_progress
+            WHERE student_id = %s AND lesson_id = %s
+            """,
+            (student_id, lesson_id),
+        )
+        row = cur.fetchone()
+        return row[0] if row else 0
+
+
+def save_practice_progress(student_id: int, lesson_id: int, question_index: int):
+    """
+    Append-only progress tracking.
+    """
+    from math_app.db import get_connection
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO math_practice_progress (student_id, lesson_id, question_index)
+            VALUES (%s, %s, %s)
+            """,
+            (student_id, lesson_id, question_index),
+        )
+        conn.commit()
+
+
+# ------------------------------------------------------------
 # ATTEMPTS (APPEND-ONLY)
 # ------------------------------------------------------------
 
