@@ -39,9 +39,15 @@ def render_student_home():
 
     st.markdown("### 🧠 Practice & Skill Builder")
     st.caption("Step-by-step learning with hints and explanations")
+    
     if st.button("Start Practice", use_container_width=True):
-        st.session_state.mode = "practice"
-        st.experimental_rerun()
+        st.session_state["mode"] = "PRACTICE"
+    from math_app.student_practice_app import render_practice_mode
+    
+    if mode == "TEST":
+        render_test_mode(...)
+    elif mode == "PRACTICE":
+        render_practice_mode(student_id, course_id)
 
 
 def render_test_mode():
