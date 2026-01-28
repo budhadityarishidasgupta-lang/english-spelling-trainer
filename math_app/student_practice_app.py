@@ -148,19 +148,10 @@ def render_practice_mode(show_back_button=True):
         "D": q["option_d"],
     }
 
-    choice = st.radio(
-        "Choose an answer:",
-        options=[f"{k}) {v}" for k, v in options.items()],
-        disabled=st.session_state.practice_submitted,
-        key="practice_choice_radio",
-    )
+    option_labels = [f"{k}) {v}" for k, v in options.items()]
 
-    selected_key = choice.split(")")[0]
-
-    # ------------------------------------------------------------
-    # SUBMIT
-    # ------------------------------------------------------------
-    if st.button("Submit", disabled=st.session_state.practice_submitted, key="practice_submit"):
+    def handle_practice_submission(selected):
+        selected_key = selected.split(")")[0]
         correct_key = (q["correct_option"] or "").strip().upper()
         is_correct = selected_key == correct_key
 
@@ -179,7 +170,27 @@ def render_practice_mode(show_back_button=True):
             "correct_key": correct_key,
             "explanation": q.get("explanation"),
         }
-        st.rerun()
+
+    # --- Practice answer selection (no auto-advance) ---
+    selected = st.radio(
+        "Choose an answer:",
+        option_labels,
+        key="practice_selected_answer",
+    )
+
+    # --- Submit gate ---
+    if st.button("Submit", use_container_width=True):
+        selected = st.session_state.get("practice_selected_answer")
+        if selected is None:
+            st.warning("Please select an answer.")
+        else:
+            # MOVE the existing evaluation / save-attempt logic here
+            # (whatever currently runs when an option button is clicked)
+            handle_practice_submission(selected)
+
+            # Clear selection for next question
+            st.session_state.pop("practice_selected_answer", None)
+            st.rerun()
 
     # ------------------------------------------------------------
     # FEEDBACK
