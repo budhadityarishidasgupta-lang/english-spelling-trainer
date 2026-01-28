@@ -53,7 +53,7 @@ def render_student_home():
     if mode == "TEST":
         render_test_mode(...)
     elif mode == "PRACTICE":
-        render_practice_mode(student_id, course_id)
+        render_practice_mode()
 
 
 def render_test_mode():
