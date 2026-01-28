@@ -6,10 +6,14 @@ def render_practice_mode(show_back_button=True):
 
     from math_app.repository.math_practice_repo import (
         get_lessons_for_student,
+        get_practice_progress,
         get_questions_for_lesson,
-        get_resume_index,
         record_attempt,
+        save_practice_progress,
     )
+
+    student_id = st.session_state.get("student_id")
+    lesson_id = st.session_state.get("active_lesson_id")
 
     st.subheader("🧠 Practice & Skill Builder")
     st.caption(
@@ -70,6 +74,7 @@ def render_practice_mode(show_back_button=True):
     )
 
     lesson_id = int(lesson_label_to_id[lesson_label])
+    st.session_state["active_lesson_id"] = lesson_id
 
     # ------------------------------------------------------------
     # LOAD QUESTIONS
@@ -93,8 +98,9 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     if "practice_lesson_id" not in st.session_state:
         st.session_state.practice_lesson_id = None
-    if "practice_q_index" not in st.session_state:
-        st.session_state.practice_q_index = 0
+    if "practice_question_index" not in st.session_state:
+        start_idx = get_practice_progress(int(student_id), int(lesson_id))
+        st.session_state.practice_question_index = start_idx
     if "practice_submitted" not in st.session_state:
         st.session_state.practice_submitted = False
     if "practice_selected_option" not in st.session_state:
@@ -109,17 +115,20 @@ def render_practice_mode(show_back_button=True):
         st.session_state.practice_selected_option = None
         st.session_state.practice_feedback = None
 
-        resume_at = get_resume_index(
+        resume_at = get_practice_progress(
             student_id=int(student_id),
             lesson_id=int(lesson_id),
         )
-        st.session_state.practice_q_index = min(int(resume_at), total_questions)
+        st.session_state.practice_question_index = min(
+            int(resume_at),
+            total_questions,
+        )
 
     # ------------------------------------------------------------
     # RESTART PRACTICE (does NOT delete attempts)
     # ------------------------------------------------------------
     if st.button("🔄 Restart Practice", key="practice_restart"):
-        st.session_state.practice_q_index = 0
+        st.session_state.practice_question_index = 0
         st.session_state.practice_submitted = False
         st.session_state.practice_selected_option = None
         st.session_state.practice_feedback = None
@@ -128,7 +137,7 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # COMPLETION
     # ------------------------------------------------------------
-    if st.session_state.practice_q_index >= total_questions:
+    if st.session_state.practice_question_index >= total_questions:
         st.success("🎉 Lesson complete!")
         st.info("You may restart the lesson above to practise again.")
         if show_back_button:
@@ -142,9 +151,11 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # CURRENT QUESTION
     # ------------------------------------------------------------
-    q = questions[st.session_state.practice_q_index]
+    q = questions[st.session_state.practice_question_index]
 
-    st.subheader(f"Question {st.session_state.practice_q_index + 1} of {total_questions}")
+    st.subheader(
+        f"Question {st.session_state.practice_question_index + 1} of {total_questions}"
+    )
     st.write(q["stem"])
 
     options = {
@@ -194,6 +205,16 @@ def render_practice_mode(show_back_button=True):
             # (whatever currently runs when an option button is clicked)
             handle_practice_submission(selected)
 
+            # Advance question index
+            st.session_state.practice_question_index += 1
+
+            # Persist progress
+            save_practice_progress(
+                int(student_id),
+                int(lesson_id),
+                st.session_state.practice_question_index,
+            )
+
             # Clear selection for next question
             st.session_state.pop("practice_selected_answer", None)
             st.rerun()
@@ -215,7 +236,6 @@ def render_practice_mode(show_back_button=True):
                 st.write(fb["explanation"])
 
         if st.button("Next", key="practice_next"):
-            st.session_state.practice_q_index += 1
             st.session_state.practice_submitted = False
             st.session_state.practice_selected_option = None
             st.session_state.practice_feedback = None
