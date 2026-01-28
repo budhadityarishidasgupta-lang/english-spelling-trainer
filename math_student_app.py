@@ -25,6 +25,10 @@ if "mode" not in st.session_state:
 
 
 def render_student_home():
+
+    student_id = st.session_state.get("student_id")
+    course_id = st.session_state.get("course_id")
+    
     st.markdown("---")
     st.subheader("Welcome 👋")
     st.write("What would you like to do today?")
