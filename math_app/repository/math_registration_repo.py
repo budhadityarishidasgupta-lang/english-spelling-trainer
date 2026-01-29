@@ -27,7 +27,7 @@ def get_pending_math_registrations():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, email, class_name, created_at
+                SELECT registration_id, name, email, class_name, created_at
                 FROM math_pending_registrations
                 WHERE status = 'PENDING'
                 ORDER BY created_at
@@ -50,7 +50,7 @@ def approve_math_registration(reg_id: int):
                 """
                 SELECT name, email, password_hash, class_name
                 FROM math_pending_registrations
-                WHERE id = %s AND status = 'PENDING'
+                WHERE registration_id = %s AND status = 'PENDING'
                 """,
                 (reg_id,),
             )
@@ -78,7 +78,7 @@ def approve_math_registration(reg_id: int):
                 """
                 UPDATE math_pending_registrations
                 SET status = 'APPROVED'
-                WHERE id = %s
+                WHERE registration_id = %s
                 """,
                 (reg_id,),
             )
