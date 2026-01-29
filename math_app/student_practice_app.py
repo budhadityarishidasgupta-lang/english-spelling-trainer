@@ -8,7 +8,7 @@ def render_practice_mode(show_back_button=True):
         get_lessons_for_student,
         get_practice_progress,
         get_questions_for_lesson,
-        record_attempt,
+        record_practice_attempt,
         save_practice_progress,
     )
 
@@ -172,7 +172,7 @@ def render_practice_mode(show_back_button=True):
         correct_key = (q["correct_option"] or "").strip().upper()
         is_correct = selected_key == correct_key
 
-        record_attempt(
+        record_practice_attempt(
             student_id=int(student_id),
             lesson_id=int(lesson_id),
             question_id=int(q["question_id"]),

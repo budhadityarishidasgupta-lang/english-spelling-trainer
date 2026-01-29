@@ -119,3 +119,31 @@ def init_math_practice_progress_table():
             """
         )
         conn.commit()
+
+    init_math_practice_attempts_table()
+
+
+def init_math_practice_attempts_table():
+    from math_app.db import get_db_connection
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS math_practice_attempts (
+                    id SERIAL PRIMARY KEY,
+                    student_id INTEGER NOT NULL,
+                    lesson_id INTEGER NOT NULL,
+                    question_id INTEGER NOT NULL,
+                    selected_option CHAR(1) NOT NULL,
+                    is_correct BOOLEAN NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            conn.commit()
+    finally:
+        if conn:
+            conn.close()
