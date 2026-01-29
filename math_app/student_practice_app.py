@@ -137,15 +137,40 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # COMPLETION
     # ------------------------------------------------------------
-    if st.session_state.practice_question_index >= total_questions:
-        st.success("🎉 Lesson complete!")
-        st.info("You may restart the lesson above to practise again.")
-        if show_back_button:
-            st.markdown("---")
+    current_index = st.session_state.get("practice_question_index", 0)
+
+    # --- PRACTICE COMPLETE ---
+    if current_index >= total_questions:
+        correct_count = st.session_state.get("practice_correct_count", 0)
+        accuracy = int((correct_count / total_questions) * 100) if total_questions else 0
+
+        st.markdown("## 🧠 Practice Complete!")
+        st.markdown("🎉 **Great work!**")
+
+        st.markdown("---")
+        st.markdown("### 📊 Your Summary")
+        st.write(f"Questions attempted: **{total_questions}**")
+        st.write(f"Correct answers: **{correct_count}**")
+        st.write(f"Accuracy: **{accuracy}%**")
+
+        st.markdown("---")
+        st.markdown("### 🔁 What would you like to do next?")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("🔄 Retry Lesson", use_container_width=True):
+                st.session_state["practice_question_index"] = 0
+                st.session_state["practice_correct_count"] = 0
+                st.session_state.pop("in_practice", None)
+                st.rerun()
+
+        with col2:
             if st.button("⬅ Back to Home", use_container_width=True):
                 st.session_state.pop("in_practice", None)
                 st.session_state["mode"] = "TEST"
                 st.rerun()
+
         return
 
     # ------------------------------------------------------------
@@ -179,6 +204,11 @@ def render_practice_mode(show_back_button=True):
             selected_option=selected_key,
             is_correct=is_correct,
         )
+
+        if is_correct:
+            st.session_state["practice_correct_count"] = (
+                st.session_state.get("practice_correct_count", 0) + 1
+            )
 
         st.session_state.practice_submitted = True
         st.session_state.practice_selected_option = selected_key
