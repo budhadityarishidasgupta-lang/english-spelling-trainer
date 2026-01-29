@@ -19,7 +19,7 @@ def list_pending_registrations() -> List[Dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT pending_id, student_name, email, status, created_at
+                SELECT id, name, email, status, created_at
                 FROM math_pending_registrations
                 WHERE status = 'PENDING'
                 ORDER BY created_at DESC
@@ -40,7 +40,7 @@ def reject_pending_registration(pending_id: int) -> None:
                 """
                 UPDATE math_pending_registrations
                 SET status = 'REJECTED'
-                WHERE pending_id = %s AND status = 'PENDING'
+                WHERE id = %s AND status = 'PENDING'
                 """,
                 (pending_id,),
             )
@@ -62,9 +62,9 @@ def approve_pending_registration(pending_id: int) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT pending_id, student_name, email
+                SELECT id, name, email
                 FROM math_pending_registrations
-                WHERE pending_id = %s AND status = 'PENDING'
+                WHERE id = %s AND status = 'PENDING'
                 """,
                 (pending_id,),
             )
@@ -94,7 +94,7 @@ def approve_pending_registration(pending_id: int) -> bool:
                 """
                 UPDATE math_pending_registrations
                 SET status = 'APPROVED'
-                WHERE pending_id = %s
+                WHERE id = %s
                 """,
                 (pending_id,),
             )

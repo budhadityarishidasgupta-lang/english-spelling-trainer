@@ -4,17 +4,18 @@ import pandas as pd
 from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import insert_question
 from math_app.repository.math_student_repo import get_active_math_students
+from math_app.repository.math_registration_repo import (
+    approve_math_registration,
+    get_pending_math_registrations,
+)
 from math_app.repository.math_student_mgmt_repo import (
     add_students_to_class,
-    approve_pending_registration,
     auto_assign_course_for_class,
     create_class,
     enroll_student_in_course,
     get_class_defaults,
     list_active_math_students,
     list_classes,
-    list_pending_registrations,
-    reject_pending_registration,
     set_class_defaults,
     set_student_class,
 )
@@ -119,29 +120,19 @@ with tabs[0]:
 
     with subtabs[0]:
         st.markdown("### 🟡 Pending Registrations")
-        pending = list_pending_registrations()
+        pending = get_pending_math_registrations()
         if not pending:
-            st.info("No pending registrations.")
+            st.info("No pending Maths registrations.")
         else:
-            df = pd.DataFrame(pending)
-            st.dataframe(df, use_container_width=True)
-
-            pid = st.number_input("Pending ID to action", min_value=1, step=1)
-            colA, colB = st.columns(2)
-            with colA:
-                if st.button("✅ Approve", use_container_width=True):
-                    ok = approve_pending_registration(int(pid))
-                    if ok:
-                        st.success("Approved. Maths access granted.")
-                    else:
-                        st.error(
-                            "Approve failed: user not found in users table yet (registration must create user first)."
-                        )
-                    st.rerun()
-            with colB:
-                if st.button("❌ Reject", use_container_width=True):
-                    reject_pending_registration(int(pid))
-                    st.success("Rejected.")
+            for r in pending:
+                reg_id, name, email, class_name, created_at = r
+                cols = st.columns([3, 3, 2, 2])
+                cols[0].write(name)
+                cols[1].write(email)
+                cols[2].write(class_name or "-")
+                if cols[3].button("Approve", key=f"approve_{reg_id}"):
+                    approve_math_registration(reg_id)
+                    st.success(f"Approved {name}")
                     st.rerun()
 
     with subtabs[1]:

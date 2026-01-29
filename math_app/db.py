@@ -23,16 +23,6 @@ def init_math_student_management_tables():
     Maths-scoped student registration, classes, and assignments.
     """
     ddl = [
-        """
-        CREATE TABLE IF NOT EXISTS math_pending_registrations (
-            pending_id SERIAL PRIMARY KEY,
-            student_name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            password_hash TEXT NULL,
-            status TEXT NOT NULL DEFAULT 'PENDING',
-            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        """,
         "CREATE INDEX IF NOT EXISTS idx_math_pending_registrations_status ON math_pending_registrations(status);",
         "CREATE INDEX IF NOT EXISTS idx_math_pending_registrations_email ON math_pending_registrations(email);",
         """
@@ -84,6 +74,32 @@ def init_math_student_management_tables():
         with conn.cursor() as cur:
             for stmt in ddl:
                 cur.execute(stmt)
+    finally:
+        if conn:
+            conn.close()
+
+
+def init_math_pending_registrations_table():
+    from math_app.db import get_db_connection
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS math_pending_registrations (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    class_name TEXT,
+                    status TEXT DEFAULT 'PENDING',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            conn.commit()
     finally:
         if conn:
             conn.close()
@@ -173,6 +189,7 @@ def init_math_tables():
         if conn:
             conn.close()
 
+    init_math_pending_registrations_table()
     init_math_student_management_tables()
 
 

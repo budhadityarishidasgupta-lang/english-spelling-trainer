@@ -1,8 +1,10 @@
 import streamlit as st
+from passlib.hash import bcrypt
 
 from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import get_all_questions
 from math_app.repository.math_session_repo import create_session, end_session
+from math_app.repository.math_registration_repo import create_math_registration
 from math_app.repository.math_attempt_repo import record_attempt
 from math_app.student_practice_app import render_practice_mode
 
@@ -33,6 +35,21 @@ def render_student_home():
     st.markdown("---")
     st.subheader("Welcome 👋")
     st.write("What would you like to do today?")
+
+    with st.expander("📝 Register for Maths", expanded=False):
+        name = st.text_input("Student Name")
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        confirm = st.text_input("Confirm Password", type="password")
+        class_name = st.text_input("Class (optional)")
+
+        if st.button("Submit Registration"):
+            if password != confirm:
+                st.error("Passwords do not match")
+            else:
+                pw_hash = bcrypt.hash(password)
+                create_math_registration(name, email, pw_hash, class_name)
+                st.success("Registration submitted. Await admin approval.")
 
     st.markdown("### 📝 Test Papers")
     st.caption("Timed exam-style questions")
