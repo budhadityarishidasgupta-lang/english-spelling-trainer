@@ -17,6 +17,78 @@ def get_db_connection():
     return psycopg2.connect(database_url)
 
 
+def init_math_student_management_tables():
+    """
+    SAFE / ADDITIVE ONLY
+    Maths-scoped student registration, classes, and assignments.
+    """
+    ddl = [
+        """
+        CREATE TABLE IF NOT EXISTS math_pending_registrations (
+            pending_id SERIAL PRIMARY KEY,
+            student_name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            password_hash TEXT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_math_pending_registrations_status ON math_pending_registrations(status);",
+        "CREATE INDEX IF NOT EXISTS idx_math_pending_registrations_email ON math_pending_registrations(email);",
+        """
+        CREATE TABLE IF NOT EXISTS math_student_access (
+            user_id INTEGER PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS math_classes (
+            class_id SERIAL PRIMARY KEY,
+            class_name TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS math_class_students (
+            class_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (class_id, user_id)
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_math_class_students_user ON math_class_students(user_id);",
+        """
+        CREATE TABLE IF NOT EXISTS math_class_defaults (
+            class_id INTEGER PRIMARY KEY,
+            default_course_id INTEGER NULL,
+            auto_assign_course BOOLEAN NOT NULL DEFAULT TRUE,
+            auto_assign_tests BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS math_enrollments (
+            user_id INTEGER NOT NULL,
+            course_id INTEGER NOT NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, course_id)
+        );
+        """,
+    ]
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            for stmt in ddl:
+                cur.execute(stmt)
+    finally:
+        if conn:
+            conn.close()
+
+
 def init_math_tables():
     """
     SAFE / ADDITIVE ONLY
@@ -100,6 +172,8 @@ def init_math_tables():
     finally:
         if conn:
             conn.close()
+
+    init_math_student_management_tables()
 
 
 def init_math_practice_progress_table():
