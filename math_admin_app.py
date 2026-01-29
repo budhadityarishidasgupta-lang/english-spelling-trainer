@@ -3,6 +3,7 @@ import pandas as pd
 
 from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import insert_question
+from math_app.repository.math_student_repo import get_active_math_students
 from math_app.repository.math_student_mgmt_repo import (
     add_students_to_class,
     approve_pending_registration,
@@ -198,11 +199,21 @@ with tabs[1]:
     st.markdown("---")
     st.markdown("### Assign Students to Class")
     class_id = st.number_input("Class ID", min_value=1, step=1)
-    user_ids_csv = st.text_input("User IDs (comma-separated), e.g. 12,15,18")
+    students = get_active_math_students()
+    student_options = {
+        f"{student['name']} ({student['email']})": student["id"]
+        for student in students
+    }
+    selected_students = st.multiselect(
+        "Select Students",
+        options=list(student_options.keys()),
+    )
+    selected_student_ids = [
+        student_options[label] for label in selected_students
+    ]
 
     if st.button("👥 Add Students"):
-        user_ids = [int(x.strip()) for x in user_ids_csv.split(",") if x.strip().isdigit()]
-        add_students_to_class(int(class_id), user_ids)
+        add_students_to_class(int(class_id), selected_student_ids)
         st.success("Students added (idempotent).")
         st.rerun()
 
