@@ -121,19 +121,21 @@ def get_practice_progress(student_id: int, lesson_id: int) -> int:
     Returns last completed question index for this student+lesson.
     Defaults to 0 (start).
     """
-    from math_app.db import get_connection
+    from math_app.db import engine
 
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
+    with engine.connect() as conn:
+        result = conn.execute(
             """
             SELECT COALESCE(MAX(question_index), 0)
             FROM math_practice_progress
-            WHERE student_id = %s AND lesson_id = %s
+            WHERE student_id = :student_id AND lesson_id = :lesson_id
             """,
-            (student_id, lesson_id),
+            {
+                "student_id": student_id,
+                "lesson_id": lesson_id,
+            },
         )
-        row = cur.fetchone()
+        row = result.fetchone()
         return row[0] if row else 0
 
 
@@ -141,18 +143,20 @@ def save_practice_progress(student_id: int, lesson_id: int, question_index: int)
     """
     Append-only progress tracking.
     """
-    from math_app.db import get_connection
+    from math_app.db import engine
 
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
+    with engine.begin() as conn:
+        conn.execute(
             """
             INSERT INTO math_practice_progress (student_id, lesson_id, question_index)
-            VALUES (%s, %s, %s)
+            VALUES (:student_id, :lesson_id, :question_index)
             """,
-            (student_id, lesson_id, question_index),
+            {
+                "student_id": student_id,
+                "lesson_id": lesson_id,
+                "question_index": question_index,
+            },
         )
-        conn.commit()
 
 
 # ------------------------------------------------------------
