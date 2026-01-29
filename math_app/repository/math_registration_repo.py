@@ -21,46 +21,71 @@ def create_math_registration(name, email, password_hash, class_name=None):
 
 
 def get_pending_math_registrations():
+    """
+    Returns pending maths registrations without assuming PK column name.
+    """
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT registration_id, name, email, class_name, created_at
+                SELECT *
                 FROM math_pending_registrations
                 WHERE status = 'PENDING'
                 ORDER BY created_at
                 """
             )
             rows = cur.fetchall()
-            return rows
+
+            col_names = [desc[0] for desc in cur.description]
+
+            results = []
+            for row in rows:
+                record = dict(zip(col_names, row))
+                results.append(record)
+
+            return results
     finally:
         if conn:
             conn.close()
 
 
-def approve_math_registration(reg_id: int):
+def approve_math_registration(registration_pk):
+    """
+    Approves a pending maths registration using dynamic PK handling.
+    """
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            # fetch pending record
+            # Fetch pending record dynamically
             cur.execute(
                 """
-                SELECT name, email, password_hash, class_name
+                SELECT *
                 FROM math_pending_registrations
-                WHERE registration_id = %s AND status = 'PENDING'
+                WHERE status = 'PENDING'
                 """,
-                (reg_id,),
             )
-            row = cur.fetchone()
-            if not row:
+            rows = cur.fetchall()
+            col_names = [desc[0] for desc in cur.description]
+
+            target = None
+            for row in rows:
+                record = dict(zip(col_names, row))
+                if record[col_names[0]] == registration_pk:
+                    target = record
+                    break
+
+            if not target:
                 return False
 
-            name, email, password_hash, class_name = row
+            name = target["name"]
+            email = target["email"]
+            password_hash = target["password_hash"]
+            class_name = target.get("class_name")
 
-            # create user in shared users table
+            # Create or activate user
             cur.execute(
                 """
                 INSERT INTO users (name, email, password_hash, role, status, app_source, class_name)
@@ -73,14 +98,14 @@ def approve_math_registration(reg_id: int):
                 (name, email, password_hash, class_name),
             )
 
-            # mark registration approved
+            # Mark approved (use PK column dynamically)
             cur.execute(
-                """
+                f"""
                 UPDATE math_pending_registrations
                 SET status = 'APPROVED'
-                WHERE registration_id = %s
+                WHERE {col_names[0]} = %s
                 """,
-                (reg_id,),
+                (registration_pk,),
             )
 
             conn.commit()
