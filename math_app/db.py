@@ -100,3 +100,22 @@ def init_math_tables():
     finally:
         if conn:
             conn.close()
+
+
+def init_math_practice_progress_table():
+    from math_app.db import get_db_connection
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS math_practice_progress (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL,
+                lesson_id INTEGER NOT NULL,
+                question_index INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        conn.commit()

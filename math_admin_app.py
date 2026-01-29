@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-from math_app.db import init_math_tables
+from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import insert_question
 
 init_math_tables()
+init_math_practice_progress_table()
 
 st.set_page_config(
     page_title="WordSprint Maths Admin",
