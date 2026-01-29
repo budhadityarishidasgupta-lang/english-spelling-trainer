@@ -3,6 +3,22 @@ import pandas as pd
 
 from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import insert_question
+from math_app.repository.math_student_mgmt_repo import (
+    add_students_to_class,
+    approve_pending_registration,
+    auto_assign_course_for_class,
+    create_class,
+    enroll_student_in_course,
+    get_class_defaults,
+    list_active_math_students,
+    list_classes,
+    list_pending_registrations,
+    reject_pending_registration,
+    set_class_defaults,
+    set_student_class,
+)
+
+init_math_tables()
 
 st.set_page_config(
     page_title="WordSprint Maths — Admin",
@@ -97,11 +113,136 @@ tabs = st.tabs(
 
 with tabs[0]:
     st.subheader("🧑‍🎓 Student Management")
-    st.info("Coming next: approvals, classes, assignments.")
+
+    subtabs = st.tabs(["🟡 Pending Approvals", "🟢 Active Students"])
+
+    with subtabs[0]:
+        st.markdown("### 🟡 Pending Registrations")
+        pending = list_pending_registrations()
+        if not pending:
+            st.info("No pending registrations.")
+        else:
+            df = pd.DataFrame(pending)
+            st.dataframe(df, use_container_width=True)
+
+            pid = st.number_input("Pending ID to action", min_value=1, step=1)
+            colA, colB = st.columns(2)
+            with colA:
+                if st.button("✅ Approve", use_container_width=True):
+                    ok = approve_pending_registration(int(pid))
+                    if ok:
+                        st.success("Approved. Maths access granted.")
+                    else:
+                        st.error(
+                            "Approve failed: user not found in users table yet (registration must create user first)."
+                        )
+                    st.rerun()
+            with colB:
+                if st.button("❌ Reject", use_container_width=True):
+                    reject_pending_registration(int(pid))
+                    st.success("Rejected.")
+                    st.rerun()
+
+    with subtabs[1]:
+        st.markdown("### 🟢 Active Maths Students")
+        students = list_active_math_students()
+        if not students:
+            st.info("No active maths students yet.")
+        else:
+            df = pd.DataFrame(students)
+            st.dataframe(df, use_container_width=True)
+
+            st.markdown("#### Assign Class / Course (Manual)")
+            user_id = st.number_input("User ID", min_value=1, step=1)
+            class_name = st.text_input("Class name (optional)")
+            course_id = st.number_input("Course ID (optional)", min_value=0, step=1)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save Class", use_container_width=True):
+                    set_student_class(int(user_id), class_name.strip() or None)
+                    st.success("Class updated.")
+                    st.rerun()
+            with col2:
+                if st.button("Assign Course", use_container_width=True):
+                    if int(course_id) <= 0:
+                        st.warning("Enter a valid Course ID (>0).")
+                    else:
+                        enroll_student_in_course(int(user_id), int(course_id))
+                        st.success("Course assigned.")
+                        st.rerun()
+
+        st.caption("Test paper assignment is auto-enabled by default for Maths students in this MVP.")
 
 with tabs[1]:
     st.subheader("🏫 Class Management")
-    st.info("Coming next: create class, assign students, auto-assign course/tests.")
+
+    st.markdown("### Create Class")
+    new_class = st.text_input("New class name")
+    if st.button("➕ Create Class"):
+        if new_class.strip():
+            create_class(new_class.strip())
+            st.success("Class created (or already existed).")
+            st.rerun()
+        else:
+            st.warning("Enter a class name.")
+
+    st.markdown("---")
+    st.markdown("### Existing Classes")
+    classes = list_classes()
+    if not classes:
+        st.info("No classes created yet.")
+    else:
+        st.dataframe(pd.DataFrame(classes), use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### Assign Students to Class")
+    class_id = st.number_input("Class ID", min_value=1, step=1)
+    user_ids_csv = st.text_input("User IDs (comma-separated), e.g. 12,15,18")
+
+    if st.button("👥 Add Students"):
+        user_ids = [int(x.strip()) for x in user_ids_csv.split(",") if x.strip().isdigit()]
+        add_students_to_class(int(class_id), user_ids)
+        st.success("Students added (idempotent).")
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### Class Defaults (Auto-Assign)")
+    defaults = (
+        get_class_defaults(int(class_id))
+        if class_id
+        else {"default_course_id": None, "auto_assign_course": True, "auto_assign_tests": True}
+    )
+
+    default_course_id = st.number_input(
+        "Default Course ID",
+        min_value=0,
+        step=1,
+        value=int(defaults.get("default_course_id") or 0),
+    )
+    auto_assign_course = st.checkbox(
+        "Auto-assign course to class students",
+        value=bool(defaults.get("auto_assign_course", True)),
+    )
+    auto_assign_tests = st.checkbox(
+        "Auto-assign tests to class students",
+        value=bool(defaults.get("auto_assign_tests", True)),
+    )
+
+    if st.button("💾 Save Class Defaults"):
+        set_class_defaults(
+            int(class_id),
+            int(default_course_id) if int(default_course_id) > 0 else None,
+            bool(auto_assign_course),
+            bool(auto_assign_tests),
+        )
+        st.success("Defaults saved.")
+        st.rerun()
+
+    if st.button("⚡ Apply Auto-Assign Now"):
+        auto_assign_course_for_class(int(class_id))
+        st.success("Auto-assign applied (course enrollments upserted).")
+        st.rerun()
 
 with tabs[2]:
     st.subheader("🧠 Practice Admin")
