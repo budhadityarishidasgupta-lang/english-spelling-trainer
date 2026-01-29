@@ -125,7 +125,10 @@ with tabs[0]:
             st.info("No pending Maths registrations.")
         else:
             for r in pending:
-                reg_id, name, email, class_name, created_at = r
+                reg_id = list(r.values())[0]
+                name = r["name"]
+                email = r["email"]
+                class_name = r.get("class_name")
                 cols = st.columns([3, 3, 2, 2])
                 cols[0].write(name)
                 cols[1].write(email)
