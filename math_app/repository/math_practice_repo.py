@@ -121,42 +121,48 @@ def get_practice_progress(student_id: int, lesson_id: int) -> int:
     Returns last completed question index for this student+lesson.
     Defaults to 0 (start).
     """
-    from math_app.db import engine
+    from math_app.db import get_db_connection
 
-    with engine.connect() as conn:
-        result = conn.execute(
-            """
-            SELECT COALESCE(MAX(question_index), 0)
-            FROM math_practice_progress
-            WHERE student_id = :student_id AND lesson_id = :lesson_id
-            """,
-            {
-                "student_id": student_id,
-                "lesson_id": lesson_id,
-            },
-        )
-        row = result.fetchone()
-        return row[0] if row else 0
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(MAX(question_index), 0)
+                FROM math_practice_progress
+                WHERE student_id = %s AND lesson_id = %s
+                """,
+                (student_id, lesson_id),
+            )
+            row = cur.fetchone()
+            return row[0] if row else 0
+    finally:
+        if conn:
+            conn.close()
 
 
 def save_practice_progress(student_id: int, lesson_id: int, question_index: int):
     """
     Append-only progress tracking.
     """
-    from math_app.db import engine
+    from math_app.db import get_db_connection
 
-    with engine.begin() as conn:
-        conn.execute(
-            """
-            INSERT INTO math_practice_progress (student_id, lesson_id, question_index)
-            VALUES (:student_id, :lesson_id, :question_index)
-            """,
-            {
-                "student_id": student_id,
-                "lesson_id": lesson_id,
-                "question_index": question_index,
-            },
-        )
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO math_practice_progress (student_id, lesson_id, question_index)
+                VALUES (%s, %s, %s)
+                """,
+                (student_id, lesson_id, question_index),
+            )
+            conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------------------------
