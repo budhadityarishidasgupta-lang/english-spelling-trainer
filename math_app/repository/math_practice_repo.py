@@ -205,3 +205,34 @@ def record_attempt(
                 ),
             )
         conn.commit()
+
+
+def record_practice_attempt(
+    student_id: int,
+    lesson_id: int,
+    question_id: int,
+    selected_option: str,
+    is_correct: bool,
+) -> None:
+    """
+    Record a student practice attempt.
+    Append-only. Never updates or deletes history.
+    """
+    from math_app.db import get_db_connection
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO math_practice_attempts
+                (student_id, lesson_id, question_id, selected_option, is_correct)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (student_id, lesson_id, question_id, selected_option, is_correct),
+            )
+            conn.commit()
+    finally:
+        if conn:
+            conn.close()
