@@ -12,7 +12,8 @@ def render_practice_mode(show_back_button=True):
         save_practice_progress,
     )
 
-    student_id = st.session_state.get("student_id")
+    student_id = int(st.session_state.get("student_id", 1))
+    course_id = int(st.session_state.get("course_id", 1))
     lesson_id = st.session_state.get("active_lesson_id")
 
     st.subheader("🧠 Practice & Skill Builder")
@@ -20,35 +21,7 @@ def render_practice_mode(show_back_button=True):
         "Lesson-based practice. One question at a time. "
         "Submit → feedback → next. Attempts are saved."
     )
-    if st.button("⬅ Back to Home"):
-        st.session_state.pop("in_practice", None)
-        st.session_state["mode"] = "HOME"
-        st.rerun()
     st.markdown("---")
-
-    # ------------------------------------------------------------
-    # TEMP STUDENT / COURSE SELECTOR
-    # (Replace later with real auth from shell)
-    # ------------------------------------------------------------
-    student_id = st.number_input(
-        "Student ID",
-        min_value=1,
-        value=int(st.session_state.get("student_id", 1)),
-        step=1,
-        key="practice_student_id_input",
-    )
-
-    course_id = st.number_input(
-        "Course ID",
-        min_value=1,
-        value=int(st.session_state.get("course_id", 1)),
-        step=1,
-        key="practice_course_id_input",
-    )
-
-    # Persist for future shell integration
-    st.session_state["student_id"] = int(student_id)
-    st.session_state["course_id"] = int(course_id)
 
     # ------------------------------------------------------------
     # LESSON SELECTION
@@ -282,8 +255,8 @@ def render_practice_mode(show_back_button=True):
             st.rerun()
 
     if show_back_button:
-        st.markdown("---")
-        if st.button("⬅ Back to Home", use_container_width=True):
-            st.session_state.pop("in_practice", None)
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        if st.button("⬅ Back to Home"):
             st.session_state["mode"] = "HOME"
+            st.session_state.pop("in_practice", None)
             st.rerun()
