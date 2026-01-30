@@ -4,18 +4,46 @@ from math_app.repository.math_class_repo import get_class_defaults
 from math_app.repository.math_student_mgmt_repo import enroll_student_in_course
 
 
-def create_math_registration(name, email, password_hash):
+def create_math_registration(email: str, password_hash: str):
+    """
+    Create a pending maths registration without assuming column names.
+    """
+    from math_app.db import get_db_connection
+
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
+            # Discover actual columns
             cur.execute(
                 """
-                INSERT INTO math_pending_registrations
-                (name, email, password_hash)
-                VALUES (%s, %s, %s)
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'math_pending_registrations'
+                """
+            )
+            cols = {r[0] for r in cur.fetchall()}
+
+            data = {}
+            if "email" in cols:
+                data["email"] = email.lower()
+            if "password_hash" in cols:
+                data["password_hash"] = password_hash
+            if "status" in cols:
+                data["status"] = "PENDING"
+
+            if not data:
+                raise RuntimeError("math_pending_registrations has no usable columns")
+
+            columns = ", ".join(data.keys())
+            placeholders = ", ".join(["%s"] * len(data))
+
+            cur.execute(
+                f"""
+                INSERT INTO math_pending_registrations ({columns})
+                VALUES ({placeholders})
                 """,
-                (name, email.lower(), password_hash),
+                tuple(data.values()),
             )
             conn.commit()
     finally:
