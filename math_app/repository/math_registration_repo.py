@@ -58,30 +58,44 @@ def create_math_registration(name: str, email: str, password_hash: str):
 
 def get_pending_math_registrations():
     """
-    Returns pending maths registrations without assuming PK column name.
+    Returns all maths registrations that are not yet approved,
+    without assuming status column semantics.
     """
+    from math_app.db import get_db_connection
+
     conn = None
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
+            # Discover columns
             cur.execute(
                 """
-                SELECT *
-                FROM math_pending_registrations
-                WHERE status = 'PENDING'
-                ORDER BY created_at
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'math_pending_registrations'
                 """
             )
-            rows = cur.fetchall()
+            cols = {r[0] for r in cur.fetchall()}
 
+            # Build WHERE clause safely
+            if "status" in cols:
+                where_clause = "WHERE status IS NULL OR status <> 'APPROVED'"
+            else:
+                where_clause = ""
+
+            cur.execute(
+                f"""
+                SELECT *
+                FROM math_pending_registrations
+                {where_clause}
+                ORDER BY created_at DESC
+                """
+            )
+
+            rows = cur.fetchall()
             col_names = [desc[0] for desc in cur.description]
 
-            results = []
-            for row in rows:
-                record = dict(zip(col_names, row))
-                results.append(record)
-
-            return results
+            return [dict(zip(col_names, row)) for row in rows]
     finally:
         if conn:
             conn.close()
@@ -139,14 +153,15 @@ def approve_math_registration(registration_pk):
             user_id = int(user_row[0]) if user_row else None
 
             # Mark approved (use PK column dynamically)
-            cur.execute(
-                f"""
-                UPDATE math_pending_registrations
-                SET status = 'APPROVED'
-                WHERE {col_names[0]} = %s
-                """,
-                (registration_pk,),
-            )
+            if "status" in target:
+                cur.execute(
+                    f"""
+                    UPDATE math_pending_registrations
+                    SET status = 'APPROVED'
+                    WHERE {col_names[0]} = %s
+                    """,
+                    (registration_pk,),
+                )
 
             conn.commit()
 
