@@ -1,7 +1,7 @@
 import streamlit as st
 from passlib.hash import bcrypt
 
-from math_app.db import init_math_practice_progress_table, init_math_tables
+from math_app.db import get_db_connection, init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import get_all_questions
 from math_app.repository.math_session_repo import create_session, end_session
 from math_app.repository.math_registration_repo import create_math_registration
@@ -27,14 +27,87 @@ if "mode" not in st.session_state:
     st.session_state.mode = "home"
 
 
+def is_active_math_user(email: str) -> bool:
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM users
+                WHERE email = %s
+                  AND role = 'student'
+                  AND status = 'ACTIVE'
+                  AND app_source = 'math'
+                """,
+                (email.lower(),),
+            )
+            return cur.fetchone() is not None
+    finally:
+        if conn:
+            conn.close()
+
+
+def authenticate_student(email: str, password: str):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT user_id, name, password_hash
+                FROM users
+                WHERE email = %s
+                  AND role = 'student'
+                """,
+                (email.lower(),),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            user_id, name, password_hash = row
+            if not bcrypt.verify(password, password_hash or ""):
+                return None
+            return {"user_id": user_id, "name": name}
+    finally:
+        if conn:
+            conn.close()
+
+
 def render_student_home():
+    if "is_logged_in" not in st.session_state:
+        st.session_state.is_logged_in = False
 
     student_id = st.session_state.get("student_id")
     course_id = st.session_state.get("course_id")
-    
+
     st.markdown("---")
     st.subheader("Welcome 👋")
-    st.write("What would you like to do today?")
+
+    if not st.session_state.is_logged_in:
+        st.write("Please log in to continue.")
+        with st.form("math_login_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Login")
+
+            if submitted:
+                user = authenticate_student(email, password)
+                if not user:
+                    st.error("Invalid email or password.")
+                    return
+                if not is_active_math_user(email):
+                    st.error(
+                        "You are not registered for Maths yet or your account is not approved. "
+                        "Please register for Maths and wait for admin approval."
+                    )
+                    return
+                st.session_state.is_logged_in = True
+                st.session_state.student_id = user["user_id"]
+                st.session_state.student_name = user["name"]
+                st.experimental_rerun()
+        st.write("New to Maths? Register below.")
 
     with st.expander("📝 Register for Maths", expanded=False):
         name = st.text_input("Student Name")
@@ -50,6 +123,11 @@ def render_student_home():
                 pw_hash = bcrypt.hash(password)
                 create_math_registration(name, email, pw_hash, class_name)
                 st.success("Registration submitted. Await admin approval.")
+
+    if not st.session_state.is_logged_in:
+        return
+
+    st.write("What would you like to do today?")
 
     st.markdown("### 📝 Test Papers")
     st.caption("Timed exam-style questions")
