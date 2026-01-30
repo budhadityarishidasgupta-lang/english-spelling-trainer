@@ -126,8 +126,12 @@ with tabs[0]:
         else:
             for r in pending:
                 reg_id = list(r.values())[0]
-                name = r["name"]
-                email = r["email"]
+                name = (
+                    r.get("name")
+                    or r.get("student_name")
+                    or "—"
+                )
+                email = r.get("email", "—")
                 class_name = r.get("class_name")
                 cols = st.columns([3, 3, 2, 2])
                 cols[0].write(name)

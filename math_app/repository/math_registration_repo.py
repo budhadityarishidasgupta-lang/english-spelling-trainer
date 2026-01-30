@@ -4,9 +4,10 @@ from math_app.repository.math_class_repo import get_class_defaults
 from math_app.repository.math_student_mgmt_repo import enroll_student_in_course
 
 
-def create_math_registration(email: str, password_hash: str):
+def create_math_registration(name: str, email: str, password_hash: str):
     """
-    Create a pending maths registration without assuming column names.
+    Create pending maths registration with name + email,
+    only using columns that actually exist.
     """
     from math_app.db import get_db_connection
 
@@ -14,7 +15,7 @@ def create_math_registration(email: str, password_hash: str):
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            # Discover actual columns
+            # Discover table columns
             cur.execute(
                 """
                 SELECT column_name
@@ -25,6 +26,10 @@ def create_math_registration(email: str, password_hash: str):
             cols = {r[0] for r in cur.fetchall()}
 
             data = {}
+            if "name" in cols:
+                data["name"] = name
+            if "student_name" in cols:
+                data["student_name"] = name
             if "email" in cols:
                 data["email"] = email.lower()
             if "password_hash" in cols:

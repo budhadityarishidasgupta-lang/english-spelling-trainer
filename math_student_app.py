@@ -135,13 +135,17 @@ def render_student_home():
         st.write("New to Maths? Register below.")
 
     with st.expander("📝 Register for Maths", expanded=False):
+        name = st.text_input("Student Name")
         email = st.text_input("Email")
 
         if st.button("Submit Registration"):
-            pw_hash = bcrypt.hash(DEFAULT_PASSWORD)
-            create_math_registration(email, pw_hash)
-            st.session_state["math_registration_submitted"] = True
-            st.rerun()
+            if not name or not email:
+                st.error("Please enter both name and email.")
+            else:
+                pw_hash = bcrypt.hash(DEFAULT_PASSWORD)
+                create_math_registration(name, email, pw_hash)
+                st.session_state["math_registration_submitted"] = True
+                st.rerun()
 
     if not st.session_state.is_logged_in:
         return
