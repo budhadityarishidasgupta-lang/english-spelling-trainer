@@ -1,4 +1,7 @@
 from math_app.db import get_db_connection
+from math_app.repository import math_student_mgmt_repo
+from math_app.repository.math_class_repo import get_class_defaults
+from math_app.repository.math_student_mgmt_repo import enroll_student_in_course
 
 
 def create_math_registration(name, email, password_hash, class_name=None):
@@ -98,6 +101,10 @@ def approve_math_registration(registration_pk):
                 (name, email, password_hash, class_name),
             )
 
+            cur.execute("SELECT user_id FROM users WHERE email = %s", (email,))
+            user_row = cur.fetchone()
+            user_id = int(user_row[0]) if user_row else None
+
             # Mark approved (use PK column dynamically)
             cur.execute(
                 f"""
@@ -109,6 +116,22 @@ def approve_math_registration(registration_pk):
             )
 
             conn.commit()
+
+            # --- AUTO ASSIGN ON APPROVAL (SAFE) ---
+            try:
+                if class_name and user_id:
+                    course_id, test_ids = get_class_defaults(class_name)
+
+                    if course_id:
+                        enroll_student_in_course(user_id=user_id, course_id=int(course_id))
+
+                    if test_ids:
+                        assign_tests = getattr(math_student_mgmt_repo, "assign_tests_to_student", None)
+                        if callable(assign_tests):
+                            assign_tests(student_email=email, test_ids=test_ids)
+            except Exception:
+                pass
+
             return True
     finally:
         if conn:
