@@ -26,7 +26,7 @@ st.caption("Focused maths practice from past papers")
 # STUDENT SHELL (HOME + MODE ROUTING)
 # ------------------------------------------------------------
 if "mode" not in st.session_state:
-    st.session_state.mode = "home"
+    st.session_state.mode = "HOME"
 
 
 def is_active_math_user(email: str) -> bool:
@@ -155,27 +155,18 @@ def render_student_home():
     st.markdown("### 📝 Test Papers")
     st.caption("Timed exam-style questions")
     if st.button("Start Test Papers", use_container_width=True):
-        st.session_state.mode = "test"
-        st.experimental_rerun()
+        st.session_state.mode = "TEST"
+        st.rerun()
 
     st.markdown("---")
 
     st.markdown("### 🧠 Practice & Skill Builder")
     st.caption("Step-by-step learning with hints and explanations")
     
-    if st.button("Start Practice", use_container_width=True):
+    if st.button("🧠 Practice & Skill Builder"):
         st.session_state["mode"] = "PRACTICE"
-    from math_app.student_practice_app import render_practice_mode
-
-    mode = st.session_state.get("mode", "TEST")
-    
-    # --- PRACTICE STICKY ROUTING ---
-    if st.session_state.get("in_practice"):
-        render_practice_mode()
-    elif mode == "TEST":
-        render_test_mode(...)
-    elif mode == "PRACTICE":
-        render_practice_mode()
+        st.session_state["in_practice"] = True
+        st.rerun()
 
 
 def render_test_mode():
@@ -325,12 +316,18 @@ def render_test_mode():
 # ------------------------------------------------------------
 # MODE SWITCH
 # ------------------------------------------------------------
-if st.session_state.mode == "home":
+def main():
+    mode = st.session_state.get("mode", "HOME")
+
+    if mode == "PRACTICE":
+        render_practice_mode()
+        return
+
+    if mode == "TEST":
+        render_test_mode()
+        return
+
     render_student_home()
-elif st.session_state.mode == "test":
-    render_test_mode()
-elif st.session_state.mode == "practice":
-    render_practice_mode(show_back_button=True)
-else:
-    st.session_state.mode = "home"
-    st.experimental_rerun()
+
+
+main()

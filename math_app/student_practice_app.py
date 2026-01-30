@@ -20,6 +20,10 @@ def render_practice_mode(show_back_button=True):
         "Lesson-based practice. One question at a time. "
         "Submit → feedback → next. Attempts are saved."
     )
+    if st.button("⬅ Back to Home"):
+        st.session_state.pop("in_practice", None)
+        st.session_state["mode"] = "HOME"
+        st.rerun()
     st.markdown("---")
 
     # ------------------------------------------------------------
@@ -57,7 +61,7 @@ def render_practice_mode(show_back_button=True):
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
                 st.session_state.pop("in_practice", None)
-                st.session_state["mode"] = "TEST"
+                st.session_state["mode"] = "HOME"
                 st.rerun()
         return
 
@@ -87,7 +91,7 @@ def render_practice_mode(show_back_button=True):
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
                 st.session_state.pop("in_practice", None)
-                st.session_state["mode"] = "TEST"
+                st.session_state["mode"] = "HOME"
                 st.rerun()
         return
 
@@ -168,7 +172,7 @@ def render_practice_mode(show_back_button=True):
         with col2:
             if st.button("⬅ Back to Home", use_container_width=True):
                 st.session_state.pop("in_practice", None)
-                st.session_state["mode"] = "TEST"
+                st.session_state["mode"] = "HOME"
                 st.rerun()
 
         return
@@ -177,6 +181,7 @@ def render_practice_mode(show_back_button=True):
     # CURRENT QUESTION
     # ------------------------------------------------------------
     q = questions[st.session_state.practice_question_index]
+    current_question = {**q, "id": q.get("id", q["question_id"])}
 
     st.subheader(
         f"Question {st.session_state.practice_question_index + 1} of {total_questions}"
@@ -219,15 +224,16 @@ def render_practice_mode(show_back_button=True):
         }
 
     # --- Practice answer selection (no auto-advance) ---
+    answer_key = f"practice_answer_{current_question['id']}"
     selected = st.radio(
-        "Choose an answer:",
+        "Choose your answer",
         option_labels,
-        key="practice_selected_answer",
+        key=answer_key,
     )
 
     # --- Submit gate ---
-    if st.button("Submit", use_container_width=True):
-        selected = st.session_state.get("practice_selected_answer")
+    if st.button("Submit Answer"):
+        selected = st.session_state.get(answer_key)
         if selected is None:
             st.warning("Please select an answer.")
         else:
@@ -245,8 +251,12 @@ def render_practice_mode(show_back_button=True):
                 st.session_state.practice_question_index,
             )
 
+            st.session_state.practice_submitted = False
+            st.session_state.practice_selected_option = None
+            st.session_state.practice_feedback = None
+
             # Clear selection for next question
-            st.session_state.pop("practice_selected_answer", None)
+            st.session_state.pop(answer_key, None)
             st.rerun()
 
     # ------------------------------------------------------------
@@ -275,5 +285,5 @@ def render_practice_mode(show_back_button=True):
         st.markdown("---")
         if st.button("⬅ Back to Home", use_container_width=True):
             st.session_state.pop("in_practice", None)
-            st.session_state["mode"] = "TEST"
+            st.session_state["mode"] = "HOME"
             st.rerun()
