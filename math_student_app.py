@@ -79,6 +79,29 @@ def render_student_home():
     if "is_logged_in" not in st.session_state:
         st.session_state.is_logged_in = False
 
+    if st.session_state.get("math_registration_submitted"):
+        st.markdown("## ✅ Registration Received")
+        st.success(
+            "Thank you for registering for **WordSprint Maths**.\n\n"
+            "### What happens next?\n"
+            "• Your registration has been received\n"
+            "• Please complete payment using the Revolut link (if not already done)\n"
+            "• An admin will review and activate your account\n\n"
+            "You’ll be able to log in once approval is complete."
+        )
+
+        st.info(
+            "⏳ This usually takes a short time. "
+            "If you’ve already paid, no further action is needed."
+        )
+
+        if st.button("⬅ Back to Login"):
+            st.session_state.pop("math_registration_submitted", None)
+            st.rerun()
+
+        st.markdown("---")
+        return
+
     student_id = st.session_state.get("student_id")
     course_id = st.session_state.get("course_id")
 
@@ -122,7 +145,8 @@ def render_student_home():
             else:
                 pw_hash = bcrypt.hash(password)
                 create_math_registration(name, email, pw_hash, class_name)
-                st.success("Registration submitted. Await admin approval.")
+                st.session_state["math_registration_submitted"] = True
+                st.rerun()
 
     if not st.session_state.is_logged_in:
         return
