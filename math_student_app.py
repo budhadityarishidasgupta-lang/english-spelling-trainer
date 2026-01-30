@@ -8,6 +8,8 @@ from math_app.repository.math_registration_repo import create_math_registration
 from math_app.repository.math_attempt_repo import record_attempt
 from math_app.student_practice_app import render_practice_mode
 
+DEFAULT_PASSWORD = "Learn1234!"
+
 init_math_tables()
 init_math_practice_progress_table()
 
@@ -135,18 +137,12 @@ def render_student_home():
     with st.expander("📝 Register for Maths", expanded=False):
         name = st.text_input("Student Name")
         email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        confirm = st.text_input("Confirm Password", type="password")
-        class_name = st.text_input("Class (optional)")
 
         if st.button("Submit Registration"):
-            if password != confirm:
-                st.error("Passwords do not match")
-            else:
-                pw_hash = bcrypt.hash(password)
-                create_math_registration(name, email, pw_hash, class_name)
-                st.session_state["math_registration_submitted"] = True
-                st.rerun()
+            pw_hash = bcrypt.hash(DEFAULT_PASSWORD)
+            create_math_registration(name, email, pw_hash)
+            st.session_state["math_registration_submitted"] = True
+            st.rerun()
 
     if not st.session_state.is_logged_in:
         return

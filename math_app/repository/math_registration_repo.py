@@ -4,7 +4,7 @@ from math_app.repository.math_class_repo import get_class_defaults
 from math_app.repository.math_student_mgmt_repo import enroll_student_in_course
 
 
-def create_math_registration(name, email, password_hash, class_name=None):
+def create_math_registration(name, email, password_hash):
     conn = None
     try:
         conn = get_db_connection()
@@ -12,10 +12,10 @@ def create_math_registration(name, email, password_hash, class_name=None):
             cur.execute(
                 """
                 INSERT INTO math_pending_registrations
-                (name, email, password_hash, class_name)
-                VALUES (%s, %s, %s, %s)
+                (name, email, password_hash)
+                VALUES (%s, %s, %s)
                 """,
-                (name, email.lower(), password_hash, class_name),
+                (name, email.lower(), password_hash),
             )
             conn.commit()
     finally:
