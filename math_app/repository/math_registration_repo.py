@@ -130,10 +130,19 @@ def approve_math_registration(registration_pk):
             if not target:
                 return False
 
-            name = target["name"]
-            email = target["email"]
-            password_hash = target["password_hash"]
+            name = (
+                target.get("name")
+                or target.get("student_name")
+                or target.get("full_name")
+                or "Student"
+            )
+
+            email = target.get("email")
+            password_hash = target.get("password_hash")
             class_name = target.get("class_name")
+
+            if not email:
+                raise RuntimeError("Pending registration missing email")
 
             # Create or activate user
             cur.execute(
