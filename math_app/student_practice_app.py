@@ -33,6 +33,8 @@ def render_practice_mode(show_back_button=True):
         if show_back_button:
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
+                st.session_state.pop("practice_feedback", None)
+                st.session_state.pop("practice_submitted", None)
                 st.session_state.pop("in_practice", None)
                 st.session_state["mode"] = "HOME"
                 st.rerun()
@@ -63,6 +65,8 @@ def render_practice_mode(show_back_button=True):
         if show_back_button:
             st.markdown("---")
             if st.button("⬅ Back to Home", use_container_width=True):
+                st.session_state.pop("practice_feedback", None)
+                st.session_state.pop("practice_submitted", None)
                 st.session_state.pop("in_practice", None)
                 st.session_state["mode"] = "HOME"
                 st.rerun()
@@ -105,10 +109,10 @@ def render_practice_mode(show_back_button=True):
     # RESTART PRACTICE (does NOT delete attempts)
     # ------------------------------------------------------------
     if st.button("🔄 Restart Practice", key="practice_restart"):
+        st.session_state.pop("practice_feedback", None)
+        st.session_state.pop("practice_submitted", None)
         st.session_state.practice_question_index = 0
-        st.session_state.practice_submitted = False
         st.session_state.practice_selected_option = None
-        st.session_state.practice_feedback = None
         st.rerun()
 
     # ------------------------------------------------------------
@@ -144,6 +148,8 @@ def render_practice_mode(show_back_button=True):
 
         with col2:
             if st.button("⬅ Back to Home", use_container_width=True):
+                st.session_state.pop("practice_feedback", None)
+                st.session_state.pop("practice_submitted", None)
                 st.session_state.pop("in_practice", None)
                 st.session_state["mode"] = "HOME"
                 st.rerun()
@@ -170,32 +176,6 @@ def render_practice_mode(show_back_button=True):
 
     option_labels = [f"{k}) {v}" for k, v in options.items()]
 
-    def handle_practice_submission(selected):
-        selected_key = selected.split(")")[0]
-        correct_key = (q["correct_option"] or "").strip().upper()
-        is_correct = selected_key == correct_key
-
-        record_practice_attempt(
-            student_id=int(student_id),
-            lesson_id=int(lesson_id),
-            question_id=int(q["question_id"]),
-            selected_option=selected_key,
-            is_correct=is_correct,
-        )
-
-        if is_correct:
-            st.session_state["practice_correct_count"] = (
-                st.session_state.get("practice_correct_count", 0) + 1
-            )
-
-        st.session_state.practice_submitted = True
-        st.session_state.practice_selected_option = selected_key
-        st.session_state.practice_feedback = {
-            "is_correct": is_correct,
-            "correct_key": correct_key,
-            "explanation": q.get("explanation"),
-        }
-
     # --- Practice answer selection (no auto-advance) ---
     answer_key = f"practice_answer_{current_question['id']}"
     selected = st.radio(
@@ -210,53 +190,72 @@ def render_practice_mode(show_back_button=True):
         if selected is None:
             st.warning("Please select an answer.")
         else:
-            # MOVE the existing evaluation / save-attempt logic here
-            # (whatever currently runs when an option button is clicked)
-            handle_practice_submission(selected)
+            selected_key = selected.split(")")[0]
+            correct_option = (q["correct_option"] or "").strip().upper()
+            is_correct = selected_key == correct_option
 
-            # Advance question index
-            st.session_state.practice_question_index += 1
-
-            # Persist progress
-            save_practice_progress(
-                int(student_id),
-                int(lesson_id),
-                st.session_state.practice_question_index,
+            record_practice_attempt(
+                student_id=student_id,
+                lesson_id=lesson_id,
+                question_id=q["question_id"],
+                selected_option=selected_key,
+                is_correct=is_correct,
             )
 
-            st.session_state.practice_submitted = False
-            st.session_state.practice_selected_option = None
-            st.session_state.practice_feedback = None
+            if is_correct:
+                st.session_state["practice_correct_count"] = (
+                    st.session_state.get("practice_correct_count", 0) + 1
+                )
 
-            # Clear selection for next question
-            st.session_state.pop(answer_key, None)
+            st.session_state["practice_feedback"] = {
+                "is_correct": is_correct,
+                "explanation": current_question.get("explanation"),
+                "solution": current_question.get("solution"),
+            }
+
+            st.session_state["practice_submitted"] = True
             st.rerun()
 
     # ------------------------------------------------------------
     # FEEDBACK
     # ------------------------------------------------------------
-    if st.session_state.practice_submitted and st.session_state.practice_feedback:
-        fb = st.session_state.practice_feedback
+    feedback = st.session_state.get("practice_feedback")
+    submitted = st.session_state.get("practice_submitted")
 
-        if fb["is_correct"]:
+    if submitted and feedback:
+        if feedback["is_correct"]:
             st.success("✅ Correct!")
         else:
-            correct_text = options.get(fb["correct_key"], "")
-            st.error(f"❌ Incorrect. Correct answer: {fb['correct_key']}) {correct_text}")
+            st.error("❌ Incorrect")
 
-        if fb.get("explanation"):
-            with st.expander("📘 Explanation"):
-                st.write(fb["explanation"])
+        if feedback.get("explanation"):
+            st.markdown("**Explanation**")
+            st.info(feedback["explanation"])
 
-        if st.button("Next", key="practice_next"):
-            st.session_state.practice_submitted = False
+        if feedback.get("solution"):
+            st.markdown("**Solution**")
+            st.code(feedback["solution"])
+
+    if submitted:
+        if st.button("Next Question ➡"):
+            st.session_state.pop("practice_feedback", None)
+            st.session_state.pop("practice_submitted", None)
             st.session_state.practice_selected_option = None
-            st.session_state.practice_feedback = None
+
+            st.session_state["practice_question_index"] += 1
+            save_practice_progress(
+                int(student_id),
+                int(lesson_id),
+                st.session_state.practice_question_index,
+            )
+            st.session_state.pop(answer_key, None)
             st.rerun()
 
     if show_back_button:
         st.markdown("<br><br>", unsafe_allow_html=True)
         if st.button("⬅ Back to Home"):
+            st.session_state.pop("practice_feedback", None)
+            st.session_state.pop("practice_submitted", None)
             st.session_state["mode"] = "HOME"
             st.session_state.pop("in_practice", None)
             st.rerun()
