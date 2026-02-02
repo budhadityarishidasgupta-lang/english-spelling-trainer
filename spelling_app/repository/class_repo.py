@@ -9,7 +9,7 @@ from shared.db import execute, fetch_all
 # ==================================================
 
 
-def get_students_in_class(class_id: int):
+def get_students_in_class(classroom_id: int):
     """
     Returns all students assigned to a spelling class.
     """
@@ -19,13 +19,13 @@ def get_students_in_class(class_id: int):
             u.user_id,
             u.name,
             u.email
-        FROM spelling_class_students scs
+        FROM spelling_classroom_students scs
         JOIN users u
-            ON u.user_id = scs.user_id
-        WHERE scs.class_id = :class_id
+            ON u.user_id = scs.student_id
+        WHERE scs.classroom_id = :classroom_id
         ORDER BY u.name
         """,
-        {"class_id": class_id},
+        {"classroom_id": classroom_id},
     )
 
 
