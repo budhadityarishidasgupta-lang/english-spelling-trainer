@@ -134,6 +134,16 @@ def rows_to_dicts(rows):
     return out
 
 
+def row_to_dict(row):
+    if row is None:
+        return {}
+    if hasattr(row, "_mapping"):
+        return dict(row._mapping)
+    if isinstance(row, dict):
+        return row
+    return {}
+
+
 def ensure_spelling_admin_tables():
     execute(
         """
@@ -604,18 +614,20 @@ def render_class_management(db):
     if not assigned_students:
         st.info("No students assigned yet.")
     else:
-        for s in assigned_students:
+        for row in assigned_students:
+            s = row_to_dict(row)
+
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.write(f"{s['name']} ({s['email']})")
+                st.write(f"{s.get('name')} ({s.get('email')})")
             with col2:
                 if st.button(
                     "Remove",
-                    key=f"remove_{selected_class_id}_{s['user_id']}",
+                    key=f"remove_{selected_class_id}_{s.get('user_id')}",
                 ):
                     remove_student_from_class(
                         classroom_id=selected_class_id,
-                        student_id=s["user_id"],
+                        student_id=s.get("user_id"),
                     )
                     st.rerun()
 
