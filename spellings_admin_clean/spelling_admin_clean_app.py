@@ -104,16 +104,9 @@ from spelling_app.repository.class_repo import (
     add_student_to_class,
     remove_student_from_class,
 )
-from spellings_admin_clean.spelling_pending_registration_repo import (
-    ensure_pending_registration_payment_status_column,
-    ensure_pending_registration_token_column,
-    list_spelling_pending_registrations,
-    mark_registration_approved,
-)
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
-from spelling_app.repository.student_repo import list_registered_spelling_students
 from spelling_app.repository.hint_repo import (
     upsert_ai_hint_drafts,
     approve_drafts_to_overrides,
@@ -391,40 +384,6 @@ def assign_course_to_student(user_id: int, course_id: int):
     return True
 
 
-def list_classes():
-    rows = fetch_all(
-        """
-        SELECT class_name
-        FROM spelling_classes
-        WHERE is_active = TRUE
-        ORDER BY class_name;
-        """
-    )
-    return [r[0] for r in rows]
-
-
-def create_class(class_name: str):
-    fetch_all(
-        """
-        INSERT INTO spelling_classes (class_name)
-        VALUES (:name)
-        ON CONFLICT DO NOTHING;
-        """,
-        {"name": class_name.strip()},
-    )
-
-
-def archive_class(class_name: str):
-    fetch_all(
-        """
-        UPDATE spelling_classes
-        SET is_active = FALSE
-        WHERE class_name = :name;
-        """,
-        {"name": class_name},
-    )
-
-
 def get_active_classes():
     rows = fetch_all(
         """
@@ -648,15 +607,15 @@ def render_class_management(db):
         for s in assigned_students:
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.write(f"{s.name} ({s.email})")
+                st.write(f"{s['name']} ({s['email']})")
             with col2:
                 if st.button(
                     "Remove",
-                    key=f"remove_{selected_class_id}_{s.user_id}",
+                    key=f"remove_{selected_class_id}_{s['user_id']}",
                 ):
                     remove_student_from_class(
-                        class_id=selected_class_id,
-                        user_id=s.user_id,
+                        classroom_id=selected_class_id,
+                        student_id=s["user_id"],
                     )
                     st.rerun()
 
@@ -1044,7 +1003,6 @@ def render_admin_management():
     selected_course_id = None
     with admin_tab:
         selected_course_id = render_course_management()
-        render_student_management()
 
     with ingestion_tab:
         if selected_course_id is None:
@@ -1076,248 +1034,6 @@ def render_admin_management():
         )
         st.write("Sample mappings:")
         st.write(rows_to_dicts(sample))
-
-
-def assign_student_to_class(user_id: int, class_name: str):
-    fetch_all(
-        """
-        UPDATE spelling_users
-        SET class_name = :class_name
-        WHERE user_id = :user_id;
-        """,
-        {"user_id": user_id, "class_name": class_name},
-    )
-
-
-def render_student_management():
-    st.markdown("## 👩‍🎓 Students (Spelling App)")
-    st.subheader("🏫 Class Management")
-
-    existing_classes = list_classes()
-
-    class_counts = {
-        c: sum(
-            1
-            for s in list_registered_spelling_students()
-            if s.get("class_name") == c
-        )
-        for c in existing_classes
-    }
-
-    class_labels = [
-        f"{c} ({class_counts[c]})" for c in existing_classes
-    ]
-
-    label_to_class = dict(zip(class_labels, existing_classes))
-
-    new_class_name = st.text_input(
-        "Create new class",
-        placeholder="e.g. Year 5 – Group A",
-    )
-
-    if st.button("Create Class"):
-        if not new_class_name.strip():
-            st.error("Class name cannot be empty.")
-        elif new_class_name in existing_classes:
-            st.warning("Class already exists.")
-        else:
-            create_class(new_class_name)
-            st.success(f"Class '{new_class_name}' created.")
-            st.experimental_rerun()
-
-    if not class_labels:
-        st.info("No classes yet. Create a class to begin.")
-        return
-
-    selected_label = st.selectbox(
-        "Select class",
-        options=class_labels,
-        key="admin_student_management_select_class",
-    )
-    selected_class = label_to_class[selected_label]
-
-    if st.button("Archive selected class"):
-        archive_class(selected_class)
-        st.success(f"Class '{selected_class}' archived.")
-        st.experimental_rerun()
-
-    st.markdown("### Assign course to entire class")
-
-    courses_lookup = get_all_courses()
-    course_map = {
-        c["course_name"]: c["course_id"] for c in courses_lookup
-    }
-
-    selected_course = st.selectbox(
-        "Select course",
-        options=list(course_map.keys()),
-        key="admin_student_management_select_course",
-    )
-
-    if st.button("Assign course to all students in class"):
-        class_students = [
-            s
-            for s in list_registered_spelling_students()
-            if s.get("class_name") == selected_class
-        ]
-
-        if not class_students:
-            st.warning("No students in this class.")
-        else:
-            for s in class_students:
-                assign_course_to_student(
-                    user_id=s["user_id"],
-                    course_id=course_map[selected_course],
-                )
-
-            st.success(
-                f"Course '{selected_course}' assigned to {len(class_students)} students."
-            )
-
-    # ------------------------------------
-    # Class roster preview (read-only)
-    # ------------------------------------
-    st.markdown("#### Students in selected class")
-
-    class_students = [
-        s
-        for s in list_registered_spelling_students()
-        if s.get("class_name") == selected_class
-    ]
-
-    if not class_students:
-        st.info(f"No students currently assigned to '{selected_class}'.")
-    else:
-        h1, h2, h3 = st.columns([3, 5, 2])
-        h1.markdown("**Name**")
-        h2.markdown("**Email**")
-        h3.markdown("**Action**")
-
-        for s in class_students:
-            c1, c2, c3 = st.columns([3, 5, 2])
-
-            c1.write(s["name"])
-            c2.write(s["email"])
-
-            if c3.button(
-                "Remove",
-                key=f"remove_{s['user_id']}_{selected_class}",
-            ):
-                assign_student_to_class(
-                    user_id=s["user_id"],
-                    class_name=None,
-                )
-                st.success(f"{s['name']} removed from class.")
-                st.experimental_rerun()
-
-    search_term = st.text_input(
-        "Search students (name or email)",
-        placeholder="Type to search…",
-    )
-
-    all_students = list_registered_spelling_students()
-    filtered_students = [
-        s
-        for s in all_students
-        if not search_term
-        or search_term.lower() in s["name"].lower()
-        or search_term.lower() in s["email"].lower()
-    ]
-
-    st.markdown("### Assign students to selected class")
-
-    if not filtered_students:
-        st.info("No students match the search.")
-        return
-
-    h1, h2, h3, h4 = st.columns([1, 3, 4, 3])
-    h1.markdown("**Select**")
-    h2.markdown("**Name**")
-    h3.markdown("**Email**")
-    h4.markdown("**Current Class**")
-
-    selected_user_ids = []
-
-    for s in filtered_students:
-        c1, c2, c3, c4 = st.columns([1, 3, 4, 3])
-
-        with c1:
-            checked = st.checkbox(
-                "",
-                key=f"select_student_{s['user_id']}",
-            )
-            if checked:
-                selected_user_ids.append(s["user_id"])
-
-        with c2:
-            st.write(s["name"])
-
-        with c3:
-            st.write(s["email"])
-
-        with c4:
-            st.write(s["class_name"] or "—")
-
-    st.divider()
-
-    if st.button("Assign selected students to class"):
-        if not selected_user_ids:
-            st.warning("Please select at least one student.")
-        else:
-            for uid in selected_user_ids:
-                assign_student_to_class(
-                    user_id=uid,
-                    class_name=selected_class,
-                )
-            st.success(
-                f"{len(selected_user_ids)} student(s) assigned to class '{selected_class}'."
-            )
-            st.experimental_rerun()
-
-    st.subheader("Pending Registrations")
-
-    with shared_engine.connect() as db:
-        ensure_pending_registration_payment_status_column(db)
-        ensure_pending_registration_token_column(db)
-
-        verified_only = st.toggle("Show only payment-verified", value=False)
-
-        rows = list_spelling_pending_registrations(db, verified_only=verified_only)
-
-        if not rows:
-            st.info("No pending registrations found.")
-            return
-
-        for r in rows:
-            payment_status = (r.get("payment_status") or "unverified").lower()
-            is_verified = payment_status == "verified"
-
-            left, mid, right = st.columns([5, 2, 2])
-
-            with left:
-                st.markdown(f"**{r['student_name']}**  \n{r['email']}")
-                st.caption(f"Requested: {r['requested_at']}")
-                token_suffix = r.get("token_suffix")
-                if token_suffix:
-                    st.caption(f"Token …{token_suffix}")
-
-            with mid:
-                if is_verified:
-                    st.success("✅ Verified")
-                else:
-                    st.warning("⏳ Unverified")
-
-            with right:
-                approve_disabled = not is_verified
-                if st.button(
-                    "Approve",
-                    key=f"approve_{r['id']}",
-                    disabled=approve_disabled,
-                    help="Payment must be verified before approval." if approve_disabled else None,
-                ):
-                    mark_registration_approved(db, r["id"])
-                    st.success("Approved. You can now assign courses / enable access.")
-                    st.rerun()
 
 
 def render_pending_registrations(db):
