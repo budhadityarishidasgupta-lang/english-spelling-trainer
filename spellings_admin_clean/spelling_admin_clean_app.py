@@ -627,8 +627,8 @@ def render_class_management(db):
 
     if st.button("Add student to class"):
         add_student_to_class(
-            class_id=selected_class_id,
-            user_id=selected_student_id,
+            classroom_id=selected_class_id,
+            student_id=selected_student_id,
         )
         st.success("Student added to class.")
         st.rerun()
@@ -636,7 +636,7 @@ def render_class_management(db):
     st.markdown("---")
 
     # -------------------------
-    # Students in class
+    # Students in this class
     # -------------------------
     st.subheader("Students in this class")
 
@@ -648,17 +648,18 @@ def render_class_management(db):
         for s in assigned_students:
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.write(f"{s['name']} ({s['email']})")
+                st.write(f"{s.name} ({s.email})")
             with col2:
                 if st.button(
                     "Remove",
-                    key=f"remove_{selected_class_id}_{s['user_id']}",
+                    key=f"remove_{selected_class_id}_{s.user_id}",
                 ):
                     remove_student_from_class(
                         class_id=selected_class_id,
-                        user_id=s["user_id"],
+                        user_id=s.user_id,
                     )
                     st.rerun()
+
 
 
 def render_student_course_assignment(db):
