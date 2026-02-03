@@ -205,12 +205,9 @@ def assign_student_to_class(class_id: int, student_id: int):
     )
 
 
-def add_student_to_class(*, class_id: int | None = None, classroom_id: int | None = None, student_id: int):
-    """Assigns a student to a class (compatibility wrapper)."""
-    resolved_class_id = class_id if class_id is not None else classroom_id
-    if resolved_class_id is None:
-        raise ValueError("class_id is required")
-    return assign_student_to_class(resolved_class_id, student_id)
+def add_student_to_class(*, class_id: int, student_id: int):
+    """Assigns a student to a class."""
+    return assign_student_to_class(class_id, student_id)
 
 
 def unassign_student_from_class(class_id: int, student_id: int):
