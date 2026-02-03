@@ -1,7 +1,4 @@
-raise RuntimeError(
-    "student_admin_repo is deprecated for student listing. "
-    "Use student_repo.list_registered_spelling_students instead."
-)
+"""Admin-facing student repository helpers."""
 
 from datetime import date
 
@@ -261,6 +258,11 @@ def assign_student_to_class(class_id: int, student_id: int):
         """,
         {"cid": class_id, "sid": student_id},
     )
+
+
+def add_student_to_class(*, engine, student_id: int, classroom_id: int):
+    """Adapter to keep admin call sites stable."""
+    return assign_student_to_class(class_id=classroom_id, student_id=student_id)
 
 
 def unassign_student_from_class(class_id: int, student_id: int):

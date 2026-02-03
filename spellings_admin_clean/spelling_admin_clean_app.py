@@ -101,9 +101,9 @@ from spelling_app.repository.classroom_repo import (
 )
 from spelling_app.repository.class_repo import (
     get_students_in_class,
-    add_student_to_class,
     remove_student_from_class,
 )
+from spelling_app.repository.student_admin_repo import add_student_to_class
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
