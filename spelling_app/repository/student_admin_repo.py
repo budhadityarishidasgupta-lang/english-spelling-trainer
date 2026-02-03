@@ -269,14 +269,14 @@ def add_student_to_class(
 ):
     """Adapter to keep admin call sites stable."""
     resolved_class_id = class_id if class_id is not None else classroom_id
-    return execute(
-        """
+    sql = """
         INSERT INTO spelling_class_students (student_id, class_id)
         VALUES (:student_id, :class_id)
         ON CONFLICT (class_id, student_id) DO NOTHING
-        """,
-        {"student_id": student_id, "class_id": resolved_class_id},
-    )
+        """
+    params = {"student_id": student_id, "class_id": resolved_class_id}
+    with engine.begin() as conn:
+        conn.execute(text(sql), params)
 
 
 def unassign_student_from_class(class_id: int, student_id: int):
