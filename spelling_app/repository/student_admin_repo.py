@@ -205,8 +205,12 @@ def assign_student_to_class(class_id: int, student_id: int):
     )
 
 
-def add_student_to_class(*, class_id: int, student_id: int):
+def add_student_to_class(
+    *, class_id: int | None = None, student_id: int, classroom_id: int | None = None
+):
     """Assigns a student to a class."""
+    if classroom_id is not None:
+        class_id = classroom_id
     return assign_student_to_class(class_id, student_id)
 
 
