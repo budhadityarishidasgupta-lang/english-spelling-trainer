@@ -230,6 +230,50 @@ def archive_classroom(class_id: int):
     )
 
 
+def get_all_spelling_classes(engine):
+    sql = """
+    SELECT class_id, name
+    FROM spelling_classes
+    WHERE COALESCE(is_archived, FALSE) = FALSE
+    ORDER BY name
+    """
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql)).mappings().all()
+    return [{"class_id": r["class_id"], "name": r["name"]} for r in rows]
+
+
+def add_student_to_class(*, engine, user_id: int, class_id: int):
+    sql = """
+    INSERT INTO spelling_class_students (user_id, class_id)
+    VALUES (:user_id, :class_id)
+    ON CONFLICT (class_id, user_id) DO NOTHING
+    """
+    with engine.begin() as conn:
+        conn.execute(text(sql), {"user_id": int(user_id), "class_id": int(class_id)})
+
+
+def get_students_in_class(*, engine, class_id: int):
+    sql = """
+    SELECT u.user_id, u.name, u.email
+    FROM spelling_class_students scs
+    JOIN users u ON u.user_id = scs.user_id
+    WHERE scs.class_id = :class_id
+    ORDER BY u.name
+    """
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql), {"class_id": int(class_id)}).mappings().all()
+    return [{"user_id": r["user_id"], "name": r["name"], "email": r["email"]} for r in rows]
+
+
+def remove_student_from_class(*, engine, user_id: int, class_id: int):
+    sql = """
+    DELETE FROM spelling_class_students
+    WHERE class_id = :class_id AND user_id = :user_id
+    """
+    with engine.begin() as conn:
+        conn.execute(text(sql), {"user_id": int(user_id), "class_id": int(class_id)})
+
+
 def get_class_roster(class_id: int):
     """Retrieves the roster for a specific class."""
     rows = fetch_all(
@@ -258,25 +302,6 @@ def assign_student_to_class(class_id: int, student_id: int):
         """,
         {"cid": class_id, "sid": student_id},
     )
-
-
-def add_student_to_class(
-    *,
-    engine,
-    student_id: int,
-    class_id: int | None = None,
-    classroom_id: int | None = None,
-):
-    """Adapter to keep admin call sites stable."""
-    resolved_class_id = class_id if class_id is not None else classroom_id
-    sql = """
-        INSERT INTO spelling_class_students (user_id, class_id)
-        VALUES (:user_id, :class_id)
-        ON CONFLICT (class_id, user_id) DO NOTHING
-        """
-    params = {"user_id": student_id, "class_id": resolved_class_id}
-    with engine.begin() as conn:
-        conn.execute(text(sql), params)
 
 
 def unassign_student_from_class(class_id: int, student_id: int):
