@@ -96,14 +96,18 @@ from spelling_app.repository.spelling_content_repo import (
 )
 from spelling_app.repository.classroom_repo import (
     create_classroom,
-    list_active_classrooms,
-    archive_classroom,
 )
-from spelling_app.repository.class_repo import (
+from spelling_app.repository.student_admin_repo import (
+    get_all_spelling_classes,
+    add_student_to_class,
     get_students_in_class,
     remove_student_from_class,
 )
-from spelling_app.repository.student_admin_repo import add_student_to_class
+from spelling_app.repository.student_repo import (
+    assign_courses_to_student as assign_courses_to_student_repo,
+    list_registered_spelling_students as list_registered_spelling_students_repo,
+    remove_courses_from_student as remove_courses_from_student_repo,
+)
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
@@ -142,6 +146,18 @@ def row_to_dict(row):
     if isinstance(row, dict):
         return row
     return {}
+
+
+def list_registered_spelling_students(db):
+    return list_registered_spelling_students_repo()
+
+
+def assign_courses_to_student(*, engine, user_id: int, course_ids: list[int]):
+    return assign_courses_to_student_repo(user_id=user_id, course_ids=course_ids)
+
+
+def remove_courses_from_student(*, engine, user_id: int, course_ids: list[int]):
+    return remove_courses_from_student_repo(user_id=user_id, course_ids=course_ids)
 
 
 def ensure_spelling_admin_tables():
@@ -491,7 +507,7 @@ def get_spelling_courses_for_student(user_id):
         """
         SELECT c.course_id, c.course_name
         FROM spelling_courses c
-        JOIN spelling_student_courses e
+        JOIN spelling_enrollments e
             ON e.course_id = c.course_id
         WHERE e.user_id = :uid
           AND COALESCE(c.is_active, TRUE) = TRUE
@@ -534,57 +550,30 @@ def render_class_management(db):
     # -------------------------
     # Select existing class
     # -------------------------
-    classes = list_active_classrooms()
+    classes = get_all_spelling_classes(db)
     if not classes:
         st.info("No active classes yet.")
         return
-
-    class_options = {
-        c["classroom_name"]: c["classroom_id"] for c in classes
-    }
-    selected_class_name = st.selectbox(
+    selected_class = st.selectbox(
         "Select class",
-        list(class_options.keys()),
+        options=classes,
+        format_func=lambda c: c["name"],
         key="admin_classroom_select_class",
     )
-    selected_class_id = class_options[selected_class_name]
-
-    if st.button("🗄 Archive selected class"):
-        res = archive_classroom(selected_class_id)
-        if isinstance(res, dict) and res.get("error"):
-            st.error(res["error"])
-        else:
-            st.warning("Class archived")
-            st.experimental_rerun()
+    class_id = int(selected_class["class_id"])
 
     st.markdown("---")
 
     # -------------------------
     # Students in class
     # -------------------------
-    with db.connect() as conn:
-        students = conn.execute(
-            text(
-                """
-                SELECT DISTINCT
-                    u.user_id,
-                    u.name,
-                    u.email
-                FROM users u
-                JOIN spelling_enrollments e
-                    ON e.user_id = u.user_id
-                WHERE u.role = 'student'
-                AND u.is_active = TRUE
-                ORDER BY u.name
-                """
-            )
-        ).mappings().all()
+    students = list_registered_spelling_students(db)
     if not students:
         st.info("No active SpellingSprint students found.")
         return
 
     student_options = {
-        f"{s['name']} ({s['email']})": s["user_id"]
+        f"{s['name']} ({s['email']})": int(s["user_id"])
         for s in students
     }
     selected_student_label = st.selectbox(
@@ -592,14 +581,10 @@ def render_class_management(db):
         list(student_options.keys()),
         key="admin_classroom_select_student",
     )
-    selected_student_id = student_options[selected_student_label]
+    user_id = student_options[selected_student_label]
 
     if st.button("Add student to class"):
-        add_student_to_class(
-            engine=db,
-            class_id=selected_class_id,
-            student_id=selected_student_id,
-        )
+        add_student_to_class(engine=db, user_id=user_id, class_id=class_id)
         st.success("Student added to class.")
         st.rerun()
 
@@ -610,12 +595,12 @@ def render_class_management(db):
     # -------------------------
     st.subheader("Students in this class")
 
-    assigned_students = get_students_in_class(selected_class_id)
+    roster = get_students_in_class(engine=db, class_id=class_id)
 
-    if not assigned_students:
+    if not roster:
         st.info("No students assigned yet.")
     else:
-        for row in assigned_students:
+        for row in roster:
             s = row_to_dict(row)
 
             col1, col2 = st.columns([4, 1])
@@ -624,11 +609,12 @@ def render_class_management(db):
             with col2:
                 if st.button(
                     "Remove",
-                    key=f"remove_{selected_class_id}_{s.get('user_id')}",
+                    key=f"remove_{class_id}_{s.get('user_id')}",
                 ):
                     remove_student_from_class(
-                        classroom_id=selected_class_id,
-                        student_id=s.get("user_id"),
+                        engine=db,
+                        user_id=s.get("user_id"),
+                        class_id=class_id,
                     )
                     st.rerun()
 
@@ -637,26 +623,26 @@ def render_class_management(db):
 def render_student_course_assignment(db):
     st.subheader("🎯 Student ↔ Course Assignment")
 
-    students = get_active_spelling_students(db)
+    students = list_registered_spelling_students(db)
     if not students:
         st.info("No active spelling students found.")
         return
 
-    student_map = {
-        f"{student['name']} ({student['email']})": student["user_id"]
+    student_options = {
+        f"{student['name']} ({student['email']})": int(student["user_id"])
         for student in students
     }
-
-    selected_label = st.selectbox(
-        "Select student",
-        list(student_map.keys()),
-        key="student_course_assignment_select",
-    )
-    user_id = student_map[selected_label]
+    selected_user_id = student_options[
+        st.selectbox(
+            "Select student",
+            list(student_options.keys()),
+            key="student_course_assignment_select",
+        )
+    ]
 
     st.markdown("### 📘 Assigned courses")
 
-    assigned_courses = get_spelling_courses_for_student(user_id)
+    assigned_courses = get_spelling_courses_for_student(selected_user_id)
 
     if not assigned_courses:
         st.caption("No spelling courses assigned.")
@@ -665,12 +651,10 @@ def render_student_course_assignment(db):
             col1, col2 = st.columns([4, 1])
             col1.write(c["course_name"])
             if col2.button("❌ Remove", key=f"rm_{c['course_id']}"):
-                execute(
-                    """
-                    DELETE FROM spelling_student_courses
-                    WHERE user_id = :uid AND course_id = :cid
-                    """,
-                    {"uid": user_id, "cid": c["course_id"]},
+                remove_courses_from_student(
+                    engine=db,
+                    user_id=selected_user_id,
+                    course_ids=[int(c["course_id"])],
                 )
                 st.rerun()
 
@@ -679,36 +663,33 @@ def render_student_course_assignment(db):
     all_courses = get_spelling_courses(db)
 
     course_options = {
-        c["course_name"]: c["course_id"]
+        c["course_name"]: int(c["course_id"])
         for c in all_courses
     }
+    selected_course_ids = [
+        course_options[name]
+        for name in st.multiselect(
+            "Select courses",
+            list(course_options.keys()),
+            key="admin_student_course_select_course",
+        )
+    ]
 
-    selected_course = st.selectbox(
-        "Select spelling course",
-        list(course_options.keys()),
-        key="admin_student_course_select_course",
-    )
+    if st.button("Assign selected courses"):
+        assign_courses_to_student(
+            engine=db,
+            user_id=selected_user_id,
+            course_ids=selected_course_ids,
+        )
+        st.rerun()
 
-    assign_clicked = st.button("Assign course")
-    if assign_clicked:
-        with db.connect() as conn:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO spelling_student_courses (user_id, course_id)
-                    VALUES (:user_id, :course_id)
-                    ON CONFLICT DO NOTHING
-                    """
-                ),
-                {
-                    "user_id": user_id,
-                    "course_id": course_options[selected_course],
-                },
-            )
-            conn.commit()
-
-        st.success("Course assigned successfully.")
-        st.experimental_rerun()
+    if st.button("Remove selected courses"):
+        remove_courses_from_student(
+            engine=db,
+            user_id=selected_user_id,
+            course_ids=selected_course_ids,
+        )
+        st.rerun()
 
 
 def render_course_management():
