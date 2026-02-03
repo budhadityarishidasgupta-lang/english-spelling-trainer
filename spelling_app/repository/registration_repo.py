@@ -33,3 +33,25 @@ def delete_pending_registration(reg_id: int):
         "DELETE FROM pending_registrations_spelling WHERE id = :rid",
         {"rid": reg_id},
     )
+
+
+def manually_add_spelling_student(name, email):
+    user_id = get_or_create_user_by_email(
+        name=name,
+        email=email,
+        default_password="Learn123!",
+    )
+
+    # 🔒 REQUIRED: make student visible to Spelling app + Admin UI
+    execute(
+        """
+        INSERT INTO spelling_enrollments (user_id, course_id)
+        VALUES
+            (:uid, 1),  -- Word Mastery
+            (:uid, 9)   -- Pattern Words
+        ON CONFLICT DO NOTHING;
+        """,
+        {"uid": user_id},
+    )
+
+    return user_id
