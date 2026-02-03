@@ -260,9 +260,23 @@ def assign_student_to_class(class_id: int, student_id: int):
     )
 
 
-def add_student_to_class(*, engine, student_id: int, classroom_id: int):
+def add_student_to_class(
+    *,
+    engine,
+    student_id: int,
+    class_id: int | None = None,
+    classroom_id: int | None = None,
+):
     """Adapter to keep admin call sites stable."""
-    return assign_student_to_class(class_id=classroom_id, student_id=student_id)
+    resolved_class_id = class_id if class_id is not None else classroom_id
+    return execute(
+        """
+        INSERT INTO spelling_class_students (student_id, class_id)
+        VALUES (:student_id, :class_id)
+        ON CONFLICT (class_id, student_id) DO NOTHING
+        """,
+        {"student_id": student_id, "class_id": resolved_class_id},
+    )
 
 
 def unassign_student_from_class(class_id: int, student_id: int):
