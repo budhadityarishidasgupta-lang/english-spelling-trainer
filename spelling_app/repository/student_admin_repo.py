@@ -270,11 +270,11 @@ def add_student_to_class(
     """Adapter to keep admin call sites stable."""
     resolved_class_id = class_id if class_id is not None else classroom_id
     sql = """
-        INSERT INTO spelling_class_students (student_id, class_id)
-        VALUES (:student_id, :class_id)
-        ON CONFLICT (class_id, student_id) DO NOTHING
+        INSERT INTO spelling_class_students (user_id, class_id)
+        VALUES (:user_id, :class_id)
+        ON CONFLICT (class_id, user_id) DO NOTHING
         """
-    params = {"student_id": student_id, "class_id": resolved_class_id}
+    params = {"user_id": student_id, "class_id": resolved_class_id}
     with engine.begin() as conn:
         conn.execute(text(sql), params)
 
