@@ -596,6 +596,7 @@ def render_class_management(db):
 
     if st.button("Add student to class"):
         add_student_to_class(
+            engine=db,
             classroom_id=selected_class_id,
             student_id=selected_student_id,
         )
