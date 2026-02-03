@@ -232,14 +232,14 @@ def archive_classroom(class_id: int):
 
 def get_all_spelling_classes(engine):
     sql = """
-    SELECT class_id, name
+    SELECT class_id, class_name
     FROM spelling_classes
     WHERE COALESCE(is_archived, FALSE) = FALSE
-    ORDER BY name
+    ORDER BY class_name
     """
     with engine.begin() as conn:
         rows = conn.execute(text(sql)).mappings().all()
-    return [{"class_id": r["class_id"], "name": r["name"]} for r in rows]
+    return [{"class_id": r["class_id"], "name": r["class_name"]} for r in rows]
 
 
 def add_student_to_class(*, engine, user_id: int, class_id: int):
