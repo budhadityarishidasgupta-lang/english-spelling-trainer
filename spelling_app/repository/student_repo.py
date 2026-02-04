@@ -195,7 +195,7 @@ def list_registered_spelling_students() -> List[Dict[str, Any]]:
     rows = fetch_all(
         """
         WITH spelling_students AS (
-            SELECT u.user_id, u.name, u.email, u.class_name, u.status
+            SELECT u.user_id, u.name, u.email, u.class_name, u.status, u.is_active
             FROM users u
             WHERE u.role = 'student' AND u.app_source = 'spelling'
         )
@@ -205,6 +205,7 @@ def list_registered_spelling_students() -> List[Dict[str, Any]]:
             s.email,
             s.class_name,
             s.status,
+            s.is_active,
             COALESCE(
                 string_agg(DISTINCT c.course_name, ', ' ORDER BY c.course_name),
                 ''
@@ -212,7 +213,7 @@ def list_registered_spelling_students() -> List[Dict[str, Any]]:
         FROM spelling_students s
         LEFT JOIN spelling_enrollments e ON e.user_id = s.user_id
         LEFT JOIN spelling_courses c ON c.course_id = e.course_id
-        GROUP BY s.user_id, s.name, s.email, s.class_name, s.status
+        GROUP BY s.user_id, s.name, s.email, s.class_name, s.status, s.is_active
         ORDER BY s.name
         """
     )
