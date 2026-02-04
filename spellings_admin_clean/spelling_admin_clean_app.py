@@ -96,8 +96,8 @@ from spelling_app.repository.spelling_content_repo import (
 )
 from spelling_app.repository.student_admin_repo import (
     get_all_students,
-    get_registered_spelling_students,
 )
+from spelling_app.repository.student_repo import list_registered_spelling_students
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
 )
@@ -718,9 +718,9 @@ def render_pending_registrations(db):
                     st.rerun()
 
 
-def render_students_master_list(db):
+def render_registered_students_section(courses):
     st.subheader("Registered Students")
-    students = get_registered_spelling_students(db)
+    students = list_registered_spelling_students()
 
     st.dataframe(
         [
@@ -729,7 +729,9 @@ def render_students_master_list(db):
                 "Name": s["name"],
                 "Email": s["email"],
                 "Active": s["is_active"],
-                "Created At": s["created_at"],
+                "Class": s["class_name"],
+                "Status": s["status"],
+                "Courses": s["registered_courses"],
             }
             for s in students
         ],
@@ -772,7 +774,8 @@ def render_admin_student_management_vnext(db):
     st.header("🧑‍🏫 Student Management")
 
     with st.expander("👩‍🎓 Students", expanded=True):
-        render_students_master_list(db)
+        courses = get_all_courses()
+        render_registered_students_section(courses)
 
     with st.expander("📨 New Registrations", expanded=True):
         render_pending_registrations(db)
