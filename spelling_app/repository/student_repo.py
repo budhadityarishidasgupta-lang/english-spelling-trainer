@@ -194,19 +194,26 @@ def list_registered_spelling_students() -> List[Dict[str, Any]]:
     """
     rows = fetch_all(
         """
+        WITH spelling_students AS (
+            SELECT u.user_id, u.name, u.email, u.class_name, u.status
+            FROM users u
+            WHERE u.role = 'student' AND u.app_source = 'spelling'
+        )
         SELECT
-            u.user_id,
-            u.name,
-            u.email,
-            u.class_name,
-            u.status,
-            COALESCE(string_agg(c.course_name, ', ' ORDER BY c.course_name), '') AS registered_courses
-        FROM users u
-        LEFT JOIN spelling_enrollments e ON e.user_id = u.user_id
+            s.user_id,
+            s.name,
+            s.email,
+            s.class_name,
+            s.status,
+            COALESCE(
+                string_agg(DISTINCT c.course_name, ', ' ORDER BY c.course_name),
+                ''
+            ) AS registered_courses
+        FROM spelling_students s
+        LEFT JOIN spelling_enrollments e ON e.user_id = s.user_id
         LEFT JOIN spelling_courses c ON c.course_id = e.course_id
-        WHERE u.role = 'student' AND u.app_source = 'spelling'
-        GROUP BY u.user_id, u.name, u.email, u.class_name, u.status
-        ORDER BY u.name
+        GROUP BY s.user_id, s.name, s.email, s.class_name, s.status
+        ORDER BY s.name
         """
     )
 
