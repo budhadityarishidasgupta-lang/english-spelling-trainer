@@ -180,6 +180,24 @@ def get_spelling_students():
 
 
 # ---------------------------------------
+# Registered Spelling Students
+# ---------------------------------------
+
+def get_registered_spelling_students(engine):
+    from sqlalchemy import text
+
+    sql = """
+    SELECT user_id, name, email, created_at
+    FROM users
+    WHERE app_source = 'spelling'
+    ORDER BY created_at DESC
+    """
+
+    with engine.connect() as conn:
+        return conn.execute(text(sql)).mappings().all()
+
+
+# ---------------------------------------
 # Classroom Management
 # ---------------------------------------
 

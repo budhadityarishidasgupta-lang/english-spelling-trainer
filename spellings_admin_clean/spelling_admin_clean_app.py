@@ -96,6 +96,7 @@ from spelling_app.repository.spelling_content_repo import (
 )
 from spelling_app.repository.student_admin_repo import (
     get_all_students,
+    get_registered_spelling_students,
 )
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
@@ -718,9 +719,8 @@ def render_pending_registrations(db):
 
 
 def render_students_master_list(db):
-    students = get_all_students(db)
-
     st.subheader("Registered Students")
+    students = get_registered_spelling_students(db)
 
     st.dataframe(
         [
