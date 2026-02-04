@@ -94,19 +94,8 @@ from spelling_app.repository.spelling_content_repo import (
     upsert_content_block,
     delete_content_block,
 )
-from spelling_app.repository.classroom_repo import (
-    create_classroom,
-)
 from spelling_app.repository.student_admin_repo import (
-    get_all_spelling_classes,
-    add_student_to_class,
-    get_students_in_class,
-    remove_student_from_class,
-)
-from spelling_app.repository.student_repo import (
-    assign_courses_to_student as assign_courses_to_student_repo,
-    list_registered_spelling_students as list_registered_spelling_students_repo,
-    remove_courses_from_student as remove_courses_from_student_repo,
+    get_all_students,
 )
 from spelling_app.repository.lesson_maintenance_repo import (
     consolidate_legacy_lessons_into_patterns,
@@ -114,11 +103,6 @@ from spelling_app.repository.lesson_maintenance_repo import (
 from spelling_app.repository.hint_repo import (
     upsert_ai_hint_drafts,
     approve_drafts_to_overrides,
-)
-from spelling_app.repository.registration_repo import (
-    get_or_create_user_by_email,
-    auto_enroll_user_into_default_spelling_courses,
-    manually_add_spelling_student,
 )
 
 
@@ -146,55 +130,6 @@ def row_to_dict(row):
     if isinstance(row, dict):
         return row
     return {}
-
-
-def list_registered_spelling_students(db):
-    return list_registered_spelling_students_repo()
-
-
-def assign_courses_to_student(*, engine, user_id: int, course_ids: list[int]):
-    return assign_courses_to_student_repo(user_id=user_id, course_ids=course_ids)
-
-
-def remove_courses_from_student(*, engine, user_id: int, course_ids: list[int]):
-    return remove_courses_from_student_repo(user_id=user_id, course_ids=course_ids)
-
-
-def ensure_spelling_admin_tables():
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS spelling_classrooms (
-            classroom_id SERIAL PRIMARY KEY,
-            classroom_name TEXT UNIQUE NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at TIMESTAMP NOT NULL DEFAULT NOW()
-        );
-        """
-    )
-
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS spelling_classroom_students (
-            id SERIAL PRIMARY KEY,
-            classroom_id INT NOT NULL REFERENCES spelling_classrooms(classroom_id) ON DELETE CASCADE,
-            student_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-            assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            UNIQUE(classroom_id, student_id)
-        );
-        """
-    )
-
-    execute(
-        """
-        CREATE TABLE IF NOT EXISTS spelling_student_courses (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(user_id),
-            course_id INTEGER NOT NULL,
-            assigned_at TIMESTAMP DEFAULT now(),
-            UNIQUE (user_id, course_id)
-        );
-        """
-    )
 
 
 def get_all_courses():
@@ -230,8 +165,6 @@ def get_pending_spelling_registrations(db):
 
 
 def approve_spelling_registration(db, pending_id: int):
-    DEFAULT_PASSWORD = "Learn123!"
-
     with db.connect() as conn:
         # 1️⃣ Fetch pending registration (NO status column!)
         pending = conn.execute(
@@ -253,17 +186,7 @@ def approve_spelling_registration(db, pending_id: int):
             st.info("This registration is already approved.")
             return
 
-        # 2️⃣ Get or create canonical user (LOCKED behavior)
-        user_id = get_or_create_user_by_email(
-            name=pending["student_name"],
-            email=pending["email"],
-            default_password=DEFAULT_PASSWORD,
-        )
-
-        # 3️⃣ Auto-enroll into default Spelling courses (1 & 9)
-        auto_enroll_user_into_default_spelling_courses(user_id)
-
-        # 4️⃣ Mark registration as approved
+        # 2️⃣ Mark registration as approved
         conn.execute(
             text(
                 """
@@ -277,18 +200,9 @@ def approve_spelling_registration(db, pending_id: int):
 
         conn.commit()
 
-    # 5️⃣ Admin confirmation
+    # 3️⃣ Admin confirmation
     st.success("✅ Student approved successfully")
-    st.info(
-        f"""
-        **Student login details**
-
-        📧 Email: `{pending['email']}`  
-        🔑 Default password: `Learn123!`
-
-        Ask the student to log in and change the password.
-        """
-    )
+    st.caption(f"Approved registration for {pending['email']}.")
 
 
 def reject_spelling_registration(db, pending_id: int):
@@ -410,289 +324,14 @@ def assign_course_to_student(user_id: int, course_id: int):
     return True
 
 
-def get_active_classes():
-    rows = fetch_all(
-        """
-        SELECT class_id, class_name
-        FROM classes
-        WHERE COALESCE(is_active, TRUE) = TRUE
-        ORDER BY class_name
-        """
-    )
-    return [dict(r._mapping) for r in rows]
-
-
-def get_spelling_students_only():
-    rows = fetch_all(
-        """
-        SELECT DISTINCT u.user_id, u.name, u.email
-        FROM users u
-        JOIN spelling_enrollments se
-            ON se.user_id = u.user_id
-        WHERE COALESCE(u.is_active, TRUE) = TRUE
-          AND u.role = 'student'
-        ORDER BY u.name
-        """
-    )
-    return [dict(r._mapping) for r in rows]
-
-
-def get_active_spelling_students(db):
-    with db.connect() as conn:
-        rows = conn.execute(
-            text(
-                """
-                SELECT DISTINCT
-                    u.user_id,
-                    u.name,
-                    u.email
-                FROM users u
-                JOIN spelling_enrollments e
-                    ON e.user_id = u.user_id
-                WHERE u.role = 'student'
-                  AND u.is_active = TRUE
-                ORDER BY u.name
-                """
-            )
-        ).mappings().all()
-    return rows
-
-
-def render_class_student_assignment():
-    st.subheader("👩‍🎓 Assign Students to Class")
-
-    classes = get_active_classes()
-    if not classes:
-        st.info("No active classes available.")
-        return
-
-    class_lookup = {c["class_name"]: c["class_id"] for c in classes}
-    selected_class = st.selectbox(
-        "Select class",
-        list(class_lookup.keys()),
-        key="admin_class_student_select_class",
-    )
-    class_id = class_lookup[selected_class]
-
-    students = get_spelling_students_only()
-    if not students:
-        st.info("No active students found.")
-        return
-
-    student_lookup = {
-        f"{s['name']} ({s['email']})": s["user_id"] for s in students
-    }
-
-    selected_students = st.multiselect(
-        "Select students to assign",
-        list(student_lookup.keys()),
-    )
-
-    if st.button("Assign students to class"):
-        for label in selected_students:
-            execute(
-                """
-                UPDATE users
-                SET class_id = :cid
-                WHERE user_id = :uid
-                """,
-                {"cid": class_id, "uid": student_lookup[label]},
-            )
-        st.success("Students assigned to class")
-        st.experimental_rerun()
-
-
-def get_spelling_courses_for_student(user_id):
-    rows = fetch_all(
-        """
-        SELECT c.course_id, c.course_name
-        FROM spelling_courses c
-        JOIN spelling_enrollments e
-            ON e.course_id = c.course_id
-        WHERE e.user_id = :uid
-          AND COALESCE(c.is_active, TRUE) = TRUE
-        ORDER BY c.course_name
-        """,
-        {"uid": user_id},
-    )
-    return [dict(r._mapping) for r in rows]
-
-
 # -------------------------------------------------
 # Main UI
 # -------------------------------------------------
 
-def render_class_management(db):
-    st.subheader("🏫 Class Management")
-
-    # -------------------------
-    # Create new class
-    # -------------------------
-    with st.container():
-        new_class_name = st.text_input(
-            "Create new class",
-            placeholder="e.g. Year 5 – Group A",
-        )
-        if st.button("➕ Create Class"):
-            name = (new_class_name or "").strip()
-            if not name:
-                st.error("Please enter a class name.")
-            else:
-                res = create_classroom(name)
-                if isinstance(res, dict) and res.get("error"):
-                    st.error(res["error"])
-                else:
-                    st.success(f"Created class: {name}")
-                    st.experimental_rerun()
-
-    st.markdown("---")
-
-    # -------------------------
-    # Select existing class
-    # -------------------------
-    classes = get_all_spelling_classes(db)
-    if not classes:
-        st.info("No active classes yet.")
-        return
-    selected_class = st.selectbox(
-        "Select class",
-        options=classes,
-        format_func=lambda c: c["name"],
-        key="admin_classroom_select_class",
-    )
-    class_id = int(selected_class["class_id"])
-
-    st.markdown("---")
-
-    # -------------------------
-    # Students in class
-    # -------------------------
-    students = list_registered_spelling_students(db)
-    if not students:
-        st.info("No active SpellingSprint students found.")
-        return
-
-    student_options = {
-        f"{s['name']} ({s['email']})": int(s["user_id"])
-        for s in students
-    }
-    selected_student_label = st.selectbox(
-        "Select student",
-        list(student_options.keys()),
-        key="admin_classroom_select_student",
-    )
-    user_id = student_options[selected_student_label]
-
-    if st.button("Add student to class"):
-        add_student_to_class(engine=db, user_id=user_id, class_id=class_id)
-        st.success("Student added to class.")
-        st.rerun()
-
-    st.markdown("---")
-
-    # -------------------------
-    # Students in this class
-    # -------------------------
-    st.subheader("Students in this class")
-
-    roster = get_students_in_class(engine=db, class_id=class_id)
-
-    if not roster:
-        st.info("No students assigned yet.")
-    else:
-        for row in roster:
-            s = row_to_dict(row)
-
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.write(f"{s.get('name')} ({s.get('email')})")
-            with col2:
-                if st.button(
-                    "Remove",
-                    key=f"remove_{class_id}_{s.get('user_id')}",
-                ):
-                    remove_student_from_class(
-                        engine=db,
-                        user_id=s.get("user_id"),
-                        class_id=class_id,
-                    )
-                    st.rerun()
-
-
-
-def render_student_course_assignment(db):
-    st.subheader("🎯 Student ↔ Course Assignment")
-
-    students = list_registered_spelling_students(db)
-    if not students:
-        st.info("No active spelling students found.")
-        return
-
-    student_options = {
-        f"{student['name']} ({student['email']})": int(student["user_id"])
-        for student in students
-    }
-    selected_user_id = student_options[
-        st.selectbox(
-            "Select student",
-            list(student_options.keys()),
-            key="student_course_assignment_select",
-        )
-    ]
-
-    st.markdown("### 📘 Assigned courses")
-
-    assigned_courses = get_spelling_courses_for_student(selected_user_id)
-
-    if not assigned_courses:
-        st.caption("No spelling courses assigned.")
-    else:
-        for c in assigned_courses:
-            col1, col2 = st.columns([4, 1])
-            col1.write(c["course_name"])
-            if col2.button("❌ Remove", key=f"rm_{c['course_id']}"):
-                remove_courses_from_student(
-                    engine=db,
-                    user_id=selected_user_id,
-                    course_ids=[int(c["course_id"])],
-                )
-                st.rerun()
-
-    st.markdown("### ➕ Assign new course")
-
-    all_courses = get_spelling_courses(db)
-
-    course_options = {
-        c["course_name"]: int(c["course_id"])
-        for c in all_courses
-    }
-    selected_course_ids = [
-        course_options[name]
-        for name in st.multiselect(
-            "Select courses",
-            list(course_options.keys()),
-            key="admin_student_course_select_course",
-        )
-    ]
-
-    if st.button("Assign selected courses"):
-        assign_courses_to_student(
-            engine=db,
-            user_id=selected_user_id,
-            course_ids=selected_course_ids,
-        )
-        st.rerun()
-
-    if st.button("Remove selected courses"):
-        remove_courses_from_student(
-            engine=db,
-            user_id=selected_user_id,
-            course_ids=selected_course_ids,
-        )
-        st.rerun()
-
 
 def render_course_management():
+    st.info("Course management is temporarily disabled.")
+    return None
     st.header("Course Management")
 
     courses = get_all_courses()
@@ -996,7 +635,11 @@ def render_admin_management():
 
     selected_course_id = None
     with admin_tab:
-        selected_course_id = render_course_management()
+        try:
+            selected_course_id = render_course_management()
+        except Exception:
+            selected_course_id = None
+            st.warning("Course management temporarily disabled.")
 
     with ingestion_tab:
         if selected_course_id is None:
@@ -1075,89 +718,64 @@ def render_pending_registrations(db):
 
 
 def render_students_master_list(db):
-    st.subheader("👩‍🎓 Students")
+    students = get_all_students(db)
 
-    search = st.text_input("Search by name or email")
+    st.subheader("Registered Students")
 
-    sql = """
-        SELECT u.user_id, u.name, u.email, u.is_active,
-               c.class_name
-        FROM users u
-        LEFT JOIN classes c ON u.class_id = c.class_id
-        ORDER BY u.name
-    """
+    st.dataframe(
+        [
+            {
+                "User ID": s["user_id"],
+                "Name": s["name"],
+                "Email": s["email"],
+                "Active": s["is_active"],
+                "Created At": s["created_at"],
+            }
+            for s in students
+        ],
+        use_container_width=True,
+    )
 
-    rows = fetch_all(sql)
-    data = [dict(r._mapping) for r in rows]
-
-    if search:
-        data = [
-            r
-            for r in data
-            if search.lower() in r["name"].lower()
-            or search.lower() in r["email"].lower()
-        ]
-
-    if not data:
+    if not students:
         st.info("No students found.")
         return
 
-    for r in data:
-        c1, c2, c3, c4, c5 = st.columns([2, 3, 1, 2, 1])
+    student_lookup = {
+        f"{s['name']} ({s['email']})": s["user_id"]
+        for s in students
+    }
 
-        c1.write(r["name"])
-        c2.write(r["email"])
-        c3.write("🟢 Active" if r["is_active"] else "⚪ Archived")
-        c4.write(r["class_name"] or "—")
+    selected_student = st.selectbox(
+        "Select student to update status",
+        list(student_lookup.keys()),
+    )
+    selected_user_id = student_lookup[selected_student]
 
-        if r["is_active"]:
-            if c5.button("Archive", key=f"arch_{r['user_id']}"):
-                execute(
-                    "UPDATE users SET is_active = FALSE WHERE user_id = :id",
-                    {"id": r["user_id"]},
-                )
-                st.experimental_rerun()
-        else:
-            if c5.button("Restore", key=f"res_{r['user_id']}"):
-                execute(
-                    "UPDATE users SET is_active = TRUE WHERE user_id = :id",
-                    {"id": r["user_id"]},
-                )
-                st.experimental_rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Activate student", use_container_width=True):
+            execute(
+                "UPDATE users SET is_active = TRUE WHERE user_id = :id",
+                {"id": selected_user_id},
+            )
+            st.experimental_rerun()
+    with col2:
+        if st.button("Deactivate student", use_container_width=True):
+            execute(
+                "UPDATE users SET is_active = FALSE WHERE user_id = :id",
+                {"id": selected_user_id},
+            )
+            st.experimental_rerun()
 
 
 def render_admin_student_management_vnext(db):
     st.header("🧑‍🏫 Student Management")
-
-    st.subheader("➕ Add Student Manually")
-
-    manual_name = st.text_input("Student Name", key="manual_add_student_name")
-    manual_email = st.text_input("Student Email", key="manual_add_student_email")
-
-    if st.button("Add Student", key="manual_add_student_submit"):
-        if not manual_name or not manual_email:
-            st.error("Name and email are required.")
-        else:
-            try:
-                manually_add_spelling_student(
-                    name=manual_name.strip(),
-                    email=manual_email.strip().lower(),
-                )
-                st.success("Student added and enrolled in Spelling courses.")
-            except Exception as exc:
-                st.error(f"Failed to add student: {exc}")
 
     with st.expander("👩‍🎓 Students", expanded=True):
         render_students_master_list(db)
 
     with st.expander("📨 New Registrations", expanded=True):
         render_pending_registrations(db)
-
-    with st.expander("🏫 Class Management", expanded=False):
-        render_class_management(db)
-
-    with st.expander("🎯 Student ↔ Course Assignment", expanded=False):
-        render_student_course_assignment(db)
 
 
 def render_help_texts_page(db):
@@ -1407,7 +1025,6 @@ def set_admin_page(page: str) -> None:
 def main():
     inject_css()
     initialize_session_state(st)
-    ensure_spelling_admin_tables()
 
     # 🔒 If you have an admin login gate elsewhere, keep it.
     # This file historically renders admin pages directly, so we just render the console.

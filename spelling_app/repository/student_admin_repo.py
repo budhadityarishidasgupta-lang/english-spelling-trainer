@@ -327,3 +327,19 @@ def create_pending_registration(db, student_name: str, email: str, token: str = 
     return create_pending_registration_with_token(
         student_name=student_name, email=email, token=reg_token
     )
+
+
+def get_all_students(engine):
+    sql = """
+    SELECT
+        user_id,
+        name,
+        email,
+        is_active,
+        created_at
+    FROM users
+    ORDER BY created_at DESC
+    """
+    with engine.begin() as conn:
+        rows = conn.execute(text(sql)).mappings().all()
+    return [dict(r) for r in rows]
