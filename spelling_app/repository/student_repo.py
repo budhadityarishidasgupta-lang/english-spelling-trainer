@@ -188,37 +188,37 @@ def approve_spelling_student(pending_id: int, default_password_hash: str) -> boo
 # REGISTERED SPELLING STUDENTS
 # ---------------------------------------------------------
 def list_registered_spelling_students() -> List[Dict[str, Any]]:
-    """
-    Return ONLY spelling students (role=student AND app_source='spelling'),
-    with a comma-separated list of registered courses.
-    """
-    rows = fetch_all(
-        """
-        WITH spelling_students AS (
-            SELECT u.user_id, u.name, u.email, u.class_name, u.status, u.is_active
-            FROM users u
-            WHERE u.role = 'student' AND u.app_source = 'spelling'
-        )
+    sql = text("""
         SELECT
-            s.user_id,
-            s.name,
-            s.email,
-            s.class_name,
-            s.status,
-            s.is_active,
+            u.user_id,
+            u.name,
+            u.email,
+            u.class_name,
+            u.status,
+            u.is_active,
             COALESCE(
                 string_agg(DISTINCT c.course_name, ', ' ORDER BY c.course_name),
                 ''
             ) AS registered_courses
-        FROM spelling_students s
-        LEFT JOIN spelling_enrollments e ON e.user_id = s.user_id
-        LEFT JOIN spelling_courses c ON c.course_id = e.course_id
-        GROUP BY s.user_id, s.name, s.email, s.class_name, s.status, s.is_active
-        ORDER BY s.name
-        """
-    )
+        FROM users u
+        LEFT JOIN spelling_enrollments e
+            ON e.user_id = u.user_id
+        LEFT JOIN spelling_courses c
+            ON c.course_id = e.course_id
+        WHERE u.role = 'student'
+          AND u.app_source = 'spelling'
+        GROUP BY
+            u.user_id,
+            u.name,
+            u.email,
+            u.class_name,
+            u.status,
+            u.is_active
+        ORDER BY u.name
+    """)
 
-    return _rows_to_dicts(rows)
+    with engine.connect() as conn:
+        return conn.execute(sql).mappings().all()
 
 
 def update_student_profile(
