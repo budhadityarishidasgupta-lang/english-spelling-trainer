@@ -26,7 +26,7 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # LESSON SELECTION
     # ------------------------------------------------------------
-    lessons = get_lessons_for_student(course_id=int(course_id))
+    lessons = get_lessons_for_student(course_id=None)
 
     if not lessons:
         st.info("No practice lessons found for this course.")
