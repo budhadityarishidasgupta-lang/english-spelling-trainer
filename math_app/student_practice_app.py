@@ -255,7 +255,7 @@ def render_practice_mode(show_back_button=True):
 
     if show_back_button:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.button("⬅ Back to Home", use_container_width=True):
+        if st.button("⬅ Back to Home", use_container_width=True):
             st.session_state.pop("practice_feedback", None)
             st.session_state.pop("practice_submitted", None)
             st.session_state["mode"] = "HOME"
