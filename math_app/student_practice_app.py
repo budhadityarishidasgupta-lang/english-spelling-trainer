@@ -46,8 +46,10 @@ def render_practice_mode(show_back_button=True):
         for l in lessons
     }
 
+    st.markdown("### Select a practice lesson")
+
     lesson_label = st.selectbox(
-        "Select Practice Lesson",
+        "",
         options=list(lesson_label_to_id.keys()),
         key="practice_lesson_select",
     )
@@ -108,7 +110,7 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # RESTART PRACTICE (does NOT delete attempts)
     # ------------------------------------------------------------
-    if st.button("🔄 Restart Practice", key="practice_restart"):
+    if st.button("🔄 Restart Practice", key="practice_restart", use_container_width=True):
         st.session_state.pop("practice_feedback", None)
         st.session_state.pop("practice_submitted", None)
         st.session_state.practice_question_index = 0
@@ -253,7 +255,7 @@ def render_practice_mode(show_back_button=True):
 
     if show_back_button:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("⬅ Back to Home"):
+        st.button("⬅ Back to Home", use_container_width=True):
             st.session_state.pop("practice_feedback", None)
             st.session_state.pop("practice_submitted", None)
             st.session_state["mode"] = "HOME"
