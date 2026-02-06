@@ -6,7 +6,7 @@ from math_app.db import get_db_connection
 # LESSONS (STUDENT VIEW)
 # ------------------------------------------------------------
 
-def get_lessons_for_student(course_id: int) -> List[Dict]:
+def get_lessons_for_student(course_id: Optional[int] = None) -> List[Dict]:
     """
     Return lessons available for a course for student practice.
 
@@ -18,13 +18,14 @@ def get_lessons_for_student(course_id: int) -> List[Dict]:
             lesson_name,
             display_name
         FROM math_lessons
-        WHERE course_id = %s
-        ORDER BY lesson_name
+        WHERE is_active = true
+          AND (%s IS NULL OR course_id = %s)
+        ORDER BY course_id
     """
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (course_id,))
+            cur.execute(sql, (course_id, course_id))
             rows = cur.fetchall()
 
     return [
