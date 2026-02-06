@@ -32,7 +32,7 @@ def render_practice_mode(show_back_button=True):
         st.info("No practice lessons found for this course.")
         if show_back_button:
             st.markdown("---")
-            if st.button("⬅ Back to Home", use_container_width=True)
+            if st.button("⬅ Back to Home", use_container_width=True):
                 st.session_state.pop("practice_feedback", None)
                 st.session_state.pop("practice_submitted", None)
                 st.session_state.pop("in_practice", None)
