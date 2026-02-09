@@ -3,6 +3,10 @@ import pandas as pd
 
 from math_app.db import init_math_practice_progress_table, init_math_tables
 from math_app.repository.math_question_repo import insert_question
+from math_app.repository.math_question_bank_repo import (
+    export_latest_question_bank_df,
+    ingest_question_bank_csv,
+)
 from math_app.repository.math_student_repo import get_active_math_students
 from math_app.repository.math_registration_repo import (
     approve_math_registration,
@@ -107,6 +111,43 @@ def render_practice_admin():
                 )
 
             st.success("Questions imported successfully!")
+
+
+def render_test_admin():
+    st.markdown("### 📦 Question Bank (CSV)")
+
+    st.caption("Upload CSV to append questions (versioned). Download exports latest version per question_code.")
+
+    upload = st.file_uploader(
+        "Upload Question Bank CSV",
+        type=["csv"],
+        key="qb_upload",
+    )
+
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        if upload is not None:
+            try:
+                st.info("Validating and ingesting…")
+                result = ingest_question_bank_csv(upload)
+                st.success(f"Upload complete. Rows inserted: {result['rows_inserted']}")
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
+
+    with col_b:
+        try:
+            df = export_latest_question_bank_df()
+            csv_data = df.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Download Current Question Bank (CSV)",
+                data=csv_data,
+                file_name="math_question_bank_export.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.warning(f"Download not available yet: {e}")
 
 
 tabs = st.tabs(
