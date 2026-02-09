@@ -1,14 +1,25 @@
+from datetime import datetime, timedelta
+
 import streamlit as st
 from passlib.hash import bcrypt
 
 from math_app.db import get_db_connection, init_math_practice_progress_table, init_math_tables
-from math_app.repository.math_question_repo import get_all_questions
-from math_app.repository.math_session_repo import create_session, end_session
+from math_app.repository.math_test_repo import (
+    get_random_test_questions,
+    create_test_session,
+    end_test_session,
+)
+from math_app.repository.math_question_bank_repo import export_latest_question_bank_df
 from math_app.repository.math_registration_repo import create_math_registration
 from math_app.repository.math_attempt_repo import record_attempt
 from math_app.student_practice_app import render_practice_mode
 
 DEFAULT_PASSWORD = "Learn1234!"
+MODE_HOME = "HOME"
+MODE_PRACTICE = "PRACTICE"
+MODE_TEST = "TEST"
+MODE_TEST_RUNNER = "TEST_RUNNER"
+MODE_TEST_RESULT = "TEST_RESULT"
 
 init_math_tables()
 init_math_practice_progress_table()
@@ -26,7 +37,7 @@ st.caption("Focused maths practice from past papers")
 # STUDENT SHELL (HOME + MODE ROUTING)
 # ------------------------------------------------------------
 if "mode" not in st.session_state:
-    st.session_state.mode = "HOME"
+    st.session_state.mode = MODE_HOME
 
 
 def is_active_math_user(email: str) -> bool:
@@ -77,7 +88,7 @@ def authenticate_student(email: str, password: str):
             conn.close()
 
 
-def render_student_home():
+def render_home():
     if "is_logged_in" not in st.session_state:
         st.session_state.is_logged_in = False
 
@@ -152,10 +163,8 @@ def render_student_home():
 
     st.write("What would you like to do today?")
 
-    st.markdown("### 📝 Test Papers")
-    st.caption("Timed exam-style questions")
-    if st.button("Start Test Papers", use_container_width=True):
-        st.session_state.mode = "TEST"
+    if st.button("📝 Test Papers", use_container_width=True):
+        st.session_state["mode"] = MODE_TEST
         st.rerun()
 
     st.markdown("---")
@@ -164,170 +173,207 @@ def render_student_home():
     st.caption("Step-by-step learning with hints and explanations")
     
     if st.button("🧠 Practice & Skill Builder"):
-        st.session_state["mode"] = "PRACTICE"
+        st.session_state["mode"] = MODE_PRACTICE
         st.session_state["in_practice"] = True
         st.rerun()
 
 
-def render_test_mode():
-    questions = get_all_questions()
+def render_test_home():
+    st.markdown("## 📝 Test Papers")
+    st.caption("50 questions · 55 minutes · No hints")
 
-    if not questions:
-        st.warning("No maths questions found. Please upload questions via Admin.")
-        st.stop()
+    papers = [f"Practice Paper {i}" for i in range(1, 10)]
 
-    if "math_session_id" not in st.session_state:
-        st.session_state.math_session_id = create_session(len(questions))
-        st.session_state.q_index = 0
-        st.session_state.correct_count = 0
-        st.session_state.feedback = None
-        st.session_state.answered = False
-        st.session_state.selected_option = None
+    for idx, name in enumerate(papers, start=1):
+        with st.container(border=True):
+            st.markdown(f"**{name}**")
+            st.caption("50 questions · 55 minutes")
+            if st.button(f"Start {name}", key=f"start_test_{idx}", use_container_width=True):
+                start_test()
+                st.rerun()
 
-    if "selected_option" not in st.session_state:
-        st.session_state.selected_option = None
+    if st.button("⬅ Back to Home", use_container_width=True):
+        st.session_state["mode"] = MODE_HOME
+        st.rerun()
 
-    q = questions[st.session_state.q_index]
 
-    (
-        qid,
-        question_id,
-        stem,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
-        option_e,
-        correct_option,
-        topic,
-        difficulty,
-        asset_type,
-        asset_ref,
-        hint,
-        solution,
-    ) = q
+def start_test():
+    session_id = create_test_session(50)
+    question_ids = get_random_test_questions(50)
 
-    st.subheader(f"Question {st.session_state.q_index + 1} of {len(questions)}")
-    st.write(stem)
+    st.session_state["test"] = {
+        "session_id": session_id,
+        "question_ids": question_ids,
+        "index": 0,
+        "start_time": datetime.utcnow(),
+        "answers": {},
+        "correct": 0,
+    }
+    st.session_state["mode"] = MODE_TEST_RUNNER
 
-    if hint:
-        with st.expander("💡 Show hint"):
-            st.write(hint)
 
-    option_labels = {
-        "A": option_a,
-        "B": option_b,
-        "C": option_c,
-        "D": option_d,
-        "E": option_e,
+def _fetch_question_row(question_id: int):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, question_text, options_json, correct_option
+                FROM math_question_bank
+                WHERE id = %s
+                LIMIT 1;
+                """,
+                (question_id,),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return None
+
+    qid, question_text, options_json, correct_option = row
+    options_json = options_json or {}
+    return {
+        "id": qid,
+        "question_text": question_text,
+        "option_a": options_json.get("a", ""),
+        "option_b": options_json.get("b", ""),
+        "option_c": options_json.get("c", ""),
+        "option_d": options_json.get("d", ""),
+        "correct_option": (correct_option or "").upper(),
     }
 
-    st.markdown("### Choose an answer")
-    cols = st.columns(2)
 
-    for idx, (opt, text) in enumerate(option_labels.items()):
-        col = cols[idx % 2]
+def render_test_runner():
+    test = st.session_state.get("test")
+    if not test:
+        st.session_state["mode"] = MODE_TEST
+        st.rerun()
+        return
 
-        is_correct_choice = (
-            st.session_state.feedback is not None and opt == correct_option
-        )
-        is_incorrect_choice = (
-            st.session_state.feedback is False
-            and st.session_state.selected_option == opt
-        )
-        is_selected = (
-            st.session_state.feedback is None
-            and st.session_state.selected_option == opt
-        )
+    total_questions = len(test["question_ids"])
+    if total_questions == 0:
+        st.warning("No active test questions are available right now.")
+        st.session_state["mode"] = MODE_TEST
+        return
 
-        classes = ["option-card"]
-        if is_correct_choice:
-            classes.append("correct")
-        elif is_incorrect_choice:
-            classes.append("incorrect")
-        elif is_selected:
-            classes.append("selected")
+    TOTAL_TIME = timedelta(minutes=55)
+    elapsed = datetime.utcnow() - test["start_time"]
+    remaining = TOTAL_TIME - elapsed
 
-        with col:
-            st.markdown(f"<div class='{ ' '.join(classes) }'>", unsafe_allow_html=True)
-            label = f"{opt}. {text}"
-            if st.button(
-                label,
-                key=f"option_{opt}",
-                use_container_width=True,
-                disabled=st.session_state.answered,
-            ):
-                st.session_state.selected_option = opt
-            st.markdown("</div>", unsafe_allow_html=True)
+    if remaining.total_seconds() <= 0:
+        finish_test()
+        st.rerun()
+        return
 
-    if st.button("Submit", disabled=st.session_state.answered):
-        selected_option = st.session_state.selected_option
-        if selected_option is None:
-            st.warning("Please select an answer first.")
+    mins, secs = divmod(int(remaining.total_seconds()), 60)
+    st.markdown(f"### ⏱ Time left: {mins:02d}:{secs:02d}")
+
+    q_idx = test["index"]
+    qid = test["question_ids"][q_idx]
+    row = _fetch_question_row(qid)
+
+    if row is None:
+        st.error("Unable to load this question.")
+        return
+
+    st.markdown(f"### Question {q_idx + 1} of {total_questions}")
+    st.write(row["question_text"])
+
+    options = {
+        "A": row["option_a"],
+        "B": row["option_b"],
+        "C": row["option_c"],
+        "D": row["option_d"],
+    }
+
+    choice = st.radio(
+        "Select an answer",
+        options=list(options.keys()),
+        format_func=lambda k: f"{k}. {options[k]}",
+        key=f"test_choice_{q_idx}",
+    )
+
+    if st.button("Next", use_container_width=True):
+        submit_test_answer(qid, choice)
+        if q_idx >= total_questions - 1:
+            finish_test()
         else:
-            is_correct = selected_option == correct_option
+            test["index"] += 1
+        st.rerun()
 
-            record_attempt(
-                session_id=st.session_state.math_session_id,
-                question_id=qid,
-                selected_option=selected_option,
-                is_correct=is_correct,
-            )
 
-            if is_correct:
-                st.session_state.correct_count += 1
+def submit_test_answer(question_id: int, selected: str):
+    test = st.session_state["test"]
+    row = _fetch_question_row(question_id)
+    if row is None:
+        return
 
-            st.session_state.feedback = is_correct
-            st.session_state.answered = True
+    correct_opt = row["correct_option"]
+    is_correct = selected == correct_opt
 
-    if st.session_state.feedback is not None:
-        if st.session_state.feedback:
-            st.success("✅ Correct!")
-        else:
-            st.error(f"❌ Incorrect. Correct answer: {correct_option}")
+    record_attempt(
+        session_id=test["session_id"],
+        question_id=question_id,
+        selected_option=selected,
+        is_correct=is_correct,
+    )
 
-        if solution:
-            if st.session_state.feedback:
-                with st.expander("📘 See solution / explanation"):
-                    st.write(solution)
-            else:
-                st.write(solution)
+    if is_correct:
+        test["correct"] += 1
 
-        if st.button("Next"):
-            st.session_state.answered = False
-            st.session_state.selected_option = None
-            st.session_state.q_index += 1
-            st.session_state.feedback = None
 
-            if st.session_state.q_index >= len(questions):
-                end_session(
-                    st.session_state.math_session_id,
-                    st.session_state.correct_count
-                )
+def finish_test():
+    test = st.session_state["test"]
+    end_test_session(test["session_id"], test["correct"])
+    st.session_state["test_result"] = {
+        "score": test["correct"],
+        "total": len(test["question_ids"]),
+    }
+    st.session_state.pop("test", None)
+    st.session_state["mode"] = MODE_TEST_RESULT
 
-                st.markdown("---")
-                st.success("🎉 Practice Complete!")
-                st.write(
-                    f"Final Score: **{st.session_state.correct_count} / {len(questions)}**"
-                )
-                st.stop()
 
-            st.experimental_rerun()
+def render_test_result():
+    res = st.session_state.get("test_result")
+    if not res:
+        st.session_state["mode"] = MODE_HOME
+        st.rerun()
+        return
+
+    st.markdown("## 🏁 Test Complete")
+    st.markdown(f"### Score: **{res['score']} / {res['total']}**")
+
+    if st.button("⬅ Back to Home", use_container_width=True):
+        st.session_state.pop("test_result", None)
+        st.session_state["mode"] = MODE_HOME
+        st.rerun()
 # ------------------------------------------------------------
 # MODE SWITCH
 # ------------------------------------------------------------
 def main():
-    mode = st.session_state.get("mode", "HOME")
+    mode = st.session_state.get("mode", MODE_HOME)
 
-    if mode == "PRACTICE":
+    if mode == MODE_HOME:
+        render_home()
+        return
+
+    if mode == MODE_PRACTICE:
         render_practice_mode()
         return
 
-    if mode == "TEST":
-        render_test_mode()
+    if mode == MODE_TEST:
+        render_test_home()
         return
 
-    render_student_home()
+    if mode == MODE_TEST_RUNNER:
+        render_test_runner()
+        return
+
+    if mode == MODE_TEST_RESULT:
+        render_test_result()
+        return
+
+    st.session_state["mode"] = MODE_HOME
+    st.rerun()
 
 
 main()
