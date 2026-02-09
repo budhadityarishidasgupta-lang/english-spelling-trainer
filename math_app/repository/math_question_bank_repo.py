@@ -1,3 +1,5 @@
+import json
+
 from __future__ import annotations
 
 from typing import BinaryIO, Dict, List
@@ -133,7 +135,7 @@ def ingest_question_bank_csv(file_obj: BinaryIO) -> Dict[str, int]:
                     (
                         question_code,
                         row["question_text"],
-                        pd.io.json.dumps(options_json),
+                        json.dumps(options_json),
                         correct_letter,
                         row["topic"] or None,
                         row["difficulty"] or None,
