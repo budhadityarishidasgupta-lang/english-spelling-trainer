@@ -1,7 +1,6 @@
-import json
-
 from __future__ import annotations
 
+import json
 from typing import BinaryIO, Dict, List
 
 import pandas as pd
