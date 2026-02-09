@@ -163,6 +163,28 @@ def init_math_tables():
         CREATE INDEX IF NOT EXISTS idx_math_attempts_session
             ON math_attempts(session_id);
         """,
+        """
+        CREATE TABLE IF NOT EXISTS math_question_bank (
+            id SERIAL PRIMARY KEY,
+            question_code TEXT NOT NULL,
+            question_text TEXT NOT NULL,
+            options_json JSONB NOT NULL,
+            correct_option TEXT NOT NULL,
+            topic TEXT,
+            difficulty TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            version INTEGER DEFAULT 1,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_math_question_bank_code
+            ON math_question_bank(question_code);
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_math_question_bank_active
+            ON math_question_bank(is_active);
+        """,
     ]
 
     alterations = [
