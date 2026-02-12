@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from shared.db import execute, fetch_all
+from shared.db import execute, fetch_all, fetch_one
 
 
 def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
@@ -73,7 +73,7 @@ def approve_spelling_student(pending_id: int, default_password_hash: str) -> boo
             """
             UPDATE users
             SET
-                app_source = 'spelling',
+                
                 role = 'student',
                 status = 'ACTIVE',
                 is_active = TRUE
@@ -193,10 +193,11 @@ def remove_courses_from_student(user_id: int, course_ids: List[int]) -> None:
     if not course_ids:
         return
 
-    execute(
-        """
-        DELETE FROM spelling_enrollments
-        WHERE user_id = :uid AND course_id IN :course_ids
-        """,
-        {"uid": user_id, "course_ids": tuple(course_ids)},
-    )
+    for course_id in course_ids:
+        execute(
+            """
+            DELETE FROM spelling_enrollments
+            WHERE user_id = :uid AND course_id = :cid
+            """,
+            {"uid": user_id, "cid": course_id},
+        )
