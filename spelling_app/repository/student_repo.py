@@ -28,6 +28,17 @@ def get_pending_spelling_students() -> List[Dict[str, Any]]:
 
 
 def approve_spelling_student(pending_id: int, default_password_hash: str) -> bool:
+    """
+    Approve a pending spelling student safely.
+
+    Handles:
+    - Existing user (from general/synonym)
+    - New user creation
+    - Forces spelling access
+    - Auto-assigns default courses
+    """
+
+    # 1️⃣ Fetch pending record
     pending_rows = fetch_all(
         """
         SELECT pending_id, student_name, email
@@ -42,19 +53,69 @@ def approve_spelling_student(pending_id: int, default_password_hash: str) -> boo
         return False
 
     pending = pending_list[0]
+    email = pending.get("email")
 
-    execute(
+    # 2️⃣ Check if user already exists
+    existing_user = fetch_one(
         """
-        INSERT INTO users (name, email, password_hash, role, status, class_name, app_source)
-        VALUES (:name, :email, :phash, 'student', 'ACTIVE', NULL, 'spelling')
+        SELECT user_id
+        FROM users
+        WHERE LOWER(email) = LOWER(:email)
         """,
-        {
-            "name": pending.get("student_name"),
-            "email": pending.get("email"),
-            "phash": default_password_hash,
-        },
+        {"email": email},
     )
 
+    if existing_user:
+        user_id = existing_user[0] if isinstance(existing_user, tuple) else existing_user["user_id"]
+
+        # Update user safely
+        execute(
+            """
+            UPDATE users
+            SET
+                app_source = 'spelling',
+                role = 'student',
+                status = 'ACTIVE',
+                is_active = TRUE
+            WHERE user_id = :uid
+            """,
+            {"uid": user_id},
+        )
+
+    else:
+        # 3️⃣ Create new user
+        execute(
+            """
+            INSERT INTO users (name, email, password_hash, role, status, class_name, app_source, is_active)
+            VALUES (:name, :email, :phash, 'student', 'ACTIVE', NULL, 'spelling', TRUE)
+            """,
+            {
+                "name": pending.get("student_name"),
+                "email": email,
+                "phash": default_password_hash,
+            },
+        )
+
+        user_row = fetch_one(
+            "SELECT user_id FROM users WHERE LOWER(email)=LOWER(:email)",
+            {"email": email},
+        )
+        user_id = user_row[0] if isinstance(user_row, tuple) else user_row["user_id"]
+
+    # 4️⃣ Auto-assign default courses
+    DEFAULT_COURSES = [1, 9]  # Word Mastery + Pattern Words
+
+    for course_id in DEFAULT_COURSES:
+        execute(
+            """
+            INSERT INTO spelling_enrollments (user_id, course_id)
+            VALUES (:uid, :cid)
+            ON CONFLICT DO NOTHING
+            """,
+            {"uid": user_id, "cid": course_id},
+        )
+
+    # 5️⃣ Remove from pending
     execute(
         """
         DELETE FROM pending_spelling_registrations
