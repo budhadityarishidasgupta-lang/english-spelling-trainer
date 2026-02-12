@@ -140,12 +140,6 @@ def get_pending_spelling_students() -> List[Dict[str, Any]]:
 
 
 def approve_spelling_student(pending_id: int, default_password_hash: str) -> bool:
-    """
-    Approve a pending spelling student:
-    - read from pending_spelling_registrations
-    - insert into users with app_source='spelling'
-    - delete from pending table
-    """
     pending_rows = fetch_all(
         """
         SELECT pending_id, student_name, email
@@ -160,18 +154,41 @@ def approve_spelling_student(pending_id: int, default_password_hash: str) -> boo
         return False
 
     pending = pending_list[0]
+    email = pending.get("email")
 
-    execute(
-        """
-        INSERT INTO users (name, email, password_hash, role, status, class_name, app_source)
-        VALUES (:name, :email, :phash, 'student', 'ACTIVE', NULL, 'spelling')
-        """,
-        {
-            "name": pending.get("student_name"),
-            "email": pending.get("email"),
-            "phash": default_password_hash,
-        },
+    # Check if user already exists
+    existing_user = fetch_one(
+        "SELECT user_id FROM users WHERE email = :email",
+        {"email": email},
     )
+
+    if existing_user:
+        execute(
+            """
+            UPDATE users
+            SET
+                role = 'student',
+                status = 'ACTIVE',
+                is_active = TRUE,
+                app_source = 'spelling'
+            WHERE email = :email
+            """,
+            {"email": email},
+        )
+    else:
+        execute(
+            """
+            INSERT INTO users
+                (name, email, password_hash, role, status, class_name, app_source, is_active)
+            VALUES
+                (:name, :email, :phash, 'student', 'ACTIVE', NULL, 'spelling', TRUE)
+            """,
+            {
+                "name": pending.get("student_name"),
+                "email": email,
+                "phash": default_password_hash,
+            },
+        )
 
     execute(
         """
