@@ -12,6 +12,7 @@ sample_config = {
 }
 
 svg = render_diagram("bar_chart", sample_config)
+
 st.markdown(safe_render(svg), unsafe_allow_html=True)
 
 st.subheader("Config used")
