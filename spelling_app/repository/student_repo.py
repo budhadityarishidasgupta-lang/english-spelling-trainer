@@ -77,6 +77,7 @@ def approve_spelling_student(pending_id: int, default_password_hash: str) -> boo
                 role = 'student',
                 status = 'ACTIVE',
                 is_active = TRUE
+                app_source = 'spelling'
             WHERE user_id = :uid
             """,
             {"uid": user_id},
