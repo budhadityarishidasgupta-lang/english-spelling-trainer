@@ -46,11 +46,12 @@ st.markdown("### Rendered Diagram")
 svg = render_diagram(diagram_type, config)
 
 # 🔥 Correct rendering method
-components.html(
-    safe_render(svg),
-    height=450,
-    scrolling=False,
-)
+st.code(svg)
+#components.html(
+ #   safe_render(svg),
+  #  height=450,
+   # scrolling=False,
+#)
 
 st.markdown("---")
 st.write("Raw Config Used:")
