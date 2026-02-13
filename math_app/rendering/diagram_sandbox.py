@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 from math_app.rendering.diagram_engine import render_diagram
 from math_app.rendering.safe_render import safe_render
@@ -43,7 +44,13 @@ config = configs[diagram_type]
 st.markdown("### Rendered Diagram")
 
 svg = render_diagram(diagram_type, config)
-st.markdown(safe_render(svg), unsafe_allow_html=True)
+
+# 🔥 Correct rendering method
+components.html(
+    safe_render(svg),
+    height=450,
+    scrolling=False,
+)
 
 st.markdown("---")
 st.write("Raw Config Used:")
