@@ -44,7 +44,7 @@ def render_bar_chart(config: dict) -> str:
               y="{height - margin + 20}"
               text-anchor="middle"
               font-size="14">
-            {x_labels[i]}
+            {x_labels[i] if i < len(x_labels) else ""}
         </text>
         """
 
