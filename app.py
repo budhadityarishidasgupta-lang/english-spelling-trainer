@@ -20,7 +20,15 @@ def user_by_email(email):
 
 def all_students_df():
     df_users = pd.read_sql(
-        text("SELECT user_id,name,email,is_active FROM users WHERE role='student'"),
+        text(
+            """
+            SELECT DISTINCT u.user_id, u.name, u.email, u.is_active
+            FROM users u
+            JOIN spelling_enrollments e
+            ON e.user_id = u.user_id
+            WHERE u.role = 'student'
+            """
+        ),
         con=engine,
     )
     df_stats = pd.read_sql(
@@ -284,6 +292,18 @@ def render_student_overview():
 
     return df_students, filtered_students
 
+def assign_default_spelling_courses(user_id: int):
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO spelling_enrollments (user_id, course_id)
+                VALUES (:uid, 1), (:uid, 9)
+                ON CONFLICT DO NOTHING
+                """
+            ),
+            {"uid": int(user_id)},
+        )
 
 def render_pending_registrations():
     st.header("Pending Student Registrations")
@@ -322,10 +342,20 @@ def render_pending_registrations():
         email_lc = pending_row["email"].strip().lower()
         existing = user_by_email(email_lc)
         if existing and existing.get("role") == "student":
-            mark_pending_registration_processed(int(pending_row["pending_id"]), existing.get("user_id"), status="already registered")
-            set_user_active(existing.get("user_id"), True)
-            st.info("This email is already registered. The student has been reactivated if necessary.")
+            user_id = existing.get("user_id")
+
+            set_user_active(user_id, True)
+            assign_default_spelling_courses(user_id)
+
+            mark_pending_registration_processed(
+                int(pending_row["pending_id"]),
+                user_id,
+                status="already registered"
+            )
+
+            st.info("Existing student detected. Spelling courses assigned.")
             st.rerun()
+            
         elif existing:
             st.warning("An account with this email already exists with a different role.")
         else:
@@ -334,6 +364,7 @@ def render_pending_registrations():
                 new_user_id = create_user(pending_row["name"], email_lc, password, "student")
                 if new_user_id:
                     set_user_active(new_user_id, True)
+                    assign_default_spelling_courses(new_user_id)
                 mark_pending_registration_processed(int(pending_row["pending_id"]), new_user_id, status="registered")
                 st.success("Student account created from registration.")
                 st.rerun()
