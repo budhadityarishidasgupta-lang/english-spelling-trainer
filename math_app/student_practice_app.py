@@ -13,8 +13,15 @@ def render_practice_mode(show_back_button=True):
     st.session_state["in_practice"] = True
 
     
-    student_id = int(st.session_state.get("student_id", 1))
-    course_id = int(st.session_state.get("course_id", 1))
+    student_id = st.session_state.get("student_id")
+    course_id = st.session_state.get("course_id")
+
+    if not student_id or not course_id:
+        st.error("Student not authenticated.")
+        return
+
+    student_id = int(student_id)
+    course_id = int(course_id)
     lesson_id = st.session_state.get("active_lesson_id")
 
     st.subheader("🧠 Practice & Skill Builder")
@@ -27,7 +34,7 @@ def render_practice_mode(show_back_button=True):
     # ------------------------------------------------------------
     # LESSON SELECTION
     # ------------------------------------------------------------
-    lessons = get_lessons_for_student(course_id=None)
+    lessons = get_lessons_for_student(course_id=course_id)
 
     if not lessons:
         st.info("No practice lessons found for this course.")
@@ -91,6 +98,8 @@ def render_practice_mode(show_back_button=True):
         st.session_state.practice_selected_option = None
     if "practice_feedback" not in st.session_state:
         st.session_state.practice_feedback = None
+    if "practice_correct_count" not in st.session_state:
+        st.session_state.practice_correct_count = 0
 
     # Reset state & apply resume when lesson changes
     if st.session_state.practice_lesson_id != lesson_id:
@@ -98,6 +107,7 @@ def render_practice_mode(show_back_button=True):
         st.session_state.practice_submitted = False
         st.session_state.practice_selected_option = None
         st.session_state.practice_feedback = None
+        st.session_state.practice_correct_count = 0
 
         resume_at = get_practice_progress(
             student_id=int(student_id),
@@ -172,37 +182,40 @@ def render_practice_mode(show_back_button=True):
     if q.get("diagram_type"):
         diagram_config = q.get("diagram_config") or {}
 
-        # If stored as JSON string in DB, parse it
-       if isinstance(diagram_config, str):
-        import json
-        try:
-            diagram_config = json.loads(diagram_config)
-        except Exception:
-            diagram_config = {}
+        # Safe JSON parsing
+        if isinstance(diagram_config, str):
+            import json
+            try:
+                diagram_config = json.loads(diagram_config)
+            except Exception:
+                diagram_config = {}
 
-        svg = render_diagram(
-            q["diagram_type"],
-            diagram_config
-        )
+        try:
+            svg = render_diagram(
+                q["diagram_type"],
+                diagram_config
+            )
+        except Exception:
+            svg = "<p>Diagram failed to render.</p>"
 
         html = f"""
-        <html>
-          <body style="margin:0; padding:0;">
-            {svg}
-          </body>
-        </html>
-        """
+    <html>
+      <body style="margin:0; padding:0;">
+        {svg}
+      </body>
+    </html>
+    """
 
-        components.html(html, height=500, scrolling=False)
+        components.html(html, height=420, scrolling=False)
 
     # 🔹 Render Question Text
     st.markdown(f"### {q['stem']}")
 
     options = {
-        "A": q["option_a"],
-        "B": q["option_b"],
-        "C": q["option_c"],
-        "D": q["option_d"],
+        "A": q.get("option_a") or "",
+        "B": q.get("option_b") or "",
+        "C": q.get("option_c") or "",
+        "D": q.get("option_d") or "",
     }
 
     option_labels = [f"{k}) {v}" for k, v in options.items()]
@@ -222,7 +235,7 @@ def render_practice_mode(show_back_button=True):
             st.warning("Please select an answer.")
         else:
             selected_key = selected.split(")")[0]
-            correct_option = (q["correct_option"] or "").strip().upper()
+            correct_option = (q.get("correct_option") or "").strip().upper()
             is_correct = selected_key == correct_option
 
             record_practice_attempt(
