@@ -1,9 +1,7 @@
 def render_practice_mode(show_back_button=True):
     import streamlit as st
-
-    # --- PRACTICE STICKY GUARD ---
-    st.session_state["in_practice"] = True
-
+    import streamlit.components.v1 as components
+    from math_app.rendering.diagram_engine import render_diagram
     from math_app.repository.math_practice_repo import (
         get_lessons_for_student,
         get_practice_progress,
@@ -11,7 +9,10 @@ def render_practice_mode(show_back_button=True):
         record_practice_attempt,
         save_practice_progress,
     )
+    # --- PRACTICE STICKY GUARD ---
+    st.session_state["in_practice"] = True
 
+    
     student_id = int(st.session_state.get("student_id", 1))
     course_id = int(st.session_state.get("course_id", 1))
     lesson_id = st.session_state.get("active_lesson_id")
@@ -167,7 +168,35 @@ def render_practice_mode(show_back_button=True):
     st.subheader(
         f"Question {st.session_state.practice_question_index + 1} of {total_questions}"
     )
-    st.write(q["stem"])
+    # 🔹 Render Diagram If Exists
+    if q.get("diagram_type"):
+        diagram_config = q.get("diagram_config") or {}
+
+        # If stored as JSON string in DB, parse it
+       if isinstance(diagram_config, str):
+        import json
+        try:
+            diagram_config = json.loads(diagram_config)
+        except Exception:
+            diagram_config = {}
+
+        svg = render_diagram(
+            q["diagram_type"],
+            diagram_config
+        )
+
+        html = f"""
+        <html>
+          <body style="margin:0; padding:0;">
+            {svg}
+          </body>
+        </html>
+        """
+
+        components.html(html, height=500, scrolling=False)
+
+    # 🔹 Render Question Text
+    st.markdown(f"### {q['stem']}")
 
     options = {
         "A": q["option_a"],
