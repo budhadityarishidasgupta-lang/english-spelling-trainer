@@ -2,7 +2,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from math_app.rendering.diagram_engine import render_diagram
-from math_app.rendering.safe_render import safe_render
 
 st.set_page_config(page_title="Diagram Sandbox", layout="centered")
 
@@ -45,13 +44,16 @@ st.markdown("### Rendered Diagram")
 
 svg = render_diagram(diagram_type, config)
 
-# 🔥 Correct rendering method
-st.code(svg)
-#components.html(
- #   safe_render(svg),
-  #  height=450,
-   # scrolling=False,
-#)
+# 🔥 Correct rendering method (NO markdown, NO safe_render)
+html = f"""
+<html>
+  <body style="margin:0; padding:0;">
+    {svg}
+  </body>
+</html>
+"""
+
+components.html(html, height=500, scrolling=False)
 
 st.markdown("---")
 st.write("Raw Config Used:")
