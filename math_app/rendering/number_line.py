@@ -23,7 +23,7 @@ def render_number_line(config: dict) -> str:
     return f"""
     <svg viewBox="0 0 {width} {height}"
          width="100%"
-         height="auto"
+        
          preserveAspectRatio="xMidYMid meet">
         <line x1="{margin}" y1="70"
               x2="{width - margin}" y2="70"
