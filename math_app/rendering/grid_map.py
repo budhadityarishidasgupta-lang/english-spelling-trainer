@@ -40,7 +40,7 @@ def render_grid_map(config: dict) -> str:
     return f"""
     <svg viewBox="0 0 {width} {height}"
          width="100%"
-         height="auto"
+         
          preserveAspectRatio="xMidYMid meet">
         {lines}
         {path_svg}
