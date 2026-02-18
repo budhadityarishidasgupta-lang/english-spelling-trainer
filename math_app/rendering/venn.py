@@ -9,7 +9,7 @@ def render_venn(config: dict) -> str:
     return f"""
     <svg viewBox="0 0 {width} {height}"
          width="100%"
-         height="auto"
+         
          preserveAspectRatio="xMidYMid meet">
 
         <circle cx="220" cy="180" r="100"
