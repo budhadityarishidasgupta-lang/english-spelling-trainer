@@ -6,7 +6,7 @@ def render_triangle(config: dict) -> str:
     return f"""
     <svg viewBox="0 0 {width} {height}"
          width="100%"
-         height="auto"
+         
          preserveAspectRatio="xMidYMid meet">
 
         <polygon points="250,50 100,350 400,350"
