@@ -264,13 +264,27 @@ def ensure_lesson(course_id: int, lesson_code: str, lesson_name: str, sort_order
 
 
 def get_questions_for_lesson(lesson_id: int) -> List[Dict[str, Any]]:
+    lesson_item_order_col = _preferred_column(LESSON_ITEM_TABLE, LESSON_ORDER_COLUMNS)
+    lesson_item_id_col = _preferred_column(LESSON_ITEM_TABLE, ("lesson_item_id", "id"))
+    question_order_col = _preferred_column(QUESTION_TABLE, LESSON_ORDER_COLUMNS)
+
+    order_parts: List[str] = []
+    if lesson_item_order_col:
+        order_parts.append(f"li.{lesson_item_order_col}")
+    if lesson_item_id_col:
+        order_parts.append(f"li.{lesson_item_id_col}")
+    if question_order_col:
+        order_parts.append(f"q.{question_order_col}")
+    if not order_parts:
+        order_parts.append("q.question_id")
+
     rows = _safe_execute(
         f"""
         SELECT q.*
         FROM {LESSON_ITEM_TABLE} li
         JOIN {QUESTION_TABLE} q ON q.question_id = li.question_id
         WHERE li.lesson_id = :lesson_id
-        ORDER BY COALESCE(li.sort_order, li.lesson_item_id, q.question_id)
+        ORDER BY {', '.join(order_parts)}
         """,
         {"lesson_id": int(lesson_id)},
     )
