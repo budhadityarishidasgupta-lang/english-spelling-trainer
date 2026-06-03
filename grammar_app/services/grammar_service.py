@@ -198,20 +198,12 @@ def get_grammar_course_by_name(course_name: str = DEFAULT_COURSE_NAME) -> Option
 
 def list_grammar_lessons(course_id: int, user_id: int | None = None, user_email: str | None = None) -> List[Dict[str, Any]]:
     sort_col = _preferred_column(LESSON_TABLE, ("sort_order", "order_index", "display_order")) or "lesson_id"
-    lessons = _select_all(
+    return _select_all(
         LESSON_TABLE,
         "course_id = :course_id",
         {"course_id": int(course_id)},
         order_sql=f"{sort_col}, lesson_code, lesson_name",
     )
-    progress_map = get_student_grammar_progress(user_id=user_id or 0, course_id=course_id, user_email=user_email) if (user_id is not None or user_email) else []
-    indexed_progress = {row["lesson_id"]: row for row in progress_map}
-
-    combined: List[Dict[str, Any]] = []
-    for lesson in lessons:
-        progress = indexed_progress.get(lesson.get("lesson_id"), {})
-        combined.append({**lesson, **progress})
-    return combined
 
 
 def get_grammar_lesson_by_code(course_id: int, lesson_code: str) -> Optional[Dict[str, Any]]:
@@ -599,7 +591,7 @@ def record_grammar_attempt(
 
 
 def get_student_grammar_progress(user_id: int, course_id: int) -> List[Dict[str, Any]]:
-    lessons = list_grammar_lessons(course_id, user_id=user_id)
+    lessons = list_grammar_lessons(course_id)
     results: List[Dict[str, Any]] = []
     next_found = False
     for lesson in lessons:
