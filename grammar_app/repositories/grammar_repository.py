@@ -574,4 +574,4 @@ def get_next_incomplete_lesson(user_email: str, course_id: int) -> Optional[Dict
     for lesson in lessons:
         if not lesson.get("is_complete"):
             return lesson
-    return lessons[0] if lessons else None
+    return None
