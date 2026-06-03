@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
@@ -30,13 +31,6 @@ REQUIRED_UPLOAD_COLUMNS = {
 }
 
 OPTION_COLUMNS = ("option_a", "option_b", "option_c", "option_d")
-QUESTION_META_COLUMNS = (
-    "question_type",
-    "explanation",
-    "difficulty",
-    "skill_tag",
-    "source_ref",
-)
 
 
 def _safe_execute(query: str, params: Optional[Dict[str, Any]] = None):
@@ -50,7 +44,7 @@ def _rows_to_dicts(rows: Any) -> List[Dict[str, Any]]:
     if not rows:
         return []
     if isinstance(rows, dict):
-        return [rows]
+        return [dict(rows)]
 
     dict_rows: List[Dict[str, Any]] = []
     for row in rows:
@@ -210,7 +204,7 @@ def list_grammar_lessons(course_id: int, user_id: int | None = None, user_email:
         {"course_id": int(course_id)},
         order_sql=f"{sort_col}, lesson_code, lesson_name",
     )
-    progress_map = get_student_grammar_progress(user_id=user_id, course_id=course_id, user_email=user_email) if (user_id is not None or user_email) else {}
+    progress_map = get_student_grammar_progress(user_id=user_id or 0, course_id=course_id, user_email=user_email) if (user_id is not None or user_email) else []
     indexed_progress = {row["lesson_id"]: row for row in progress_map}
 
     combined: List[Dict[str, Any]] = []
@@ -423,7 +417,7 @@ def ingest_grammar_csv(uploaded_file) -> Dict[str, Any]:
 
 
 def get_lesson_questions(lesson_id: int, user_id: int | None = None) -> List[Dict[str, Any]]:
-    q_rows = _rows_to_dicts(
+    rows = _rows_to_dicts(
         _safe_execute(
             f"""
             SELECT q.*
@@ -435,7 +429,7 @@ def get_lesson_questions(lesson_id: int, user_id: int | None = None) -> List[Dic
             {"lesson_id": int(lesson_id)},
         )
     )
-    return q_rows
+    return [dict(row, options={"A": _clean_text(row.get("option_a")), "B": _clean_text(row.get("option_b")), "C": _clean_text(row.get("option_c")), "D": _clean_text(row.get("option_d"))}) for row in rows]
 
 
 def get_next_question(lesson_id: int, user_id: int) -> Optional[Dict[str, Any]]:
@@ -444,11 +438,6 @@ def get_next_question(lesson_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         return None
 
     user_col = _preferred_column(ATTEMPT_TABLE, ("user_id", "user_email", "email"))
-    question_col = _preferred_column(ATTEMPT_TABLE, ("question_id",))
-    if not user_col or not question_col:
-        return questions[0]
-
-    filter_value = user_id if user_col == "user_id" else None
     if user_col != "user_id":
         return questions[0]
 
