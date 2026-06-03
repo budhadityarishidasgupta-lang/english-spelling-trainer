@@ -9,6 +9,8 @@ from datetime import date
 from shared.db import engine, fetch_all, execute
 from spelling_app.student_ui import render_spelling_student
 from spelling_app.admin_ui import render_spelling_admin
+from grammar_app.student_ui import render_grammar_student
+from grammar_app.admin_ui import render_grammar_admin
 
 
 def user_by_email(email):
@@ -194,6 +196,7 @@ def load_css():
     except Exception as e:
         st.error(f"Could not load CSS: {e}")
 
+
 def main():
     load_css()
     # Handle student lesson list navigation
@@ -225,6 +228,8 @@ def main():
             "My Spelling Courses",
             "Student Admin",
             "Spelling Admin",
+            "GrammarSprint Student",
+            "GrammarSprint Admin",
             "Weak Words",
             "Daily-5 Mode",
             "Missing-Letter Mode"
@@ -246,6 +251,12 @@ def main():
     elif mode == "Spelling Admin":
         from spelling_app.admin_ui import render_spelling_admin
         render_spelling_admin()
+
+    elif mode == "GrammarSprint Student":
+        render_grammar_student()
+
+    elif mode == "GrammarSprint Admin":
+        render_grammar_admin()
 
     elif mode == "Weak Words":
         from spelling_app.weak_words_admin import render_weak_words_admin
