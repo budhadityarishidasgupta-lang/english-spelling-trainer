@@ -9,6 +9,7 @@ ALLOWED_ACCESS_CODES = {"grammar", "gsm"}
 EMAIL_COLUMNS = ("user_email", "email", "login_email", "contact_email")
 CODE_COLUMNS = (
     "app_code",
+    "app_source",
     "entitlement_code",
     "access_code",
     "subscription_code",
