@@ -271,3 +271,11 @@ def render_grammar_practice() -> None:
         return
 
     _render_question(state, int(lesson_id), int(course["course_id"]), user_id, user_email)
+
+
+def render_grammar_student() -> None:
+    page = st.session_state.get(GRAMMAR_PAGE_KEY, "lesson_list")
+    if page == "practice":
+        render_grammar_practice()
+        return
+    render_grammar_lesson_list()
