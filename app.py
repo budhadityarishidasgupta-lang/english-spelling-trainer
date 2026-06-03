@@ -9,8 +9,7 @@ from datetime import date
 from shared.db import engine, fetch_all, execute
 from spelling_app.student_ui import render_spelling_student
 from spelling_app.admin_ui import render_spelling_admin
-from grammar_app.student_ui import render_grammar_student
-from grammar_app.admin_ui import render_grammar_admin
+from grammar_app.grammar_app import render_grammar_student, render_grammar_admin
 
 
 def user_by_email(email):
