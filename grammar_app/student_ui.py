@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import streamlit as st
 
@@ -9,7 +9,8 @@ from grammar_app.services.grammar_service import (
     DEFAULT_COURSE_NAME,
     get_grammar_course_by_name,
     get_grammar_lesson_questions,
-    get_student_grammar_progress,
+    get_lesson_progress,
+    list_grammar_lessons,
     submit_grammar_answer,
 )
 from shared.auth import get_logged_in_user
@@ -107,8 +108,13 @@ def render_grammar_lesson_list() -> None:
         st.error("Could not identify the current student.")
         return
 
-    lessons = get_student_grammar_progress(user_id, int(course["course_id"]))
-    next_lesson = next((lesson for lesson in lessons if lesson.get("is_next_recommended")), None)
+    raw_lessons = list_grammar_lessons(int(course["course_id"]))
+    lessons = []
+    for lesson in raw_lessons:
+        progress = get_lesson_progress(user_id, int(lesson["lesson_id"]))
+        lessons.append({**lesson, **progress})
+
+    next_lesson = next((lesson for lesson in lessons if not lesson.get("is_completed")), None)
 
     st.title(DEFAULT_COURSE_NAME)
     st.caption("GrammarSprint v1")
@@ -129,7 +135,7 @@ def render_grammar_lesson_list() -> None:
         total = int(lesson.get("total_questions") or 0)
         accuracy = float(lesson.get("accuracy_pct") or 0)
         is_complete = bool(lesson.get("is_completed"))
-        is_next = bool(lesson.get("is_next_recommended"))
+        is_next = bool(next_lesson and next_lesson.get("lesson_id") == lesson.get("lesson_id"))
 
         with st.container():
             left, right = st.columns([4, 1])
@@ -170,7 +176,6 @@ def _render_feedback(state: Dict[str, Any], lesson_id: int, course_id: int, user
             if state["index"] >= len(state["questions"]):
                 st.session_state[GRAMMAR_PAGE_KEY] = "lesson_list"
                 st.session_state.pop(GRAMMAR_STATE_KEY, None)
-                st.rerun()
             st.rerun()
     with back_col:
         if st.button("Back to lessons", key=f"grammar_back_{lesson_id}_{state['index']}"):
