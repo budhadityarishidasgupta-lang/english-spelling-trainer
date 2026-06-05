@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 
 from math_app.db import init_math_practice_progress_table, init_math_tables
+from math_app.repository.math_admin_lesson_repo import (
+    get_math_lessons_by_difficulty,
+    rename_lesson_display_name,
+    build_blank_template_csv,
+    build_lesson_csv,
+)
+from math_app.repository.math_practice_ingest_repo import ingest_practice_csv
 from math_app.repository.math_question_repo import insert_question
 from math_app.repository.math_question_bank_repo import (
     export_latest_question_bank_df,
@@ -295,11 +302,96 @@ with tabs[1]:
         st.rerun()
 
 with tabs[2]:
-    st.subheader("🧠 Practice Admin")
-    if "render_practice_admin" in globals():
-        render_practice_admin()
-    else:
-        st.info("Practice admin will be mounted here next.")
+    st.subheader("🧮 MathSprint Admin")
+    st.caption("Manage lessons and content for Maths Basic and Maths Advanced.")
+
+    basic_tab, advanced_tab = st.tabs(["📗 Maths Basic", "📘 Maths Advanced"])
+
+    def _render_lesson_manager(difficulty: str) -> None:
+        lessons = get_math_lessons_by_difficulty(difficulty)
+        if not lessons:
+            st.info(f"No {difficulty.title()} lessons found yet.")
+            return
+
+        lesson_labels = [
+            f"{l['display_name']} ({l['question_count']} Qs)"
+            for l in lessons
+        ]
+        selected_idx = st.selectbox(
+            "Select lesson",
+            range(len(lessons)),
+            format_func=lambda i: lesson_labels[i],
+            key=f"lesson_select_{difficulty}",
+        )
+        lesson = lessons[selected_idx]
+
+        st.markdown("**Lesson metadata**")
+        meta_df = pd.DataFrame({
+            "Field": ["lesson_id", "lesson_code", "lesson_name", "display_name", "difficulty", "is_active", "questions"],
+            "Value": [
+                lesson["lesson_id"], lesson["lesson_code"], lesson["lesson_name"],
+                lesson["display_name"], lesson["difficulty"], str(lesson["is_active"]), lesson["question_count"],
+            ],
+        })
+        st.dataframe(meta_df, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("**Rename display name**")
+        new_name = st.text_input(
+            "New display name",
+            value=lesson["display_name"],
+            key=f"rename_{difficulty}_{lesson['lesson_id']}",
+        )
+        if st.button("💾 Save display name", key=f"save_name_{difficulty}_{lesson['lesson_id']}"):
+            rename_lesson_display_name(lesson["lesson_id"], new_name)
+            st.success("Display name updated.")
+            st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Download lesson content**")
+        col1, col2 = st.columns(2)
+        with col1:
+            csv_bytes = build_lesson_csv(lesson["lesson_id"])
+            st.download_button(
+                label="⬇️ Download current lesson CSV",
+                data=csv_bytes,
+                file_name=f"{lesson['lesson_name']}.csv",
+                mime="text/csv",
+                key=f"dl_lesson_{difficulty}_{lesson['lesson_id']}",
+            )
+        with col2:
+            template_bytes = build_blank_template_csv(difficulty)
+            st.download_button(
+                label="⬇️ Download blank CSV template",
+                data=template_bytes,
+                file_name=f"template_{difficulty}.csv",
+                mime="text/csv",
+                key=f"dl_template_{difficulty}_{lesson['lesson_id']}",
+            )
+
+        st.markdown("---")
+        st.markdown("**Upload CSV to refresh lesson content**")
+        st.caption("Questions are upserted by question_id. Attempts are never deleted.")
+        upload = st.file_uploader(
+            "Upload CSV",
+            type=["csv"],
+            key=f"upload_{difficulty}_{lesson['lesson_id']}",
+        )
+        if upload is not None:
+            st.caption("Tip: set the CSV 'topic' column to match this lesson's lesson_name so questions map correctly.")
+            if st.button("🚀 Ingest CSV", key=f"ingest_{difficulty}_{lesson['lesson_id']}"):
+                try:
+                    course_id = lesson.get("course_id") or 1
+                    result = ingest_practice_csv(upload, course_id=course_id)
+                    st.success(f"Done: {result}")
+                except Exception as exc:
+                    st.error(f"Upload failed: {exc}")
+
+    with basic_tab:
+        _render_lesson_manager("basic")
+
+    with advanced_tab:
+        _render_lesson_manager("advanced")
 
 with tabs[3]:
     st.subheader("📝 Test Papers Admin")
