@@ -73,6 +73,15 @@ def init_vr_tables() -> None:
         total_questions INT NOT NULL DEFAULT 35
     );
 
+    CREATE TABLE IF NOT EXISTS vr_session_answers (
+        session_id BIGINT NOT NULL REFERENCES vr_sessions(id),
+        question_id BIGINT NOT NULL REFERENCES vr_questions(id),
+        question_number INT NOT NULL CHECK (question_number BETWEEN 1 AND 35),
+        selected_option TEXT NOT NULL CHECK (selected_option IN ('A', 'B', 'C', 'D')),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (session_id, question_id)
+    );
+
     CREATE TABLE IF NOT EXISTS vr_attempts (
         id BIGSERIAL PRIMARY KEY,
         session_id BIGINT NOT NULL REFERENCES vr_sessions(id),
@@ -92,6 +101,8 @@ def init_vr_tables() -> None:
         ON vr_papers (level, paper_number);
     CREATE INDEX IF NOT EXISTS idx_vr_sessions_student
         ON vr_sessions (student_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_vr_session_answers_session
+        ON vr_session_answers (session_id, question_number);
     CREATE INDEX IF NOT EXISTS idx_vr_attempts_student
         ON vr_attempts (student_id, created_at DESC);
     """
